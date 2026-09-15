@@ -1,4 +1,4 @@
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {validateDocument} from './validate-document';
 import {validateInput} from '../shared/errors';
 import type {Session} from './sessions';
@@ -6,14 +6,14 @@ import type {Documents} from './documents';
 import type {UploadAttempt} from './uploads';
 import {UserError} from './errors';
 export interface Receipt {requestId:string;saved:boolean;fileId?:string;url?:string;name:string;pdf:'waiting'|'pending'|'ready'|'failed';pdfUrl?:string;}
-interface Operation {hash:string;sessionId:string;createdAt:number;attempt:UploadAttempt;receipt:Receipt;running?:Promise<Receipt>;}
+interface Operation {hash:string;sessionId:string;createdAt:number;attempt:UploadAttempt;cardId:string;receipt:Receipt;running?:Promise<Receipt>;}
 export class Saves {
   private operations=new Map<string,Operation>();private active=0;
   constructor(private documents:Documents,private now=Date.now){}
   private key(s:Session,id:string):string{return `${s.id}:${id}`;}
   private checkId(id:string):void{if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))throw new UserError('request_id','저장 요청 식별자가 올바르지 않습니다.');}
   sweep():void {for(const [id,op] of this.operations)if(!op.running&&op.receipt.pdf!=='pending'&&this.now()-op.createdAt>60*60_000)this.operations.delete(id);}
-  async status(s:Session,id:string):Promise<Receipt>{this.checkId(id);await this.documents.authorize(s.cardId,s.actor);const op=this.operations.get(this.key(s,id));if(!op)throw new UserError('save_missing','저장 요청을 찾을 수 없습니다.');return {...op.receipt};}
+  async status(s:Session,id:string):Promise<Receipt>{this.checkId(id);await this.documents.authorize(s.cardId,s.actor);const op=this.operations.get(this.key(s,id));if(!op)throw new UserError('save_missing','저장 요청을 찾을 수 없습니다.');if(op.receipt.saved){const card=await this.documents.authorize(op.cardId,s.actor);op.receipt.pdf=card.pdf;op.receipt.pdfUrl=card.pdfUrl;}return {...op.receipt};}
   async save(s:Session,id:string,format:string,bytes:Buffer):Promise<Receipt> {
     this.checkId(id);validateInput(bytes);
     if(!['hwp','hwpx'].includes(format)||(bytes[0]===0x50)!==(format==='hwpx'))throw new UserError('format','문서 형식이 올바르지 않습니다.');
@@ -22,16 +22,16 @@ export class Saves {
     if(op&&op.hash!==hash)throw new UserError('save_conflict','같은 저장 요청의 문서 내용이 다릅니다.');
     if(op?.receipt.saved)return {...op.receipt};if(op?.running)return op.running;
     if(this.active>=2||(!op&&this.operations.size>=1000))throw new UserError('busy','저장 요청이 많습니다. 잠시 후 다시 시도하세요.');
-    if(!op){op={hash,sessionId:s.id,createdAt:this.now(),attempt:{},receipt:{requestId:id,saved:false,name:card.name.replace(/\.(hwp|hwpx)$/i,'').slice(0,180)+`_편집본.${format}`,pdf:'waiting'}};this.operations.set(key,op);}
+    if(!op){op={hash,sessionId:s.id,createdAt:this.now(),attempt:{},cardId:randomUUID(),receipt:{requestId:id,saved:false,name:this.documents.revisionName(card,format),pdf:'waiting'}};this.operations.set(key,op);}
     const current=op;this.active++;
     current.running=(async()=>{
       if(!current.attempt.fileId)await validateDocument(bytes);
-      const file=await this.documents.uploads.share(current.attempt,bytes,current.receipt.name,s.actor,async()=>{await this.documents.authorize(s.cardId,s.actor);});
+      const file=await this.documents.uploads.store(current.attempt,bytes,current.receipt.name,s.actor,async()=>{await this.documents.authorize(s.cardId,s.actor);});
+      const revision=await this.documents.publishRevision(current.cardId,s.cardId,s.actor,file.id,current.receipt.name,bytes);
       Object.assign(current.receipt,{saved:true,fileId:file.id,url:file.url,pdf:'pending'});
-      void this.documents.pdf.run(bytes,async(pdf)=>{
-        const result=await this.documents.uploads.share({},pdf,current.receipt.name.replace(/\.(hwp|hwpx)$/i,'.pdf'),s.actor,async()=>{await this.documents.authorize(s.cardId,s.actor);});
-        current.receipt.pdf='ready';current.receipt.pdfUrl=result.url;
-      }).catch(()=>{current.receipt.pdf='failed';});
+      void this.documents.preview(revision,bytes).catch(()=>{}).then(()=>{
+        current.receipt.pdf=revision.pdf;current.receipt.pdfUrl=revision.pdfUrl;
+      });
       return {...current.receipt};
     })().finally(()=>{current.running=undefined;this.active--;});
     return current.running;

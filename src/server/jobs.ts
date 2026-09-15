@@ -36,6 +36,15 @@ export class Preparations {
     this.queue.push(job); queueMicrotask(()=>this.pump());
     return {id:job.id,duplicate:false};
   }
+  // Retain an already validated export under the same aggregate memory/TTL limits as downloads.
+  retain(id:string,actor:Actor,fileId:string,name:string,bytes:Buffer):Readonly<Job> {
+    assertActor(this.config,actor);this.sweep();
+    const existing=this.jobs.get(id);if(existing?.state==='ready'&&existing.bytes)return existing;
+    const total=[...this.jobs.values()].reduce((sum,item)=>sum+(item.bytes?.length??0),0);
+    if(this.closed||bytes.length>MAX_FILE_BYTES||(!existing&&this.jobs.size>=1000)||total+this.reserved+bytes.length>(this.options.maxBytes??200*1024*1024))throw new UserError('storage_full','임시 문서 보관 공간이 부족합니다. 잠시 후 다시 시도하세요.');
+    const job:Job={id,actor:{...actor},fileId,mode:'open',state:'ready',createdAt:this.now(),source:{id:fileId,name,size:bytes.length,downloadUrl:''},bytes:Buffer.from(bytes),contentHash:createHash('sha256').update(bytes).digest('hex'),expiresAt:this.now()+(this.options.ttlMs??15*60_000)};
+    this.jobs.set(id,job);return job;
+  }
   // Server-internal only. Stage 5 must reauthorize every client-facing exchange/read.
   get(id:string):Readonly<Job>|undefined {this.sweep();return this.jobs.get(id);}
   sweep():void {

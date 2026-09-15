@@ -6,12 +6,12 @@ import {editorServer,EditorApi} from './editor-support';
 import {actor,bytes,signed} from './support';
 import {object} from '../../src/server/errors';
 async function until(check:()=>boolean){for(let i=0;i<100;i++){if(check())return;await delay(5);}assert.fail('operation not received');}
-test('card opens Studio before PDF is ready; PDF action references uploaded Slack file only',async()=>{
+test('card opens Studio before PDF is ready; PDF link references a privately uploaded file in the same card',async()=>{
   let release!:()=>void;const gate=new Promise<void>(r=>release=r);
   const server=await editorServer({convert:async()=>{await gate;return Buffer.from('%PDF-test');}});
   try{
     const id=await server.prepare();const initial=JSON.stringify(server.api.calls.find(c=>c.method==='chat.postMessage')!.args);
-    assert.match(initial,/문서 제목을 눌러 편집/);assert.doesNotMatch(initial,/rhwp_open|preview_url|ticket=|PDF로 변환/);
+    assert.doesNotMatch(initial,/문서 제목을 눌러 편집/);assert.doesNotMatch(initial,/rhwp_open|preview_url|ticket=|PDF로 변환/);
     await server.documents!.present(id,{teamId:'TTEST',userId:'UTEST',channelId:'CTEST'},'trigger');
     assert.match(JSON.stringify(server.api.calls.find(c=>c.method==='entity.presentDetails')!.args),/\/editor\/#ticket=/);
     release();await server.documents!.pdf.idle();await until(()=>server.api.calls.some(c=>c.method==='chat.update'));
@@ -71,7 +71,8 @@ for(const parent of [undefined,'100.001'])test(`source PDF and saved revisions r
     await server.documents!.pdf.idle();
     const completions=server.api.calls.filter(c=>c.method==='files.completeUploadExternal');
     assert.equal(completions.length,3);
-    for(const {args} of completions){assert.equal(args.channel_id,'CTEST');assert.equal(args.thread_ts,parent??'123.456');}
+    for(const {args} of completions){assert.equal(args.channel_id,undefined);assert.equal(args.thread_ts,undefined);}
+    const posts=server.api.calls.filter(c=>c.method==='chat.postMessage');assert.equal(posts.length,2);assert.equal(posts[1].args.thread_ts,parent??'123.456');
   }finally{await server.stop();}
 });
 test('missing card message timestamp never falls back to channel-wide file sharing',async()=>{
@@ -80,5 +81,47 @@ test('missing card message timestamp never falls back to channel-wide file shari
     const id=await server.prepare();await server.documents!.pdf.idle();
     assert.equal(api.calls.filter(c=>c.method==='files.getUploadURLExternal').length,0);
     await assert.rejects(server.documents!.present(id,actor,'trigger'));
+  }finally{await server.stop();}
+});
+
+test('revision card reopens its own bytes and resaves under the original thread; original revocation denies revisions',async()=>{
+  const server=await editorServer({convert:async()=>{throw new Error('no pdf');}});try{
+    const original=await server.prepare();const {session}=await server.session(original);
+    const first=await server.saves!.save(session,randomUUID(),'hwp',bytes);
+    const posts=server.api.calls.filter(c=>c.method==='chat.postMessage');assert.equal(posts.length,2);
+    const revisionId=String(object((object(posts[1].args.metadata).entities as Record<string,unknown>[])[0].external_ref).id);
+    assert.equal(first.name,'문서_편집본_1.hwp');assert.equal(posts[1].args.thread_ts,'123.456');
+    assert.deepEqual(server.documents!.source(revisionId),bytes);
+    const revision=await server.documents!.authorize(revisionId,actor);assert.equal(revision.fileId,first.fileId);
+    const reopened=await server.session(revisionId);
+    const second=await server.saves!.save(reopened.session,randomUUID(),'hwp',bytes);
+    assert.equal(second.name,'문서_편집본_2.hwp');
+    assert.equal(server.api.calls.filter(c=>c.method==='chat.postMessage')[2].args.thread_ts,'123.456');
+    server.api.handler=async(method,args)=>method==='files.info'&&args.file==='FTEST'?{ok:true,file:{id:'FTEST',mode:'tombstone'}}:server.api.response(method,args);
+    await assert.rejects(server.documents!.authorize(revisionId,actor));
+    await assert.rejects(server.saves!.save(reopened.session,randomUUID(),'hwp',bytes));
+  }finally{await server.stop();}
+});
+test('lost revision post response reconciles the same file share without a second card',async()=>{
+  const server=await editorServer({convert:async()=>{throw new Error('no pdf');}});try{
+    const original=await server.prepare();const {session}=await server.session(original);const request=randomUUID();
+    server.api.handler=async(method,args)=>{const response=server.api.response(method,args);if(method==='chat.postMessage')throw new Error('lost response');return response;};
+    const saved=await server.saves!.save(session,request,'hwp',bytes);assert.equal(saved.saved,true);
+    assert.equal((await server.saves!.save(session,request,'hwp',bytes)).fileId,saved.fileId);
+    assert.equal(server.api.calls.filter(c=>c.method==='chat.postMessage').length,2);
+    assert.equal(server.api.calls.filter(c=>c.method==='files.completeUploadExternal').length,1);
+  }finally{await server.stop();}
+});
+test('an unshared revision remains unsaved and a retry never creates a duplicate message',async()=>{
+  const server=await editorServer({convert:async()=>{throw new Error('no pdf');}});try{
+    const original=await server.prepare();const {session}=await server.session(original);const request=randomUUID();
+    server.api.handler=async(method,args)=>method==='chat.postMessage'?{ok:true,ts:'700.001'}:server.api.response(method,args);
+    await assert.rejects(server.saves!.save(session,request,'hwp',bytes),/공유/);
+    assert.equal((await server.saves!.status(session,request)).saved,false);
+    // Slack later finishes sharing the same uploaded file. The next click reconciles it.
+    const uploaded=[...server.api.files.values()][0];uploaded.shares={public:{CTEST:[{team_id:'TTEST',ts:'700.001',thread_ts:'123.456'}]}};
+    const saved=await server.saves!.save(session,request,'hwp',bytes);assert.equal(saved.saved,true);
+    assert.equal(server.api.calls.filter(c=>c.method==='chat.postMessage').length,2);
+    assert.equal(server.api.calls.filter(c=>c.method==='files.getUploadURLExternal').length,1);
   }finally{await server.stop();}
 });

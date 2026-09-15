@@ -46,7 +46,7 @@ SDK integrity: `sha512-Hc/rHrQrgZqJ2OSWNsPd/8tKyfnLer8M9r+U81yphJ7O8LaXLuv5A2yUu
 
 고정 rhwp core의 `renderPageSvgWithProfile(page, 'print')`와 Studio의 `print-pages.ts`를 재사용해 페이지 크기 및 SVG ID를 분리하고 Chromium의 PDF 출력으로 저장합니다. native `rhwp export-pdf`/hwp2pdf CLI를 호출하는 구현은 아닙니다. 폰트 공급 목록은 같은 Studio의 생성된 `FONT_RULE_CANVAS2D_WEBFONT_RULES` 중 로컬 항목만 사용합니다. 브라우저 컨텍스트의 외부 네트워크는 차단하며 사용자 SVG는 DOM으로 파싱하고 실행 요소를 제거합니다.
 
-Stage 3.1에서 별도 PDF.js 열람 화면과 직접 의존성·배포 자산을 제거했습니다. Stage 5의 PDF 열람 adapter는 Slack PDF 첨부 permalink로 연결하며 서버 변환 구현을 유지합니다. 실제 클라이언트 기본 미리보기 동작은 별도 확인이 필요합니다. Playwright/tsx는 변환 및 TypeScript 서버 runtime에 필요하므로 Stage 6에서 일반 dependencies로 분류했습니다. Docker runtime은 npm ci --omit=dev로 설치하고, Vite/TypeScript 및 Studio 빌드 의존성은 build 단계에만 둡니다.
+Stage 3.1에서 별도 PDF.js 열람 화면과 직접 의존성·배포 자산을 제거했습니다. Stage 5의 PDF 열람 adapter는 Slack PDF 첨부 permalink로 연결하며 서버 변환 구현을 유지합니다. Stage 6.1은 같은 print DOM을 캡처해 첫 페이지 PNG를 만들고, PDF와 함께 기존 변환 시간/프로세스 경계 안에서 반환합니다. Slack 파일 참조 자동 공유와 mrkdwn 파일 링크로 별도 PDF 댓글·외부 URL 버튼을 제거합니다. 추가 npm 의존성은 없습니다. Playwright/tsx는 변환 및 TypeScript 서버 runtime에 필요하므로 Stage 6에서 일반 dependencies로 분류했습니다. Docker runtime은 npm ci --omit=dev로 설치하고, Vite/TypeScript 및 Studio 빌드 의존성은 build 단계에만 둡니다.
 
 Chromium PDF의 생성 시각은 달라질 수 있어 산출물 byte 재현성을 주장하지 않습니다. 원본 font가 로컬 공급 목록에 없으면 대체 font를 사용하므로 한컴 출력과의 동일성은 별도 검증 대상입니다.
 

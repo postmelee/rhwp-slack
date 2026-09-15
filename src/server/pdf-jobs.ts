@@ -1,12 +1,12 @@
-import {convertPdf} from '../conversion/convert.mjs';
+import {convertPreview, type Preview} from '../conversion/convert.mjs';
 import {UserError} from './errors';
 export class PdfJobs {
   private tail:Promise<unknown>=Promise.resolve(); private pending=0;private closed=false;
-  constructor(private convert=convertPdf){}
-  run<T>(bytes:Buffer,publish:(pdf:Buffer)=>Promise<T>):Promise<T> {
+  constructor(private convert:(bytes:Uint8Array)=>Promise<Buffer|Preview>=convertPreview){}
+  run<T>(bytes:Buffer,publish:(pdf:Buffer,png?:Buffer)=>Promise<T>):Promise<T> {
     if(this.closed||this.pending>=4)return Promise.reject(new UserError('pdf_busy','PDF 요청이 많습니다. 잠시 후 다시 요청하세요.'));
     this.pending++;
-    const task=this.tail.catch(()=>{}).then(async()=>{if(this.closed)throw new Error('closed');const pdf=await this.convert(bytes);return publish(pdf);});
+    const task=this.tail.catch(()=>{}).then(async()=>{if(this.closed)throw new Error('closed');const pdf=await this.convert(bytes);return Buffer.isBuffer(pdf)?publish(pdf):publish(pdf.pdf,pdf.png);});
     this.tail=task.finally(()=>{this.pending--;});this.tail.catch(()=>{});return task;
   }
   async idle():Promise<void>{await this.tail.catch(()=>{});}

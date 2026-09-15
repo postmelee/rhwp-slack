@@ -4,9 +4,21 @@ import type {Config} from './config';
 import {ID} from './config';
 import {UserError,object} from './errors';
 import {parseFileLink} from './commands';
-export interface UploadAttempt {fileId?:string;url?:string;streamed?:boolean;completing?:boolean;saved?:boolean;permalink?:string;}
+export interface UploadAttempt {fileId?:string;url?:string;streamed?:boolean;completing?:boolean;saved?:boolean;permalink?:string;private?:boolean;completed?:boolean;}
 export class Uploads {
   constructor(private api:SlackApi,private config:Config,private fetcher:typeof fetch=fetch){}
+  async store(attempt:UploadAttempt,bytes:Buffer,name:string,actor:Actor,beforeStore:()=>Promise<void>):Promise<{id:string;url?:string}> {
+    if(attempt.saved&&!attempt.private)throw new Error('Upload destination cannot change');
+    attempt.private=true;return this.share(attempt,bytes,name,actor,beforeStore);
+  }
+  async sharedMessage(fileId:string,actor:Actor,expectedTs?:string):Promise<string|undefined> {
+    const f=object((await this.api.call('files.info',{file:fileId})).file);
+    if(f.id!==fileId)return;
+    const shares=object(f.shares);const records=object(shares.public??{})[actor.channelId]??object(shares.private??{})[actor.channelId];
+    if(!Array.isArray(records))return;
+    const matches=records.map(object).filter(s=>s.team_id===actor.teamId&&typeof s.ts==='string'&&/^\d+\.\d+$/.test(s.ts)&&(!expectedTs||s.ts===expectedTs)&&(actor.threadTs?s.thread_ts===actor.threadTs:!s.thread_ts));
+    return matches.length===1?String(matches[0].ts):undefined;
+  }
   async share(attempt:UploadAttempt,bytes:Buffer,name:string,actor:Actor,beforeShare:()=>Promise<void>):Promise<{id:string;url?:string}> {
     if(!attempt.fileId){
       const r=await this.api.call('files.getUploadURLExternal',{filename:name,length:bytes.length});
@@ -21,22 +33,23 @@ export class Uploads {
         await response.body?.cancel();if(!response.ok)throw new Error('stream');attempt.streamed=true;
       }catch{attempt.fileId=undefined;attempt.url=undefined;throw new UserError('upload_failed','파일 전송에 실패했습니다. 다시 저장해 주세요.');}
     }
-    if(!attempt.saved && !attempt.completing){
+    if(!(attempt.private?attempt.completed:attempt.saved) && !attempt.completing){
       await beforeShare();attempt.completing=true;
       try{
-        const result=await this.api.call('files.completeUploadExternal',{files:[{id:attempt.fileId,title:name}],channel_id:actor.channelId,...(actor.threadTs?{thread_ts:actor.threadTs}:{})});
+        const result=await this.api.call('files.completeUploadExternal',{files:[{id:attempt.fileId,title:name}],...(attempt.private?{}:{channel_id:actor.channelId,...(actor.threadTs?{thread_ts:actor.threadTs}:{})})});
         if(!Array.isArray(result.files)||!result.files.some(f=>object(f).id===attempt.fileId))throw new Error('missing receipt');
-        attempt.saved=true;
+        if(attempt.private)attempt.completed=true;else attempt.saved=true;
       }catch{/* Completion might have succeeded. Reconcile this file ID; never complete a second file. */}
     }
-    if(!attempt.saved){
+    if(!(attempt.private?attempt.completed:attempt.saved)){
       try {
       const f=object((await this.api.call('files.info',{file:attempt.fileId})).file);
+      if(attempt.private&&f.id===attempt.fileId&&f.mode==='hosted'&&f.size===bytes.length&&f.name===name&&typeof f.permalink==='string')attempt.completed=true;
       const shares=object(f.shares);const publicShares=shares.public as Record<string,unknown>|undefined;const privateShares=shares.private as Record<string,unknown>|undefined;
       const records=publicShares?.[actor.channelId]??privateShares?.[actor.channelId];
       if(f.id===attempt.fileId&&Array.isArray(records)&&records.some(r=>{const s=object(r);return s.team_id===actor.teamId&&(!actor.threadTs||s.thread_ts===actor.threadTs);}))attempt.saved=true;
       }catch{/* Reconciliation is inconclusive; retain the original attempt. */}
-      if(!attempt.saved)throw new UserError('upload_uncertain','저장 결과를 확인 중입니다. 같은 저장 요청으로 다시 확인해 주세요.');
+      if(!(attempt.private?attempt.completed:attempt.saved))throw new UserError('upload_uncertain','저장 결과를 확인 중입니다. 같은 저장 요청으로 다시 확인해 주세요.');
     }
     if(!attempt.permalink){
       try{const f=object((await this.api.call('files.info',{file:attempt.fileId})).file);if(f.id===attempt.fileId&&typeof f.permalink==='string'&&parseFileLink(f.permalink,this.config.workspaceHost)===attempt.fileId)attempt.permalink=f.permalink;}catch{/* Uploaded file remains saved even when the link lookup fails. */}

@@ -56,6 +56,19 @@ try {
   await page.emulateMedia({media:'print'});
   await page.evaluate(async()=>{await document.fonts.ready;await Promise.all([...document.images].map(img=>img.decode().catch(()=>{})));});
   const pdf=await page.pdf({preferCSSPageSize:true,printBackground:true,displayHeaderFooter:false});
-  process.stdout.write(pdf);
+  if(process.argv.includes('--preview')) {
+    // Capture the same sanitized print DOM, with fonts loaded, at a bounded thumbnail scale.
+    await page.evaluate(()=>{
+      const first=document.querySelector('.page');
+      if(!first)throw new Error('page');
+      const rect=first.getBoundingClientRect();
+      const scale=Math.min(1,800/rect.width,1200/rect.height);
+      first.style.zoom=String(scale);
+    });
+    const png=await page.locator('.page').first().screenshot({type:'png',timeout:10_000});
+    if(png.length>5*1024*1024||pdf.length>50*1024*1024)throw new Error('preview-size');
+    const header=Buffer.alloc(8);header.writeUInt32BE(pdf.length,0);header.writeUInt32BE(png.length,4);
+    process.stdout.write(header);process.stdout.write(pdf);process.stdout.write(png);
+  } else process.stdout.write(pdf);
 } catch { process.exitCode=1; }
 finally {doc?.free();await browser?.close();}
