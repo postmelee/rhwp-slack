@@ -6,7 +6,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 작성일: 2026-09-15 (Asia/Seoul)
 
-상태: 2026-09-15 수행계획서 승인 완료. [구현계획서](task_m010_1_impl.md)를 작성하여 검토 대기 중이며 제품 소스·Stage 1은 아직 시작하지 않음.
+상태: 2026-09-15 수행·구현계획서 승인 완료. [Stage 1](../working/task_m010_1_stage1.md) 구현·로컬 검증 완료, Stage 2 진입 승인 대기.
 
 ## 목적
 
@@ -182,4 +182,4 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 3. 공식 제품 문서는 `README.md`와 `docs/`에 두고 작업 기억은 `mydocs/`에 유지한다.
 4. 위 4개 Stage와 실제 Slack 실행을 포함하는 수용 기준을 따른다.
 
-2026-09-15 사용자가 위 수행계획과 구현계획서 작성 진입을 승인했다. [구현계획서](task_m010_1_impl.md)에 정확한 의존성·파일별 산출물·권한 계약·한도·검증 명령·커밋 메시지를 구체화했으며, 해당 문서 승인 후 Stage 1을 시작한다.
+2026-09-15 사용자가 위 수행계획과 구현계획서 작성 진입을 승인했다. [구현계획서](task_m010_1_impl.md)에 정확한 의존성·파일별 산출물·권한 계약·한도·검증 명령·커밋 메시지를 구체화했으며, 동일 날짜 구현계획서와 Stage 1 진입도 승인되어 [Stage 1 보고서](../working/task_m010_1_stage1.md)에 결과를 기록했다.

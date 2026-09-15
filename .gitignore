@@ -1,0 +1,15 @@
+node_modules/
+dist/
+public/
+.env
+.env.*
+!.env.example
+test-results/
+playwright-report/
+.DS_Store
+*.hwp
+*.hwpx
+*.pdf
+*.zip
+!tests/fixtures/*.hwp
+!tests/fixtures/*.hwpx

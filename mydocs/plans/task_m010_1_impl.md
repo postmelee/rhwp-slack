@@ -8,7 +8,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 작성일: 2026-09-15 (Asia/Seoul)
 
-상태: 구현계획서 검토 대기. 사용자가 수행계획서와 구현계획서 작성 진입을 승인했다. 제품 소스 구현과 Stage 1은 아직 시작하지 않았다.
+상태: 2026-09-15 구현계획서·Stage 1 진입 승인. [Stage 1 구현·검증 완료](../working/task_m010_1_stage1.md), Stage 2 진입 승인 대기.
 
 ## 단계 개요
 
@@ -52,7 +52,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 - 버전 범위 기호 없이 저장하고 `package-lock.json`을 커밋한다. Slack 서버 의존성은 Stage 2에서 추가한다. 사용하지 않는 의존성을 Stage 1부터 설치하지 않는다.
 - `@rhwp/core@0.8.6` tarball을 `--ignore-scripts`로 임시 폴더에 받아 `.d.ts`의 `HwpDocument(data)`, `pageCount()`, `renderPageSvg(page_num)`, `free()`와 WASM 존재를 확인했다. 아직 실제 렌더링을 실행한 것은 아니다.
 - rhwp tarball integrity는 수행계획서의 SHA-512와 일치한다. WASM·폰트·라이선스를 lockfile 기반으로 복사하고 출력별 SHA-256 manifest를 빌드 산출물에 만든다. 생성 자산은 Git에 넣지 않는다.
-- main viewer와 worker에 같은 폰트를 사용한다. 웹 폰트는 필요한 문자 subset을 누락시키지 않도록 원본 CSS의 unicode-range/weight와 파일 목록을 함께 가져온다. 첫 버전은 regular·bold 2개 weight를 지원한다.
+- 엔진의 내장 측정값과 viewer의 고정 표시 폰트를 구분한다. 웹 폰트는 필요한 문자 subset을 누락시키지 않도록 원본 CSS의 unicode-range/weight와 파일 목록을 함께 가져온다. 첫 버전은 regular·bold 2개 weight를 지원한다.
 - 모든 라이선스 고지를 빌드/컨테이너 산출물에도 포함한다. `dompurify`는 Apache-2.0 옵션을 따른다.
 - `src/server/`는 Node에서, `src/viewer/`는 브라우저에서 실행한다. TypeScript server/viewer 설정을 분리하고 `src/shared/`에는 환경에 의존하지 않는 계약만 둔다.
 - CI는 Linux에서 `npm ci`·자동 검증을 수행한다. Actions는 Stage 1 작성 시 공식 release SHA로 고정한다. 사용자 문서·실제 Slack 토큰 없이 실행되는 테스트만 기본 CI에 둔다.
@@ -132,9 +132,9 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 ### 변경 내용
 
 - 고정 의존성으로 실제 core를 초기화하고 `HwpDocument`·`pageCount()`·`renderPageSvg(index)`·`free()`를 호출한다.
-- blocking WASM은 dedicated worker에 두고 `OffscreenCanvas`와 worker의 FontFaceSet으로 텍스트 폭 측정을 제공한다. worker의 폰트와 UI의 폰트를 모두 로드한 뒤 조판한다.
+- blocking WASM은 dedicated worker에 둔다. 실제 v0.8.6 소스 확인 결과 SVG 조판은 `EmbeddedTextMeasurer`를 사용하므로 계획의 `OffscreenCanvas` 측정 callback은 연결하지 않는다. viewer의 Noto 폰트를 로드한 뒤 표시하며 원본 글꼴과 측정·표시가 완전히 같다고 주장하지 않는다. 2026-09-15 Stage 1에서 배포 API와 소스 근거로 정정했다.
 - opaque-origin iframe에서 worker 파일을 cross-origin 생성하는 제약을 피하도록 앱의 고정 worker 번들을 fetch 후 Blob worker로 생성한다. 실행 script는 빌드된 앱 코드만 사용하며 문서 문자열을 실행 코드로 연결하지 않는다.
-- Blob worker에서 엔진·폰트의 실제 동작은 미검증 상태다. Stage 1에서 반드시 확인하고, 지원되지 않으면 main-thread 강제 fallback으로 timeout 보장을 숨기지 않는다. 실패 원인과 대안을 보고하고 계획을 수정한다.
+- Blob worker에서 엔진과 viewer 폰트의 실제 동작은 Stage 1의 검증 대상이다. Stage 1에서 반드시 확인하고, 지원되지 않으면 main-thread 강제 fallback으로 timeout 보장을 숨기지 않는다. 실패 원인과 대안을 보고하고 계획을 수정한다.
 - 페이지별 SVG는 DOMPurify SVG profile과 추가 URL 정책으로 정리한다. script·foreignObject·event handler·외부 href/url·외부 CSS 리소스를 차단하되 내부 fragment와 허용한 내장 raster image는 보존한다. CSS 선언의 url/import도 검사한다.
 - 현재 페이지 중심으로 렌더하고 최대 3페이지·16 MiB의 SVG 캐시를 둔다. 페이지 이동/문서 교체 시 늦게 도착한 이전 응답을 generation ID로 무시한다.
 - 로컬 파일 입력은 개발 모드에서만 활성화한다. production viewer는 session을 통한 bytes만 사용하며 임의 URL 입력 UI를 제공하지 않는다.
