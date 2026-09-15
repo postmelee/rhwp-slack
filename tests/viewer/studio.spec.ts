@@ -10,7 +10,7 @@ async function ready(page: Page) {
 }
 async function load(page: Page, extension = 'hwp') {
   await page.locator('#file').setInputFiles(`tests/fixtures/viewer-two-pages.${extension}`);
-  await expect(page.locator('#document-name')).toContainText('viewer-two-pages', {timeout:60_000});
+  await expect(page).toHaveTitle(/viewer-two-pages/, {timeout:60_000});
   expect(await page.evaluate(()=>window.__studio.pageCount())).toBe(2);
 }
 async function text(page: Page) {
@@ -90,14 +90,14 @@ test('document databases are never opened across edit, idle, settings and reload
 test('real same-origin Slack sandbox permits nested Studio SDK',async ({page})=>{
   await page.goto('/sandbox');
   const host=page.frameLocator('iframe').first();
-  await expect(host.locator('#status')).toContainText('문서를 선택', {timeout:60_000});
+  await expect(host.locator('#status')).toContainText('Slack에서 문서 열기', {timeout:60_000});
   await host.locator('#file').setInputFiles('tests/fixtures/viewer-two-pages.hwp');
-  await expect(host.locator('#document-name')).toContainText('viewer-two-pages');
+  await expect(host.locator('#editor iframe')).toHaveAttribute('title', /viewer-two-pages/);
   await expect(host.frameLocator('#editor iframe').locator('#menu-bar')).toBeVisible();
 });
 test('production excludes local file ingress; direct Studio forces embed and ignores URL file', async ({page})=>{
-  await page.goto('http://127.0.0.1:4174/editor/');
-  await expect(page.locator('#status')).toHaveText('Slack에서 문서 편집을 선택하세요.', {timeout:60_000});
+  await page.goto('http://127.0.0.1:4174/editor/?devtools=1');
+  await expect(page.locator('#status')).toHaveText('Slack에서 문서 열기를 선택하세요.', {timeout:60_000});
   await expect(page.locator('#local')).toBeHidden();
   expect(await page.evaluate(()=>Object.hasOwn(window,'__studio'))).toBe(false);
   const requests: string[]=[]; page.on('request',r=>requests.push(r.url()));

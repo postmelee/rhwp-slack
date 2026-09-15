@@ -85,3 +85,60 @@ Stage 4에서 `/rhwp open`/`pdf`→PDF, `/rhwp edit`→Studio와 Slack 파일/�
 ## 승인 요청
 
 현재 승인된 PDF 기본 열람·Studio 편집 분리의 로컬 구현을 마친다. Stage 4의 Slack 명령·권한 연동 진입 승인을 요청한다. 원격 push·PR·Slack 메시지·배포는 이번 단계에서 수행하지 않았다.
+
+
+---
+
+## Stage 3.1 — Studio 직접 열기와 Slack PDF 열람 경로 정리
+
+### 단계 목적 및 승인
+
+사용자의 “그렇게 수정해줘”로 승인된 후속 변경이다. 계획 커밋 `e36983c`를 기준으로 구현했다. 위 Stage 3의 PDF.js 검증 기록은 당시 결과로 보존하며 현재 제품 동작은 이 절과 README를 따른다.
+
+### 산출물
+
+| 파일 | 변경 요약 |
+| --- | --- |
+| `src/editor/` | 별도 상단 메뉴 제거, Studio 전체 화면, 파일명·미저장 탭 제목, 로딩·오류·접근성 상태 |
+| `src/viewer/` | PDF.js 전용 화면 제거; 개발 선언은 editor로 이동 |
+| `scripts/build-host.mjs`, `vite.config.ts`, `tsconfig.json` | editor 전용 빌드, 이전 viewer 산출물 정리, PDF 변환용 print helper 유지 |
+| `scripts/serve-viewer.mjs` | `/viewer/`→`/editor/` 이동, query/fragment 보존, 폐기된 PDF 자산 미제공 |
+| package·lock | pdfjs-dist 및 전이 canvas 의존성 제거 |
+| `tests/viewer/` | 직접 편집·전체 화면·개발 입력 분리, PDF API·동일 원본·오류 회귀 검증 |
+| README·dependencies·AGENTS·계획·orders | 문서 열기→Studio, PDF로 보기→Slack PDF 첨부 계약 및 구현 상태 정리 |
+
+### 본문 변경 정도 / 본문 무손실 여부
+
+코드 작업이다. rhwp 엔진과 Studio overlay·PDF 변환 구현을 변경하지 않았다. 기존 메뉴·툴바·undo/redo·export·복구 금지를 유지했다. 편집 진입은 PDF 생성을 기다리지 않는다. 파일명과 미저장 별표는 탭 제목에 표시하고 실제 미저장 상태를 저장 완료로 바꾸지 않는다. 개발 파일 선택은 `?devtools=1`에서만 표시되고 로드 완료 시 닫힌다. production에서는 이 query로도 활성화되지 않는다.
+
+실제 Slack 카드·receiver·업로드 구현은 아직 없다. 이번에 “PDF로 변환”→“PDF로 보기” 이름과 연결 규칙을 계획 및 제품 문서에 확정했다. Slack에서 해당 버튼이 실제 동작한다고 주장하지 않는다.
+
+### 검증 결과
+
+- `npm run typecheck` 통과, `npm test` 단위 7개 통과.
+- `npm run test:viewer`: production/dev 빌드 통과, 브라우저 정상 12개 통과 + 기존 B-004 known-failure 1개 재현. Playwright의 `13 passed`는 이 알려진 실패를 포함한다.
+- HWP/HWPX 실제 PDF API 변환: 각각 2페이지, A4, PDF 1.4, 143,282 bytes. `pdfinfo`로 구조 확인; HWP의 `pdftotext`에서 두 페이지 제목·표·그림 설명 확인. PDF 조판 변경 작업이 아니므로 이전 한컴 일치/불일치 판정을 갱신하지 않는다.
+- 기존 `/viewer/#document=...` 주소가 같은 원본을 Studio에서 직접 열고 fragment를 소비한다. 편집 뒤 원본 PDF bytes가 유지된다.
+- 기본 주소에는 개발 도구가 없고, 개발 query에서 선택한 문서는 서버 PDF API를 호출하지 않는다. production에서 개발 query·문서 API는 활성화되지 않는다.
+- 669×863·400×800에서 Studio iframe이 x=0/y=0부터 전체 높이를 사용한다. 실제 스크린샷에서 별도 상단 메뉴/테스트 상자 부재, 기존 Studio 메뉴·툴바·본문·하단 상태를 직접 확인했다. 긴 파일명은 화면 너비를 늘리지 않는다.
+- 키보드 편집 후 탭 제목 별표와 SDK dirty 상태 유지. 호스트에서 보낸 위조 dirty 이벤트 무시. 만료 시 오류 안내가 화면에 표시된다.
+- `git diff --check` 통과. 브라우저 검증 이후 build-host 파일의 EOF 빈 줄만 정리했으며 실행 동작은 바뀌지 않았다.
+- 엔진 저장소에는 기존 사용자 변경 `samples/exam_eng.pdf`만 남아 있으며 이번 작업으로 수정하지 않았다.
+
+검증 환경은 macOS arm64, Node 24.21.0/npm 11.19.0, Chromium 153, 고정 Studio/core 0.8.6이다.
+
+로그: `.cache/validation/stage3-1-browser.log`.
+소스 manifest: `.cache/validation/stage3-1-source-manifest.json`, SHA-256 `f1f6766da865392fe49cfe6c6e75869d5738f2aeecd5f0104d67fe415aa96784`.
+화면 증거: `test-results/editor-full-hwp.png`, `editor-full-hwpx.png`, `editor-long-name.png`, `editor-expired.png`.
+
+### 잔여 위험
+
+실제 Slack의 카드·PDF 업로드·기본 미리보기·편집본 저장은 후속 Stage에서 연결해야 한다. 탭 제목은 Slack 내부 iframe에서 항상 사용자에게 노출되는 UI가 아니므로 실제 저장 동작을 연결할 때 Studio 내 저장 표시를 함께 검증한다. B-004와 기존 엔진 호환성 한계, Linux 및 실제 Slack 미검증은 유지한다.
+
+### 다음 단계 영향
+
+Stage 4의 `/rhwp open`과 `/rhwp edit`는 Studio 직접 진입, `/rhwp pdf`는 Slack PDF 열람 요청으로 처리한다. Stage 5 카드의 버튼 이름은 “문서 열기”·“PDF로 보기”이며 업로드·공유 완료된 PDF 링크만 제공한다. 준비/실패는 편집 진입을 막지 않는다. 첫 페이지 이미지·전체 PNG·ZIP 요구는 후속 task에 유지하며 썸네일 준비 시 PDF도 함께 생성한다. 저장한 편집본의 PDF는 해당 revision으로 재생성한다.
+
+### 승인 범위
+
+이번 승인에 해당하는 Stage 3.1 구현·검증을 완료했다. Stage 4 실제 Slack 명령·권한 연결은 별도 후속 단계다. 원격 push·PR·Slack 게시·배포는 수행하지 않았다.

@@ -19,8 +19,7 @@
   },
   "dependencies": {
     "@rhwp/core": "0.8.6",
-    "@rhwp/editor": "0.8.6",
-    "pdfjs-dist": "6.3.289"
+    "@rhwp/editor": "0.8.6"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

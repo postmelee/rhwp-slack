@@ -17,7 +17,6 @@
     ]
   },
   "include": [
-    "src/viewer/**/*.ts",
     "src/shared/**/*.ts",
     "studio/adapters/**/*.ts",
     "src/editor/**/*.ts"

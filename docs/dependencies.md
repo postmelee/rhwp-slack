@@ -7,7 +7,6 @@
 | Node.js / npm | 24.21.0 / 11.19.0 | 개발·검증 runtime |
 | @rhwp/core | 0.8.6 | MIT / HWP·HWPX 파싱, SVG |
 | @rhwp/editor / rhwp-studio | 0.8.6 | MIT / 공식 iframe SDK와 전체 편집 UI |
-| pdfjs-dist | 6.3.289 | Apache-2.0 / PDF 페이지 표시 |
 | Vite | 8.3.0 | MIT / 호스트·Studio 빌드 |
 | TypeScript / @types/node | 5.9.3 / 24.13.4 | Apache-2.0 / MIT, 타입 검사 |
 | tsx | 4.23.13 | MIT / Node 테스트 실행 |
@@ -46,6 +45,6 @@ SDK integrity: `sha512-Hc/rHrQrgZqJ2OSWNsPd/8tKyfnLer8M9r+U81yphJ7O8LaXLuv5A2yUu
 
 고정 rhwp core의 `renderPageSvgWithProfile(page, 'print')`와 Studio의 `print-pages.ts`를 재사용해 페이지 크기 및 SVG ID를 분리하고 Chromium의 PDF 출력으로 저장합니다. native `rhwp export-pdf`/hwp2pdf CLI를 호출하는 구현은 아닙니다. 폰트 공급 목록은 같은 Studio의 생성된 `FONT_RULE_CANVAS2D_WEBFONT_RULES` 중 로컬 항목만 사용합니다. 브라우저 컨텍스트의 외부 네트워크는 차단하며 사용자 SVG는 DOM으로 파싱하고 실행 요소를 제거합니다.
 
-[PDF.js 공식 예제](https://mozilla.github.io/pdf.js/examples/)의 worker·페이지 렌더 구조를 사용합니다. PDF.js의 worker, CMap, standard font, WASM, LICENSE는 `dist/*viewer/`에 포함됩니다. Stage 3의 변환 runtime은 개발 의존성인 Playwright/tsx도 필요합니다. Linux 배포 이미지 의존성 분류는 Stage 6에서 확정합니다.
+Stage 3.1에서 별도 PDF.js 열람 화면과 직접 의존성·배포 자산을 제거했습니다. PDF 열람은 후속 Slack 연동의 PDF 첨부 미리보기로 제공하며 서버 변환 구현은 유지합니다. 변환 runtime은 개발 의존성인 Playwright/tsx도 필요합니다. Linux 배포 이미지 의존성 분류는 Stage 6에서 확정합니다.
 
 Chromium PDF의 생성 시각은 달라질 수 있어 산출물 byte 재현성을 주장하지 않습니다. 원본 font가 로컬 공급 목록에 없으면 대체 font를 사용하므로 한컴 출력과의 동일성은 별도 검증 대상입니다.
