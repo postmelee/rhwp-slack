@@ -4,7 +4,7 @@
 
 GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1) / 마일스톤 M010 / 변경일 2026-09-15
 
-상태: Studio 전환 변경 승인. 현재 Stage 2 구현 진행. Stage 1의 소스·14개 테스트 결과는 [기존 보고서](../working/task_m010_1_stage1.md)에 역사적 기록으로 보존한다.
+상태: Studio 전환 변경 승인. Stage 2는 adf6898로 완료. 사용자 승인으로 Stage 3 PDF 기본 열람·편집 분리 구현을 진행한다. Stage 1의 소스·14개 테스트 결과는 [기존 보고서](../working/task_m010_1_stage1.md)에 역사적 기록으로 보존한다.
 
 ## 단계 개요
 
@@ -12,9 +12,10 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1) / 마일스
 | --- | --- | --- | --- |
 | 1 | 기존 core 뷰어 | 62ab907, 완료 기록 | Studio에 결과 승계하지 않음 |
 | 2 | Studio 전체 UI로 전환 | 고정 upstream·SDK·host·ephemeral overlay | 실제 편집·undo/redo·export·기록 없음 |
-| 3 | Slack 명령과 문서 접근 | open/help/shortcut·권한·다운로드 | 서명·멤버십·공유·한도 |
-| 4 | Work Objects와 편집본 저장 | 실제 embed·세션·파일 업로드 | 실제 Slack 열기·편집·저장·실패 |
-| 5 | Linux와 통합 인계 | Docker·문서·최종 보고 | 로컬/실제 Slack/Linux 각각 판정 |
+| 3 | PDF 기본 열람·편집 분리 | PDF 변환·별도 viewer/editor·작은 상태 영역 | 실제 PDF·수명·화면·오류 |
+| 4 | Slack 명령과 문서 접근 | open/help/shortcut·권한·다운로드 | 서명·멤버십·공유·한도 |
+| 5 | Work Objects와 편집본 저장 | 실제 embed·세션·파일 업로드 | 실제 Slack 열기·편집·저장·실패 |
+| 6 | Linux와 통합 인계 | Docker·문서·최종 보고 | 로컬/실제 Slack/Linux 각각 판정 |
 
 ## 문서 위치 확인
 
@@ -37,13 +38,13 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1) / 마일스
 - `chrome=embed` 강제, URL/로컬 파일로 문서를 바꾸는 진입을 차단한다. autosave schedule과 store, recent store, document history store를 영속화하지 않는 정책으로 고정한다. 설정 UI를 통해 재활성화되지 않아야 한다.
 - Undo/redo는 현재 WASM 문서의 메모리 상태로 유지한다. 테마·폰트 설정과 원본·편집본 데이터의 영속 저장을 구별한다.
 - SDK의 iframe은 자체 호스팅 /studio/를 사용한다. PWA·service worker, 외부 웹 폰트와 원본 URL 자동 로드를 비활성화한다.
-- 기본 화면은 Studio 자체 메뉴·툴바·편집 영역이다. 호스트는 파일 식별·연결·저장·오류만 담당한다. Studio의 전체 브라우저 기능 지원을 선언하지 않는다.
+- 기본 열람은 PDF이고, 편집 진입 화면은 Studio 자체 메뉴·툴바·편집 영역이다. 호스트는 파일 식별·연결·저장·오류만 담당한다. Studio의 전체 브라우저 기능 지원을 선언하지 않는다.
 - 기존 custom worker·SVG sanitizer·독자 페이지 UI는 제품 경로에서 제거한다. 필요한 fixture/입력 계약을 재사용하고 테스트는 Studio를 대상으로 다시 작성한다.
 
 ### Slack 지원 범위와 scope
 
 - 단일 `SLACK_TEAM_ID`와 지정된 `SLACK_CHANNEL_IDS`의 일반 공개/비공개 채널을 대상으로 한다. bot을 사람이 채널에 초대한 뒤 사용한다. 서버 시작 시 `auth.test` 결과와 team 설정을 대조한다.
-- Bot OAuth scope는 `commands`, `chat:write`, `files:read`, `channels:read`, `groups:read`다. Stage 4 편집본 저장에서는 `files:write`를 추가한다.
+- Bot OAuth scope는 `commands`, `chat:write`, `files:read`, `channels:read`, `groups:read`다. Stage 5 편집본 저장에서는 `files:write`를 추가한다.
 - 사용자 토큰, 전체 메시지 이력 scope, `chat:write.public`은 사용하지 않는다. 명령은 현재 채널에 공유된 파일 permalink만 받으며 Slack 메시지 링크와 외부 문서 URL은 이번 버전에서 받지 않는다.
 - `/rhwp` 입력은 Slack의 `<url|label>` 표기를 정규화하되, hostname은 설정된 workspace hostname과 정확히 대조한다. URL의 사용자 정보·비정상 port·모호한 인코딩·파일 ID 없는 URL은 거절한다. URL에서 얻은 file ID는 반드시 `files.info`로 다시 확인한다.
 - 메시지 바로가기 callback은 `rhwp_open_document`다. 서명된 payload의 파일 목록에서 HWP/HWPX 후보를 고른다. 여러 파일이면 선택 modal을 열고 사용자·채널에 묶인 서버 측 선택 상태를 사용한다. 제출한 ID를 임의의 다른 파일로 바꾸면 거절한다.
@@ -113,7 +114,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1) / 마일스
 - 브라우저별 복구본·최근 문서가 이미 있어도 읽거나 복구하지 않는다. 새 기록과 서비스 worker도 만들지 않는다. 테스트는 페이지 재열기와 설정 재활성화 시도를 포함한다.
 - 실제 글자·표·서식 편집, undo/redo, HWP/HWPX export 후 재열기로 변경 보존을 확인한다.
 - 로컬 문서 선택·검증용 export는 개발 빌드에만 제공한다. production은 인증 연결 전 문서 기능을 열지 않는다. SDK RPC는 opaque origin에서 성공했다고 가정하지 않는다.
-- 현재 단계에서 Slack 저장 성공을 가장하는 버튼은 제공하지 않는다. 저장은 Stage 4의 host adapter에 연결한다.
+- 현재 단계에서 Slack 저장 성공을 가장하는 버튼은 제공하지 않는다. 저장은 Stage 5의 host adapter에 연결한다.
 
 ### 검증
 
@@ -136,15 +137,38 @@ git diff --check
 
 `Task #1 Stage 2: Studio 전체 편집기 임베드와 문서 기록 비활성화`
 
-## Stage 3 — Slack 명령과 문서 접근
+## Stage 3 — PDF 기본 열람과 편집 진입 분리 (이번 사용자 지시로 승인)
+
+### 산출물과 계약
+
+- `/viewer/`는 PDF 전용 열람, `/editor/`는 Studio 편집 전용이다. 모드 전환 토글을 만들지 않는다. PDF의 “문서 편집” 동작이 같은 원본의 별도 편집 화면을 연다.
+- 편집 상단은 파일명·미저장 상태만 표시한다. 파일명은 한 줄 말줄임, 전체 이름은 title로 확인한다. 개발 파일 입력은 접힌 테스트 도구 영역에 두며 production에 노출하지 않는다.
+- 호스트가 실제 업로드를 제공할 때만 “편집본을 Slack에 저장”을 활성화한다. 이 단계에서는 Slack 저장을 성공으로 가장하지 않는다. 기존 전역 개발 테스트 SDK는 유지한다.
+- `src/conversion/`은 고정 core 0.8.6 print SVG와 headless Chromium PDF 출력을 사용한다. Studio의 페이지 크기·SVG ID 분리 print 유틸리티를 재사용한다. 별도 native hwp2pdf 바이너리 도입은 이번 범위가 아니다.
+- 입력 20 MiB·200페이지, PDF 출력 50 MiB, 단일 변환·60초 deadline. 변환 작업은 별도 프로세스에서 실행하고 부모 deadline에 프로세스 그룹을 종료한다. 메모리의 OS 하드 상한은 Linux 배포 단계에서 별도 설정한다.
+- 변환 브라우저는 외부 네트워크를 허용하지 않는다. script/object/frame 실행을 CSP로 막고 로컬 폰트만 제공한다. 사용자 문서 내용은 HTML 문서 문자열에 이어 붙이지 않고 SVG DOM으로 삽입한다.
+- 개발용 localhost API는 명시적 dev 플래그에서만 열리며 Origin 검사·크기·동시성·15분 TTL·총 200 MiB를 적용한다. 원본/PDF는 메모리에 두고 문서 ticket은 fragment로 전달한다. 이는 Slack 인증을 대체하지 않는다.
+- 현재 PDF는 원본의 스냅샷이다. Stage 5에서 편집본을 새 Slack 파일로 저장한 후 그 revision의 PDF를 재생성한다. PDF 실패가 성공한 HWP 업로드를 취소하거나 중복 재업로드하게 만들지 않는다.
+- 제품 문서 위치는 기존 승인된 README, docs/dependencies.md를 사용한다. 계획과 Stage 3 보고서는 기존 mydocs 경로를 사용한다.
+
+### 검증
+
+`npm run typecheck`, `npm test`, `npm run test:viewer`, `git diff --check`.
+실제 2페이지 HWP/HWPX PDF의 페이지 수·한글·표·그림을 Poppler 렌더로 확인한다. dev/production 분리, PDF→편집 동일 원본, 긴 파일명·작은 viewport, dirty 표시, 손상 입력·변환 실패·중복·만료를 검사한다. 기존 Stage 2 known-failure를 보존한다.
+
+### 커밋
+
+`Task #1 Stage 3: PDF 기본 열람과 Studio 편집 진입 분리`
+
+## Stage 4 — Slack 명령과 문서 접근
 
 ### 산출물
 
-`src/server/` config·receiver·commands·shortcuts·access·download·jobs, Slack manifest, tests/slack·security, docs/development.md, Stage 3 보고서.
+`src/server/` config·receiver·commands·shortcuts·access·download·jobs, Slack manifest, tests/slack·security, docs/development.md, Stage 4 보고서.
 
 ### 변경 내용
 
-앞의 서명·scope·접근·download 계약을 구현한다. `/rhwp open`, `help`, 다중 파일 선택을 연결한다. 권한 조회 실패는 접근 거절이며 3초 ack와 실제 작업을 분리한다.
+앞의 서명·scope·접근·download 계약을 구현한다. `/rhwp open`, `pdf`, `edit`, `help`, 다중 파일 선택을 연결한다. 권한 조회 실패는 접근 거절이며 3초 ack와 실제 작업을 분리한다.
 
 ### 검증
 
@@ -152,13 +176,13 @@ git diff --check
 
 ### 커밋
 
-`Task #1 Stage 3: Slack 명령과 문서 접근 권한 연결`
+`Task #1 Stage 4: Slack 명령과 문서 접근 권한 연결`
 
-## Stage 4 — Work Objects·세션·편집본 저장
+## Stage 5 — Work Objects·세션·편집본 저장
 
 ### 산출물
 
-work-objects·sessions·viewer-routes·save service, host session/save adapter, files:write scope, 저장·권한 테스트, docs/architecture.md, Stage 4 보고서.
+work-objects·sessions·viewer-routes·save service, host session/save adapter, files:write scope, 저장·권한 테스트, docs/architecture.md, Stage 5 보고서.
 
 ### 변경 내용
 
@@ -174,17 +198,17 @@ work-objects·sessions·viewer-routes·save service, host session/save adapter, 
 
 ### 커밋
 
-`Task #1 Stage 4: Work Objects 내부 편집과 Slack 편집본 저장`
+`Task #1 Stage 5: Work Objects 내부 편집과 Slack 편집본 저장`
 
-## Stage 5 — Linux 실행과 통합 인계
+## Stage 6 — Linux 실행과 통합 인계
 
 ### 산출물
 
-Dockerfile/.dockerignore/check script, 문서 갱신, Stage 5·최종 보고서.
+Dockerfile/.dockerignore/check script, 문서 갱신, Stage 6·최종 보고서.
 
 ### 변경 내용
 
-고정 의존성·Studio source·font/license로 Linux build를 재현하고 비root 실행을 검증한다. 실제 Slack과 자동 검사·미검증을 구별하며 PDF/thumbnail/png/ZIP 후속 요구는 보존한다.
+고정 의존성·Studio source·font/license로 Linux build를 재현하고 비root 실행을 검증한다. 실제 Slack과 자동 검사·미검증을 구별하며 thumbnail/png/ZIP 후속 요구는 보존한다.
 
 ### 검증
 
@@ -192,7 +216,7 @@ Dockerfile/.dockerignore/check script, 문서 갱신, Stage 5·최종 보고서.
 
 ### 커밋
 
-`Task #1 Stage 5: Linux 실행과 Studio 통합 검증 정리`
+`Task #1 Stage 6: Linux 실행과 Studio 통합 검증 정리`
 
 ## 검증 전략과 위험
 
@@ -200,4 +224,8 @@ Dockerfile/.dockerignore/check script, 문서 갱신, Stage 5·최종 보고서.
 
 ## 단계 의존성과 승인 기록
 
-사용자의 “변경해줘”는 제안한 Studio 전환의 계획 변경과 Stage 2 구현 승인으로 적용한다. 이번 변경을 계획 커밋 `Task #1: Studio 임베드 전환 계획 반영`으로 고정한 뒤 Stage 2를 구현한다. Stage 2 완료 보고 후 Stage 3 진입 승인을 받는다. 아직 원격 push·PR 단계는 아니다.
+사용자의 “변경해줘”는 제안한 Studio 전환의 계획 변경과 Stage 2 구현 승인으로 적용한다. 이번 변경을 계획 커밋 `Task #1: Studio 임베드 전환 계획 반영`으로 고정한 뒤 Stage 2를 구현한다. Stage 2 완료 보고 후 Stage 4 진입 승인을 받는다. 아직 원격 push·PR 단계는 아니다.
+
+## PDF 기본 열람 변경 승인
+
+사용자의 “그렇게 진행하고 싶어”를 PDF 기본 열람·Studio 편집 전용 진입 및 상단 축소의 계획 변경과 Stage 3 구현 승인으로 적용한다. 완료된 Stage 1·2는 보존한다. `/rhwp open`/`pdf`는 PDF, `/rhwp edit`와 “문서 편집”은 Studio로 연결한다. 원본 자동 덮어쓰기는 하지 않고 새 편집본 저장 후 해당 revision PDF를 생성한다. Stage 4는 Slack 명령·권한, Stage 5는 Work Objects·저장·PDF 재생성, Stage 6은 Linux·실제 Slack 통합 검증으로 이어진다.

@@ -12,7 +12,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 권한이 있는 사용자가 Slack에 공유된 평문 HWP/HWPX를 자체 호스팅 rhwp-studio에서 열고 기존 메뉴·도구막대로 편집할 수 있게 한다. 복구본·최근 문서·이전 문서 기록은 영속화하지 않고 현재 편집의 undo/redo·미저장 상태는 유지한다. 편집본은 명시적인 동작으로 원래 Slack 대화에 새 파일로 저장한다. 사용자 명령어는 `/rhwp`로 통일한다.
 
-이번 task는 C 방식(Work Objects embeds)의 실제 동작과 개발 기반을 먼저 완성한다. PDF, 썸네일, 전체/지정 페이지 PNG 변환과 B 방식(PDF 미리보기)은 같은 문서 서비스를 이용하는 후속 task로 남긴다. 제품 요구사항 전체는 이슈 #1에 보존되어 있다.
+이번 task는 C 방식(Work Objects embeds)의 실제 동작과 개발 기반을 먼저 완성한다. PDF 변환과 기본 PDF 미리보기는 이번 task에 포함한다. 썸네일·전체/지정 PNG·ZIP은 같은 문서 서비스를 이용하는 후속 task로 남긴다. 제품 요구사항 전체는 이슈 #1에 보존되어 있다.
 
 ## 배경
 
@@ -29,7 +29,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 ### 포함
 
 - 단일 테스트 워크스페이스용 Slack 앱 manifest, 설정 예제, 개발 실행·테스트·CI 기반.
-- `/rhwp open <문서 링크>`, `/rhwp help`, 메시지 바로가기 `한글 문서 열기`.
+- `/rhwp open <문서 링크>`, `/rhwp pdf <문서 링크>`, `/rhwp edit <문서 링크>`, `/rhwp help`, 메시지 바로가기 `한글 문서 열기`.
 - 문서 링크/파일 식별, 파일이 여러 개인 메시지의 선택 UI, 명확한 실패 안내.
 - Slack 서명 검증, 빠른 요청 접수, 비동기 파일 로딩, 중복 이벤트 처리.
 - 파일 다운로드와 사용자 접근 권한 검사, 짧게 유지되는 뷰어 세션, 원본/세션 만료 처리.
@@ -41,7 +41,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 ### 제외
 
-- PDF/PNG 변환 worker의 완성 구현, ZIP 생성, B 방식 PDF 미리보기. 이번 구현에서 변환 완료나 사용 가능으로 표시하지 않는다.
+- PNG 변환과 ZIP 생성. 미구현 기능을 사용 가능으로 표시하지 않는다.
 - Slack 원본 파일의 자동 덮어쓰기, 동시 협업 편집, OCR, LLM 요약, 암호 문서 입력 UI.
 - 자동 전 채널 감시, Slack Connect 지원 보장, 조직 전체 배포·Marketplace 공개 배포.
 - 유료 인프라 구매, 기존 rhwp 엔진 저장소 수정, 공개 데모 서버로 사용자 문서 전송.
@@ -64,7 +64,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 - 메시지 바로가기는 선택된 메시지의 파일을 사용한다. 여러 HWP/HWPX가 있으면 사용자가 선택한다. Slack 이벤트의 타임스탬프를 원본 메시지 번호로 추정하지 않는다.
 - 채널의 기존 HWP 첨부 카드 교체를 시도하지 않고 앱 소유의 Work Object 카드를 게시한다. 해당 문서와 요청을 연결하는 내부 식별자를 유지한다.
 - HTTP 요청에는 3초 이내 접수 응답하고 파일 다운로드·문서 준비는 별도로 처리한다. 이벤트 재전송과 같은 문서 요청의 변환 캐시를 서로 다른 개념으로 관리한다.
-- 현재 지원하지 않는 `pdf`, `thumbnail`, `png`에는 사용 가능으로 오인할 수 있는 결과를 반환하지 않는다. 후속 task에서 같은 명령 디스패처와 문서 식별 경계를 확장한다.
+- 현재 지원하지 않는 `thumbnail`, `png`에는 사용 가능으로 오인할 수 있는 결과를 반환하지 않는다. 후속 task에서 같은 명령 디스패처와 문서 식별 경계를 확장한다.
 
 ### 접근 권한과 iframe
 
@@ -119,9 +119,10 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 1. **Stage 1 — 초기 core 뷰어**: `62ab907`에 완료한 역사적 검증. Studio 검증으로 간주하지 않는다.
 2. **Stage 2 — Studio 전환**: 전체 편집 UI 임베드, 고정 자체 호스팅, 복구·문서 기록 비활성, 편집·undo/redo·export 검증. 사용자의 이번 변경 지시로 진입 승인됨.
-3. **Stage 3 — Slack 명령과 문서 접근**: `/rhwp open`, `help`, 메시지 바로가기, 권한·파일 선택·다운로드·중복 처리.
-4. **Stage 4 — Work Objects·편집본 저장**: 세션과 실제 Slack 내부 편집, 새 파일 저장, 저장 확인·권한 취소·만료.
-5. **Stage 5 — Linux·통합 검증**: 재현 가능한 컨테이너, 실제 Slack 웹·데스크톱, 인계·후속 PDF/PNG 계약.
+3. **Stage 3 — PDF 기본 열람·편집 분리**: 실제 PDF 변환과 viewer/editor 분리, 작은 편집 상태 영역, 개발 환경 검증.
+4. **Stage 4 — Slack 명령과 문서 접근**: `/rhwp open`, `pdf`, `edit`, `help`, 메시지 바로가기, 권한·파일 선택·다운로드·중복 처리.
+5. **Stage 5 — Work Objects·편집본 저장**: 세션과 실제 Slack 내부 편집, 새 파일 저장, 저장 확인·권한 취소·만료.
+6. **Stage 6 — Linux·통합 검증**: 재현 가능한 컨테이너, 실제 Slack 웹·데스크톱, 인계·PDF 및 후속 PNG 계약.
 
 각 Stage는 구현·검증·보고·커밋으로 마무리하고 다음 Stage 진입 승인을 받는다. 이 변경은 이전 Stage 결과의 소급 수정이 아니다.
 
@@ -147,3 +148,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 ## 변경 승인 기록
 
 사용자가 2026-09-15 “변경해줘”라고 명시하여 Studio 전체 UI 재사용, 복구 비활성화, 자체 호스팅 및 계획 변경·전환 구현을 승인했다. 기존 Stage 1은 보존하고 Stage 2를 수행한다. Slack 업로드·실제 앱 연결은 해당 단계에서 검증·승인한다.
+
+## PDF 기본 열람 변경 승인
+
+사용자의 “그렇게 진행하고 싶어”를 PDF 기본 열람·Studio 편집 전용 진입 및 상단 축소의 계획 변경과 Stage 3 구현 승인으로 적용한다. 완료된 Stage 1·2는 보존한다. `/rhwp open`/`pdf`는 PDF, `/rhwp edit`와 “문서 편집”은 Studio로 연결한다. 원본 자동 덮어쓰기는 하지 않고 새 편집본 저장 후 해당 revision PDF를 생성한다. Stage 4는 Slack 명령·권한, Stage 5는 Work Objects·저장·PDF 재생성, Stage 6은 Linux·실제 Slack 통합 검증으로 이어진다.
