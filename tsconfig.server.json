@@ -13,7 +13,10 @@
     "playwright.config.ts",
     "tests/unit/**/*.ts",
     "src/shared/**/*.ts",
-    "studio/vite.config.ts"
+    "studio/vite.config.ts",
+    "src/server/**/*.ts",
+    "tests/slack/**/*.ts",
+    "tests/security/**/*.ts"
   ],
   "exclude": []
 }

@@ -5,6 +5,7 @@
 | 구성 | 버전 | 라이선스 / 용도 |
 | --- | --- | --- |
 | Node.js / npm | 24.21.0 / 11.19.0 | 개발·검증 runtime |
+| @slack/bolt | 5.1.0 | MIT / Slack HTTP 서명 검증·명령·메뉴 수신 |
 | @rhwp/core | 0.8.6 | MIT / HWP·HWPX 파싱, SVG |
 | @rhwp/editor / rhwp-studio | 0.8.6 | MIT / 공식 iframe SDK와 전체 편집 UI |
 | Vite | 8.3.0 | MIT / 호스트·Studio 빌드 |
@@ -48,3 +49,7 @@ SDK integrity: `sha512-Hc/rHrQrgZqJ2OSWNsPd/8tKyfnLer8M9r+U81yphJ7O8LaXLuv5A2yUu
 Stage 3.1에서 별도 PDF.js 열람 화면과 직접 의존성·배포 자산을 제거했습니다. PDF 열람은 후속 Slack 연동의 PDF 첨부 미리보기로 제공하며 서버 변환 구현은 유지합니다. 변환 runtime은 개발 의존성인 Playwright/tsx도 필요합니다. Linux 배포 이미지 의존성 분류는 Stage 6에서 확정합니다.
 
 Chromium PDF의 생성 시각은 달라질 수 있어 산출물 byte 재현성을 주장하지 않습니다. 원본 font가 로컬 공급 목록에 없으면 대체 font를 사용하므로 한컴 출력과의 동일성은 별도 검증 대상입니다.
+
+## Slack 서버
+
+`@slack/bolt@5.1.0`을 정확한 버전으로 고정하고 전이 의존성은 앱 lockfile로 관리합니다. 공식 ExpressReceiver의 서명 검증을 활성화합니다. 원본·토큰을 담을 수 있는 SDK 로그는 출력하지 않습니다. 업무 API 호출은 고정 Slack HTTP 주소와 제한된 읽기 재시도 정책을 사용하는 `src/server/slack-api.ts`로 모읍니다. 실제 workspace API 응답 수용 여부는 합성 계약 테스트와 구분합니다.

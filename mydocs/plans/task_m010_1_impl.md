@@ -4,7 +4,7 @@
 
 GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1) / 마일스톤 M010 / 변경일 2026-09-15
 
-상태: Studio 전환 변경 승인. Stage 2는 adf6898로 완료. 사용자 승인으로 Stage 3 PDF 기본 열람·편집 분리 구현 및 검증을 완료했다. Stage 1의 소스·14개 테스트 결과는 [기존 보고서](../working/task_m010_1_stage1.md)에 역사적 기록으로 보존한다.
+상태: Stage 4 Slack 명령·접근 권한 구현과 검증 완료. Stage 2는 adf6898로 완료. 사용자 승인으로 Stage 3 PDF 기본 열람·편집 분리 구현 및 검증을 완료했다. Stage 1의 소스·14개 테스트 결과는 [기존 보고서](../working/task_m010_1_stage1.md)에 역사적 기록으로 보존한다.
 
 ## 단계 개요
 
@@ -248,3 +248,15 @@ Dockerfile/.dockerignore/check script, 문서 갱신, Stage 6·최종 보고서.
 검증: `npm run typecheck`, `npm test`, `npm run test:viewer`, `git diff --check`. 실제 HWP/HWPX 편집·undo/export·기록 금지, PDF 변환 API·원본 스냅샷 유지, 기본/production 테스트 도구 부재, 이전 주소 이동, 400px/669px 전체 높이 편집 화면과 오류 안내를 확인한다. 엔진 소스와 PDF 변환 구현은 변경하지 않는다.
 
 커밋: `Task #1 [Stage 3.1]: Studio 직접 열기와 Slack PDF 열람 경로 정리`.
+
+
+## Stage 4 진입 승인 및 구현 상세
+
+사용자가 “확인했어. 이제 다음을 진행해줘.”로 Stage 3.1 결과와 Stage 4 진입을 승인했다. 기준 소스는 `3bb493f`다. 공식 Bolt 5.1.0을 고정하고 서명이 검증된 HTTP receiver, 명령·메시지 파일 선택, 접근 검사·다운로드·작업 상태를 구현한다.
+
+- scope·채널·멤버십·파일 공유 판정은 위 공통 계약을 따른다. 제한 공유 여부의 명시적 false와 요청 채널의 같은 team 공유 증거를 요구한다. 실제 API가 필수 증거를 주지 않으면 미지원으로 거절한다.
+- Slack API 읽기는 제한된 재시도·전체 deadline, 메시지/뷰 쓰기는 자동 재시도 없음. response_url은 사용하지 않고 고정 Slack API endpoint로만 응답한다. 서명·토큰·본문을 로그에 기록하지 않는다.
+- 다중 파일 선택 상태는 서버의 무작위 ID에 team/user/channel/후보를 결속하고 만료·1회 사용을 적용한다. 메시지 원문은 보관하지 않는다.
+- 이번 Stage의 ready는 원본 bytes 확인 완료다. 실제 Studio 세션·Work Object·PDF 업로드는 Stage 5다. 현재 실행 시 최종 연결 미제공을 명확히 안내하고 동작하지 않는 편집/PDF 링크를 만들지 않는다.
+- 현 저장소에는 자격 증명이 없다. 실제 Slack에 메시지를 보내거나 앱 설정을 변경하지 않고, 실제 Bolt receiver와 합성 Slack API를 사용해 서명 및 흐름을 검증한다. 비밀값은 채팅으로 요청하지 않는다.
+- 승인된 제품 문서 위치 `docs/development.md`에 앱 manifest 설정·실행·제약·검증을 작성한다. 기존 README·dependencies·계획·orders를 갱신한다.

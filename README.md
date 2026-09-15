@@ -2,7 +2,7 @@
 
 Slack에서 HWP/HWPX를 편집하고 `/rhwp` 명령으로 PDF와 PNG를 만들기 위한 비공개 프로젝트입니다.
 
-## 현재 구현 — Stage 3.1
+## 현재 구현 — Stage 4
 
 - **문서 열기**: PDF 중간 화면 없이 자체 호스팅 rhwp-studio 편집기로 바로 진입합니다. 기존 `/viewer/` 주소도 `/editor/`로 이동합니다.
 - 편집기는 화면 전체를 사용합니다. 별도 상단 메뉴·보기/편집 전환·PDF.js 화면을 제거했고 Studio 메뉴·툴바는 유지합니다. 파일명과 미저장 표시(`*`)는 브라우저 탭 제목, 변경 상태는 접근성 안내로 제공합니다. 로딩·오류 안내는 필요할 때만 표시합니다.
@@ -19,7 +19,9 @@ Slack에서 HWP/HWPX를 편집하고 `/rhwp` 명령으로 PDF와 PNG를 만들�
 
 `/rhwp open`과 `/rhwp edit`는 Studio, `/rhwp pdf`는 Slack PDF 미리보기로 연결합니다. PDF 준비 중이나 실패 시에는 상태를 안내하고, 완료 후에만 PDF 링크를 제공합니다. PDF 준비 여부가 편집 진입을 막지 않도록 합니다. 썸네일 도입 시 PDF도 함께 미리 준비합니다. Slack 기본 미리보기가 링크 클릭으로 열리는 동작은 실제 웹·데스크톱에서 검증해야 합니다.
 
-Slack 명령·권한은 **Stage 4**, Work Objects·PDF 공유·편집본 새 파일 저장·해당 revision의 PDF 재생성은 **Stage 5**입니다. 실제 Slack 카드·명령·업로드는 아직 연결되지 않았습니다. 썸네일·전체/지정 PNG·ZIP은 후속 task입니다.
+**Stage 4의 Slack 수신 서버를 구현했습니다.** `/rhwp open`·`edit`·`pdf`·`help`, 메시지의 다중 파일 선택, 서명·채널 참여·공유 권한 검사, 인증 다운로드와 임시 보관을 처리합니다. 설치 설정은 [Slack 개발 서버 문서](docs/development.md)를 따릅니다.
+
+현재 명령은 원본 준비까지 처리하며 Slack 내부 편집·PDF 미리보기 링크는 아직 제공하지 않습니다. Work Objects·PDF 공유·편집본 새 파일 저장은 **Stage 5**입니다. 실제 workspace 설치와 웹·데스크톱 동작은 미검증이며 썸네일·전체/지정 PNG·ZIP은 후속 task입니다.
 
 ## 로컬 실행
 
@@ -46,6 +48,8 @@ npm ci
 npm run prepare:studio
 npm run typecheck
 npm test
+npm run test:slack
+npm run test:security
 npm run build
 npm exec playwright install chromium
 npm run test:viewer
@@ -70,7 +74,7 @@ Linux 브라우저 의존성은 `npm exec playwright install --with-deps chromiu
 
 - `src/editor/`: 전체 화면의 공식 Studio SDK 호스트, 로딩·오류·접근성 상태.
 - `src/conversion/`: 고정 print SVG → Chromium PDF, 부모 프로세스의 수명 제어.
-- `src/server/dev-documents.mjs`: 로컬 개발 전용 문서 ticket·TTL.
+- `src/server/`: Slack 명령 수신·권한·다운로드·비동기 준비. `dev-documents.mjs`는 독립된 로컬 개발 API.
 - `studio/`: upstream 고정 정보, Slack 전용 빌드 정책, 비영속 저장소 adapter.
 - `src/shared/`: 입력·페이지 계약.
 - `scripts/`: 고정 소스 준비·빌드, fixture 생성, 로컬 서버.
@@ -78,4 +82,4 @@ Linux 브라우저 의존성은 `npm exec playwright install --with-deps chromiu
 - [의존성과 출처](docs/dependencies.md)
 - [구현계획서](mydocs/plans/task_m010_1_impl.md)
 
-예정 명령: `/rhwp open`, `/rhwp edit`, `/rhwp help`, `/rhwp pdf`, `/rhwp thumbnail`, `/rhwp png`, `/rhwp png --page N`. 사용자 페이지 번호는 1부터 시작합니다.
+문서 준비 명령: `/rhwp open`, `/rhwp edit`, `/rhwp help`, `/rhwp pdf`. 후속 명령: `/rhwp thumbnail`, `/rhwp png`, `/rhwp png --page N`. 사용자 페이지 번호는 1부터 시작합니다.

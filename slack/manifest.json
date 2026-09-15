@@ -1,0 +1,34 @@
+{
+  "display_information": {
+    "name": "rhwp",
+    "description": "Slack의 HWP/HWPX 문서를 열고 PDF로 보기",
+    "background_color": "#243447"
+  },
+  "features": {
+    "bot_user": {"display_name": "rhwp", "always_online": false},
+    "slash_commands": [{
+      "command": "/rhwp",
+      "url": "https://example.invalid/slack/events",
+      "description": "한글 문서 열기 및 PDF 보기",
+      "usage_hint": "open|edit|pdf <Slack 파일 링크> 또는 help",
+      "should_escape": true
+    }],
+    "shortcuts": [{
+      "name": "한글 문서 열기",
+      "type": "message",
+      "callback_id": "rhwp_open_document",
+      "description": "메시지의 HWP/HWPX 문서 선택"
+    }]
+  },
+  "oauth_config": {"scopes": {"bot": ["commands", "chat:write", "files:read", "channels:read", "groups:read"]}},
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://example.invalid/slack/events",
+      "bot_events": ["file_deleted", "file_unshared"]
+    },
+    "interactivity": {"is_enabled": true, "request_url": "https://example.invalid/slack/events"},
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

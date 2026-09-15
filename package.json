@@ -15,11 +15,15 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.tests.json",
     "test": "node scripts/run-tests.mjs",
     "test:viewer": "npm run build && npm run build:dev && playwright test",
-    "prepare:studio": "node scripts/prepare-studio.mjs"
+    "prepare:studio": "node scripts/prepare-studio.mjs",
+    "start:slack": "node --env-file=.env --import tsx src/server/main.ts",
+    "test:slack": "node scripts/run-tests.mjs slack",
+    "test:security": "node scripts/run-tests.mjs security"
   },
   "dependencies": {
     "@rhwp/core": "0.8.6",
-    "@rhwp/editor": "0.8.6"
+    "@rhwp/editor": "0.8.6",
+    "@slack/bolt": "5.1.0"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
