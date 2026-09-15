@@ -13,3 +13,4 @@ playwright-report/
 *.zip
 !tests/fixtures/*.hwp
 !tests/fixtures/*.hwpx
+.cache/

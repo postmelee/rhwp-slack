@@ -12,7 +12,8 @@
     "vite.config.ts",
     "playwright.config.ts",
     "tests/unit/**/*.ts",
-    "src/shared/**/*.ts"
+    "src/shared/**/*.ts",
+    "studio/vite.config.ts"
   ],
   "exclude": []
 }

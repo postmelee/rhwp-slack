@@ -6,10 +6,8 @@
 | --- | --- | --- |
 | Node.js / npm | 24.21.0 / 11.19.0 | 개발·검증 runtime |
 | @rhwp/core | 0.8.6 | MIT / HWP·HWPX 파싱, SVG |
-| DOMPurify | 3.4.15 | Apache-2.0 선택 / SVG 정리 |
-| @fontsource/noto-sans-kr | 5.3.0 | OFL-1.1 / 고딕 표시 |
-| @fontsource/noto-serif-kr | 5.3.0 | OFL-1.1 / 명조 표시 |
-| Vite | 8.3.0 | MIT / UI·worker 빌드 |
+| @rhwp/editor / rhwp-studio | 0.8.6 | MIT / 공식 iframe SDK와 전체 편집 UI |
+| Vite | 8.3.0 | MIT / 호스트·Studio 빌드 |
 | TypeScript / @types/node | 5.9.3 / 24.13.4 | Apache-2.0 / MIT, 타입 검사 |
 | tsx | 4.23.13 | MIT / Node 테스트 실행 |
 | @playwright/test | 1.63.0 | Apache-2.0 / Chromium 테스트 |
@@ -25,9 +23,13 @@
 
 ## 폰트와 자산
 
-400·700 weight의 모든 unicode-range를 Fontsource CSS에서 읽어 496개 WOFF2 face를 복사합니다. 파일을 선택적으로 누락하지 않습니다. 최초 표시 전에 폰트를 준비하며 한 페이지 생명주기에서 재사용합니다. 엔진이 반환한 폰트 family는 명조/고딕에 따라 Noto로 매핑합니다. 글꼴 대체가 engine의 조판 위치까지 바꾸는 것은 아닙니다.
+Studio upstream의 `assets/fonts`를 그대로 자체 호스팅하고 폰트 family를 앱에서 재매핑하지 않습니다. 외부 CDN 폰트는 빌드 설정과 CSP로 차단합니다. upstream의 `LICENSE`, `THIRD_PARTY_LICENSES.md` 및 폰트 고지를 배포 자산에 포함합니다.
 
-`npm run prepare:assets`는 WASM·폰트·런타임 라이선스와 파일별 SHA-256을 `public/vendor/manifest.json`에 만듭니다. 빌드 산출물에도 이 파일과 고지가 포함됩니다. 생성 자산과 `node_modules`는 커밋하지 않습니다. Vite가 기본 WASM URL을 분석하면서 개발 worker assets에 같은 WASM을 추가로 내보낼 수 있으나 앱은 명시한 `vendor/rhwp_bg.wasm`을 요청합니다.
+`studio/upstream.json`이 commit과 선택 경로의 `git archive` SHA-256을 고정합니다. `prepare:studio`는 archive 해시를 확인하고 매번 원본 파일을 추출합니다. 원본 checkout은 수정하지 않으며 `studio/vite.config.ts`의 명시적 build overlay만 적용합니다. 수정 대상 앵커가 달라지면 빌드가 실패합니다. source archive SHA-256: `1e6b1533ba77078fa134112487f18872d9bc30382838ff558532643e3c37ee0e`.
+
+Studio 전이 의존성은 고정 archive 안의 `rhwp-studio/package-lock.json`으로 설치합니다. 앱 SDK/core는 앱의 lockfile을 사용합니다. PWA 플러그인을 활성화하지 않으며 샘플 문서는 배포하지 않습니다. CanvasKit은 upstream 선택 경로로 포함되지만 기본 검증 renderer는 SDK 기본 Canvas2D입니다. CanvasKit의 Node `fs/path` 외부화 경고와 큰 청크 경고는 빌드 시 표시됩니다.
+
+SDK integrity: `sha512-Hc/rHrQrgZqJ2OSWNsPd/8tKyfnLer8M9r+U81yphJ7O8LaXLuv5A2yUub2fhFnfaYyfl76LfOIMsfcD0/dXgA==`.
 
 ## 문서 fixture
 

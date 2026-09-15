@@ -1,6 +1,5 @@
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 export const MAX_PAGES = 200;
-export const OPERATION_TIMEOUT_MS = 30_000;
 export class ViewerError extends Error {
   constructor(public readonly code: string, message: string) { super(message); this.name = 'ViewerError'; }
 }

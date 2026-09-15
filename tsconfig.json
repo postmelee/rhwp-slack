@@ -18,9 +18,7 @@
   },
   "include": [
     "src/viewer/**/*.ts",
-    "src/shared/**/*.ts"
-  ],
-  "exclude": [
-    "src/viewer/engine.worker.ts"
+    "src/shared/**/*.ts",
+    "studio/adapters/**/*.ts"
   ]
 }
