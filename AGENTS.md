@@ -4,7 +4,7 @@
 
 ## 프로젝트 개요
 
-rhwp-slack은 rhwp를 활용해 Slack 안에서 HWP/HWPX 문서를 열고 PDF와 PNG로 변환하는 비공개 프로젝트다. 기본 문서 보기는 Slack Work Objects embeds에 연결하는 rhwp 웹 뷰어이며, `/rhwp` 명령어와 메시지 메뉴로 PDF, 첫 페이지 썸네일, 전체 또는 지정 페이지 PNG를 제공한다. 전체 페이지 PNG는 페이지별 이미지와 ZIP으로 전달한다.
+rhwp-slack은 rhwp를 활용해 Slack 안에서 HWP/HWPX 문서를 열고 PDF와 PNG로 변환하는 비공개 프로젝트다. 기본 문서 보기는 Slack Work Objects embeds에 연결하는 자체 호스팅 rhwp-studio 편집기이며, `/rhwp` 명령어와 메시지 메뉴로 PDF, 첫 페이지 썸네일, 전체 또는 지정 페이지 PNG를 제공한다. 전체 페이지 PNG는 페이지별 이미지와 ZIP으로 전달한다.
 
 ## 하이퍼-워터폴 핵심 규칙
 
@@ -39,6 +39,7 @@ rhwp-slack은 rhwp를 활용해 Slack 안에서 HWP/HWPX 문서를 열고 PDF와
 
 ## 핵심 강제 규칙 (변경 전 매뉴얼 확인 필수)
 
+- Slack 전용 Studio는 이전 문서 복구·자동 저장·최근 문서·문서 이력의 영속 기록을 비활성화하고 현재 편집의 undo/redo·dirty 상태는 유지한다.
 - 명령어 이름은 `/rhwp`로 유지한다. 사용자 페이지 번호는 1부터 시작한다.
 - rhwp 엔진은 별도 의존성으로 사용하고, 원본 엔진 저장소와 이 앱의 변경을 분리한다.
 - Slack 토큰, 서명 키, 사용자 원본 문서와 변환 산출물은 Git에 커밋하지 않는다.
