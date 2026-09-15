@@ -151,4 +151,21 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 ## PDF 기본 열람 변경 승인
 
-사용자의 “그렇게 진행하고 싶어”를 PDF 기본 열람·Studio 편집 전용 진입 및 상단 축소의 계획 변경과 Stage 3 구현 승인으로 적용한다. 완료된 Stage 1·2는 보존한다. `/rhwp open`/`pdf`는 PDF, `/rhwp edit`와 “문서 편집”은 Studio로 연결한다. 원본 자동 덮어쓰기는 하지 않고 새 편집본 저장 후 해당 revision PDF를 생성한다. Stage 4는 Slack 명령·권한, Stage 5는 Work Objects·저장·PDF 재생성, Stage 6은 Linux·실제 Slack 통합 검증으로 이어진다.
+사용자의 “그렇게 진행하고 싶어”를 PDF 기본 열람·Studio 편집 전용 진입 및 상단 축소의 계획 변경과 Stage 3 구현 승인으로 적용한다. 완료된 Stage 1·2는 보존한다. 이전 Stage 3에서는 `/rhwp open`/`pdf`를 PDF에 연결하도록 계획했다. 아래 Stage 3.1 승인으로 `/rhwp open`과 `/rhwp edit`는 Studio, `/rhwp pdf`는 Slack PDF 미리보기로 변경한다. 원본 자동 덮어쓰기는 하지 않고 새 편집본 저장 후 해당 revision PDF를 생성한다. Stage 4는 Slack 명령·권한, Stage 5는 Work Objects·저장·PDF 재생성, Stage 6은 Linux·실제 Slack 통합 검증으로 이어진다.
+
+## Stage 3.1 — Studio 직접 열기와 Slack PDF 열람 계약 (승인됨)
+
+사용자의 “그렇게 수정해줘”를 이번 화면 정리·버튼 계약·관련 계획 및 제품 문서 갱신의 승인으로 적용한다. 기존 Stage 3 결과는 역사적 기록으로 보존한다.
+
+- “문서 열기” 및 `/rhwp open`은 Studio 편집으로 직접 진입한다. `/rhwp edit`도 같은 편집 진입이다.
+- “PDF로 변환” 버튼 이름은 “PDF로 보기”로 확정한다. `/rhwp pdf`도 생성·공유가 끝난 Slack PDF 파일을 연다. 별도 PDF.js 화면과 모드 전환 UI는 제거한다.
+- PDF 생성은 서버에 유지한다. 향후 썸네일 준비 시 PDF도 함께 준비하고, 업로드·공유 완료 후 PDF 버튼을 제공한다. 준비/실패 상태는 편집 진입을 막지 않는다. 파일 링크의 실제 기본 미리보기 동작은 Slack 웹·데스크톱에서 별도 검증한다.
+- Studio 상단의 별도 호스트 메뉴·테스트 상자를 제거한다. 파일명·미저장 표시는 브라우저 제목과 접근성 상태로 유지하고 로딩·오류 안내만 필요할 때 표시한다. 실제 Slack 저장 연결 전 가짜 저장 UI는 제공하지 않는다.
+- 개발 파일 입력은 개발 빌드의 명시적인 `?devtools=1` 주소에서만 표시하고 문서를 열면 닫는다. 기본 화면·production에는 테스트 도구를 표시하지 않는다.
+- 기존 `/viewer/` 진입은 `/editor/`로 이동하며 기존 문서 fragment를 보존한다. PDF.js 코드·직접 의존성·배포 자산을 제거한다. PDF 변환 테스트는 실제 API→PDF 출력 검증으로 유지한다.
+- 현재 저장소에 Slack 카드/receiver는 없다. 이번 변경은 로컬 편집 UI와 후속 연동 계약에 해당한다. 실제 카드 “문서 열기”·“PDF로 보기”·“첫 페이지 이미지”와 업로드는 Stage 4·5 및 PNG 후속 task에서 연결한다.
+- 제품 문서는 기존 승인 위치인 README.md, docs/dependencies.md를 갱신한다. 계획·orders·Stage 3 보고서의 후속 절을 기존 mydocs 경로에서 갱신한다.
+
+검증: `npm run typecheck`, `npm test`, `npm run test:viewer`, `git diff --check`. 실제 HWP/HWPX 편집·undo/export·기록 금지, PDF 변환 API·원본 스냅샷 유지, 기본/production 테스트 도구 부재, 이전 주소 이동, 400px/669px 전체 높이 편집 화면과 오류 안내를 확인한다. 엔진 소스와 PDF 변환 구현은 변경하지 않는다.
+
+커밋: `Task #1 [Stage 3.1]: Studio 직접 열기와 Slack PDF 열람 경로 정리`.
