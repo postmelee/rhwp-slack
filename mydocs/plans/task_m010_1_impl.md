@@ -4,7 +4,7 @@
 
 GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1) / 마일스톤 M010 / 변경일 2026-09-15
 
-상태: Studio 전환 변경 승인. Stage 2는 adf6898로 완료. 사용자 승인으로 Stage 3 PDF 기본 열람·편집 분리 구현을 진행한다. Stage 1의 소스·14개 테스트 결과는 [기존 보고서](../working/task_m010_1_stage1.md)에 역사적 기록으로 보존한다.
+상태: Studio 전환 변경 승인. Stage 2는 adf6898로 완료. 사용자 승인으로 Stage 3 PDF 기본 열람·편집 분리 구현 및 검증을 완료했다. Stage 1의 소스·14개 테스트 결과는 [기존 보고서](../working/task_m010_1_stage1.md)에 역사적 기록으로 보존한다.
 
 ## 단계 개요
 
@@ -94,7 +94,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1) / 마일스
 - 이벤트 중복 키는 Slack event_id, 명령/바로가기는 검증된 team·trigger·callback 식별자를 사용한다. 단순히 같은 파일명이라는 이유로 서로 다른 요청을 하나로 합치지 않는다.
 - 최초 카드에는 민감하지 않은 문서 식별 URL과 embed 지원 선언만 둔다. 접근 ticket은 카드에 넣지 않고 사용자 클릭 이벤트를 받은 뒤 발급한다.
 - `entity_details_requested` reference의 사용자 필드는 `event.user`, trigger는 `event.trigger_id`다. 일부 가이드 샘플과 위치가 다르므로 실제 reference payload를 계약 fixture로 사용한다. 검증되지 않은 wrapper 필드로 조용히 대체하지 않는다.
-- `entity.presentDetails`에 권한을 검증한 뒤 `application/vnd.slack-embed`와 `/viewer/#ticket=...` 형태의 짧은 ticket URL을 전달한다. API 성공을 iframe 로딩 성공으로 취급하지 않는다.
+- `entity.presentDetails`에 권한을 검증한 뒤 `application/vnd.slack-embed`와 `/editor/#ticket=...` 형태의 짧은 ticket URL을 전달한다. API 성공을 iframe 로딩 성공으로 취급하지 않는다.
 - viewer는 fragment를 메모리로 읽고 즉시 주소에서 제거한 뒤 `/api/viewer/exchange`에 POST한다. 서버는 ticket을 원자적으로 소비하고 짧은 bearer session을 반환한다. 문서 bytes는 session Authorization header로 요청하며 token을 localStorage에 저장하지 않는다.
 - HTML·JS·WASM·폰트는 사용자 문서를 포함하지 않는 정적 자산이다. 문서/교환 API는 `Cache-Control: no-store`, `Referrer-Policy: no-referrer`를 적용하고 body·token·원본 URL은 로그에서 제외한다.
 - Slack allow-same-origin을 사용하며 호스트 origin 응답에도 세션 인증을 요구한다. 정적 자산 CORS와 문서 API CORS를 분리하고 wildcard+credentials를 사용하지 않는다. 쿠키에 의존하지 않는다.
@@ -141,6 +141,7 @@ git diff --check
 
 ### 산출물과 계약
 
+- PDF.js 6.3.289를 고정하고 자체 호스팅 worker·CMap·폰트·WASM으로 페이지를 렌더한다. 브라우저 내장 PDF 플러그인의 유무에 의존하지 않는다.
 - `/viewer/`는 PDF 전용 열람, `/editor/`는 Studio 편집 전용이다. 모드 전환 토글을 만들지 않는다. PDF의 “문서 편집” 동작이 같은 원본의 별도 편집 화면을 연다.
 - 편집 상단은 파일명·미저장 상태만 표시한다. 파일명은 한 줄 말줄임, 전체 이름은 title로 확인한다. 개발 파일 입력은 접힌 테스트 도구 영역에 두며 production에 노출하지 않는다.
 - 호스트가 실제 업로드를 제공할 때만 “편집본을 Slack에 저장”을 활성화한다. 이 단계에서는 Slack 저장을 성공으로 가장하지 않는다. 기존 전역 개발 테스트 SDK는 유지한다.
@@ -148,6 +149,7 @@ git diff --check
 - 입력 20 MiB·200페이지, PDF 출력 50 MiB, 단일 변환·60초 deadline. 변환 작업은 별도 프로세스에서 실행하고 부모 deadline에 프로세스 그룹을 종료한다. 메모리의 OS 하드 상한은 Linux 배포 단계에서 별도 설정한다.
 - 변환 브라우저는 외부 네트워크를 허용하지 않는다. script/object/frame 실행을 CSP로 막고 로컬 폰트만 제공한다. 사용자 문서 내용은 HTML 문서 문자열에 이어 붙이지 않고 SVG DOM으로 삽입한다.
 - 개발용 localhost API는 명시적 dev 플래그에서만 열리며 Origin 검사·크기·동시성·15분 TTL·총 200 MiB를 적용한다. 원본/PDF는 메모리에 두고 문서 ticket은 fragment로 전달한다. 이는 Slack 인증을 대체하지 않는다.
+- Slack 연동에서는 생성 PDF 파일의 Slack 자체 미리보기를 기본 열람 진입으로 사용하고 별도 편집 진입을 제공한다. 현재 PDF.js 화면은 로컬 검증 및 웹 열람 경로다.
 - 현재 PDF는 원본의 스냅샷이다. Stage 5에서 편집본을 새 Slack 파일로 저장한 후 그 revision의 PDF를 재생성한다. PDF 실패가 성공한 HWP 업로드를 취소하거나 중복 재업로드하게 만들지 않는다.
 - 제품 문서 위치는 기존 승인된 README, docs/dependencies.md를 사용한다. 계획과 Stage 3 보고서는 기존 mydocs 경로를 사용한다.
 
@@ -224,7 +226,7 @@ Dockerfile/.dockerignore/check script, 문서 갱신, Stage 6·최종 보고서.
 
 ## 단계 의존성과 승인 기록
 
-사용자의 “변경해줘”는 제안한 Studio 전환의 계획 변경과 Stage 2 구현 승인으로 적용한다. 이번 변경을 계획 커밋 `Task #1: Studio 임베드 전환 계획 반영`으로 고정한 뒤 Stage 2를 구현한다. Stage 2 완료 보고 후 Stage 4 진입 승인을 받는다. 아직 원격 push·PR 단계는 아니다.
+사용자의 “변경해줘”는 제안한 Studio 전환의 계획 변경과 Stage 2 구현 승인으로 적용한다. 이번 변경을 계획 커밋 `Task #1: Studio 임베드 전환 계획 반영`으로 고정한 뒤 Stage 2를 구현한다. Stage 2는 adf6898로 완료했고 이후 PDF 우선 변경으로 Stage 3을 삽입했다. 아직 원격 push·PR 단계는 아니다.
 
 ## PDF 기본 열람 변경 승인
 

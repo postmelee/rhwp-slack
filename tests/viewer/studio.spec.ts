@@ -5,12 +5,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 declare global { interface Window { __studio: RhwpEditor; __loadDocument: (bytes: Uint8Array, name: string) => Promise<void>; __documentDbOpens: string[]; } }
 const source = readFileSync('tests/fixtures/viewer-two-pages.hwp');
 async function ready(page: Page) {
-  await page.goto('/viewer/');
+  await page.goto('/editor/');
   await page.waitForFunction(() => Boolean(window.__studio));
 }
 async function load(page: Page, extension = 'hwp') {
   await page.locator('#file').setInputFiles(`tests/fixtures/viewer-two-pages.${extension}`);
-  await expect(page.locator('#status')).toContainText('2페이지', {timeout:60_000});
+  await expect(page.locator('#document-name')).toContainText('viewer-two-pages', {timeout:60_000});
+  expect(await page.evaluate(()=>window.__studio.pageCount())).toBe(2);
 }
 async function text(page: Page) {
   return page.evaluate(() => window.__studio.hwpctrl.call('GetTextFile', ['TEXT','']));
@@ -89,14 +90,14 @@ test('document databases are never opened across edit, idle, settings and reload
 test('real same-origin Slack sandbox permits nested Studio SDK',async ({page})=>{
   await page.goto('/sandbox');
   const host=page.frameLocator('iframe').first();
-  await expect(host.locator('#status')).toContainText('테스트 문서를 선택', {timeout:60_000});
+  await expect(host.locator('#status')).toContainText('문서를 선택', {timeout:60_000});
   await host.locator('#file').setInputFiles('tests/fixtures/viewer-two-pages.hwp');
-  await expect(host.locator('#status')).toContainText('2페이지');
+  await expect(host.locator('#document-name')).toContainText('viewer-two-pages');
   await expect(host.frameLocator('#editor iframe').locator('#menu-bar')).toBeVisible();
 });
 test('production excludes local file ingress; direct Studio forces embed and ignores URL file', async ({page})=>{
-  await page.goto('http://127.0.0.1:4174/viewer/');
-  await expect(page.locator('#status')).toHaveText('Slack에서 문서를 열어 주세요.', {timeout:60_000});
+  await page.goto('http://127.0.0.1:4174/editor/');
+  await expect(page.locator('#status')).toHaveText('Slack에서 문서 편집을 선택하세요.', {timeout:60_000});
   await expect(page.locator('#local')).toBeHidden();
   expect(await page.evaluate(()=>Object.hasOwn(window,'__studio'))).toBe(false);
   const requests: string[]=[]; page.on('request',r=>requests.push(r.url()));

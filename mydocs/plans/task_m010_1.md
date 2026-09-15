@@ -6,11 +6,11 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 작성일: 2026-09-15 (Asia/Seoul)
 
-상태: 2026-09-15 사용자가 Studio 임베드·복구 비활성화 전환을 요청하여 변경 승인. Stage 1 기록은 보존하며 재편한 Stage 2(Studio 전환)를 진행한다.
+상태: Stage 1·2 완료. 사용자의 PDF 기본 열람·Studio 편집 분리 변경 승인으로 Stage 3을 구현한다.
 
 ## 목적
 
-권한이 있는 사용자가 Slack에 공유된 평문 HWP/HWPX를 자체 호스팅 rhwp-studio에서 열고 기존 메뉴·도구막대로 편집할 수 있게 한다. 복구본·최근 문서·이전 문서 기록은 영속화하지 않고 현재 편집의 undo/redo·미저장 상태는 유지한다. 편집본은 명시적인 동작으로 원래 Slack 대화에 새 파일로 저장한다. 사용자 명령어는 `/rhwp`로 통일한다.
+권한이 있는 사용자가 Slack에 공유된 평문 HWP/HWPX를 PDF로 보고, 편집을 선택하면 자체 호스팅 rhwp-studio에서 기존 메뉴·도구막대로 편집할 수 있게 한다. 복구본·최근 문서·이전 문서 기록은 영속화하지 않고 현재 편집의 undo/redo·미저장 상태는 유지한다. 편집본은 명시적인 동작으로 원래 Slack 대화에 새 파일로 저장한다. 사용자 명령어는 `/rhwp`로 통일한다.
 
 이번 task는 C 방식(Work Objects embeds)의 실제 동작과 개발 기반을 먼저 완성한다. PDF 변환과 기본 PDF 미리보기는 이번 task에 포함한다. 썸네일·전체/지정 PNG·ZIP은 같은 문서 서비스를 이용하는 후속 task로 남긴다. 제품 요구사항 전체는 이슈 #1에 보존되어 있다.
 
@@ -81,7 +81,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 - 로컬 개발과 Linux 컨테이너 실행을 기본으로 한다. 실제 Slack 연결에는 별도의 HTTPS 주소와 테스트 앱 설정이 필요하다. 공급자 계약·구매·공개 배포는 이 task에서 하지 않는다.
 - 후속 변환 task는 같은 원본 문서와 접근 권한 서비스를 사용하며, 캐시 키는 원본 내용·rhwp 버전·폰트·출력 옵션을 포함한다.
 - 사용자 페이지 번호는 모든 UI와 명령에서 1-based로 유지하고 엔진 경계에서 0-based로 변환한다.
-- 후속 기능은 `/rhwp pdf`, `/rhwp thumbnail`, `/rhwp png`, `/rhwp png --page N`. 전체 PNG의 ZIP·첫 페이지 미리보기·페이지 수·파일명 계약은 이슈 #1의 합의 사항을 따른다.
+- 후속 기능은 `/rhwp thumbnail`, `/rhwp png`, `/rhwp png --page N`. 전체 PNG의 ZIP·첫 페이지 미리보기·페이지 수·파일명 계약은 이슈 #1의 합의 사항을 따른다.
 
 ## 문서 위치 판단
 
@@ -100,7 +100,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 신규:
 
 - `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.ts`, `.gitignore`, `.env.example`.
-- `src/server/`, `src/viewer/`, `src/shared/`, `public/fonts/` 내 기능별 파일.
+- `src/server/`, `src/viewer/`, `src/editor/`, `src/conversion/`, `src/shared/`, `public/fonts/` 내 기능별 파일.
 - `slack/manifest.json`, `scripts/`, `tests/`, `.github/workflows/ci.yml`, `Dockerfile`, `.dockerignore`.
 - `README.md`, `docs/development.md`, `docs/architecture.md`, `docs/dependencies.md`.
 

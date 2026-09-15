@@ -10,8 +10,8 @@
   "packageManager": "npm@11.19.0",
   "scripts": {
     "dev": "npm run build:dev && node scripts/serve-viewer.mjs --dev",
-    "build": "npm run prepare:studio && node scripts/build-studio.mjs && vite build",
-    "build:dev": "npm run prepare:studio && node scripts/build-studio.mjs && vite build --mode development",
+    "build": "npm run prepare:studio && node scripts/build-studio.mjs && node scripts/build-host.mjs",
+    "build:dev": "npm run prepare:studio && node scripts/build-studio.mjs && node scripts/build-host.mjs --dev",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.tests.json",
     "test": "node scripts/run-tests.mjs",
     "test:viewer": "npm run build && npm run build:dev && playwright test",
@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@rhwp/core": "0.8.6",
-    "@rhwp/editor": "0.8.6"
+    "@rhwp/editor": "0.8.6",
+    "pdfjs-dist": "6.3.289"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

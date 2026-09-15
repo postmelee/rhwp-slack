@@ -1,25 +1,30 @@
-// Local fixture/dev server only. Stage 3 supplies the authenticated production server.
+// Local fixture/dev server only. Stage 4 supplies the authenticated production server.
+import { DevDocuments } from '../src/server/dev-documents.mjs';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 const dev = process.argv.includes('--dev');
 const root = resolve(dev ? 'dist/dev-viewer' : 'dist/viewer');
 const port = Number(process.env.PORT || 4173);
+const documents=dev?new DevDocuments():null;
+if(documents)setInterval(()=>documents.sweep(),60_000).unref();
 const origin = `http://127.0.0.1:${port}`;
-const mime = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.json':'application/json', '.wasm':'application/wasm', '.woff2':'font/woff2', '.woff':'font/woff', '.ttf':'font/ttf', '.svg':'image/svg+xml', '.png':'image/png', '.ico':'image/x-icon' };
+const mime = { '.html':'text/html', '.js':'text/javascript', '.mjs':'text/javascript', '.css':'text/css', '.json':'application/json', '.wasm':'application/wasm', '.woff2':'font/woff2', '.woff':'font/woff', '.ttf':'font/ttf', '.svg':'image/svg+xml', '.png':'image/png', '.ico':'image/x-icon' };
 createServer(async (req,res) => {
   res.setHeader('Cache-Control','no-store');
   res.setHeader('Referrer-Policy','no-referrer');
   res.setHeader('X-Content-Type-Options','nosniff');
-  res.setHeader('Content-Security-Policy', `default-src 'none'; script-src ${origin} 'wasm-unsafe-eval'; worker-src blob:; style-src ${origin} 'unsafe-inline'; font-src ${origin} data:; connect-src ${origin}; img-src ${origin} data: blob:; frame-src ${origin}; frame-ancestors ${origin}; base-uri 'none'; form-action 'none'`);
+  res.setHeader('Content-Security-Policy', `default-src 'none'; script-src ${origin} 'wasm-unsafe-eval'; worker-src ${origin} blob:; style-src ${origin} 'unsafe-inline'; font-src ${origin} data:; connect-src ${origin}; img-src ${origin} data: blob:; frame-src ${origin} blob:; object-src blob:; frame-ancestors ${origin}; base-uri 'none'; form-action 'none'`);
   try {
     const path = new URL(req.url, origin).pathname;
+    if (req.headers.host !== new URL(origin).host) {res.writeHead(403).end();return;}
+    if (documents && await documents.handle(req,res,path,origin)) return;
     if (dev && path === '/sandbox') {
       res.setHeader('Content-Type','text/html');
-      res.end('<!doctype html><html><head><title>Slack sandbox test</title></head><body style="margin:0"><iframe title="문서 뷰어" sandbox="allow-scripts allow-same-origin" src="/viewer/" style="width:100vw;height:100vh;border:0"></iframe></body></html>'); return;
+      res.end('<!doctype html><html><head><title>Slack sandbox test</title></head><body style="margin:0"><iframe title="문서 뷰어" sandbox="allow-scripts allow-same-origin" src="/editor/" style="width:100vw;height:100vh;border:0"></iframe></body></html>'); return;
     }
-    if (!path.startsWith('/viewer/') && !path.startsWith('/studio/')) { res.writeHead(404).end(); return; }
-    const mount = path.startsWith('/studio/') ? resolve('dist/studio') : root;
+    if (!path.startsWith('/viewer/') && !path.startsWith('/studio/') && !path.startsWith('/editor/')) { res.writeHead(404).end(); return; }
+    const mount = path.startsWith('/studio/') ? resolve('dist/studio') : path.startsWith('/editor/') ? resolve(dev?'dist/dev-editor':'dist/editor') : root;
     const file = resolve(mount, decodeURIComponent(path.slice(8) || 'index.html'));
     if (!file.startsWith(mount+'/')) { res.writeHead(403).end(); return; }
     const body = await readFile(file);

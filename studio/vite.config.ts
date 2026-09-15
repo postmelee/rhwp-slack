@@ -26,6 +26,10 @@ export default defineConfig({
         code = replaceOnce(code, 'isRecoveryBlocked: () => wasm.requiresPasswordForSave', 'isRecoveryBlocked: () => true');
         code = replaceOnce(code, 'recoveryEnabled: settings.recoveryEnabled', 'recoveryEnabled: false');
         code = replaceOnce(code, 'idleEnabled: settings.idleSaveEnabled', 'idleEnabled: false');
+        code = replaceOnce(code, 'autosaveManager.connect(eventBus);', `autosaveManager.connect(eventBus);
+          eventBus.on('document-dirty-changed', (change) => {
+            if (window.parent !== window) window.parent.postMessage({ type: 'rhwp-slack:dirty', dirty: (change as {dirty:boolean}).dirty }, window.location.origin);
+          });`);
         code = replaceOnce(code, 'await loadFromUrlParam();', '// Slack host owns document loading; ignore URL document sources.');
       }
       if (path === resolve(root,'src/ui/chrome-mode.ts')) {
