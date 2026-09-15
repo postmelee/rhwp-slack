@@ -2,6 +2,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {UserError, object} from './errors';
 export type Method = 'auth.test' | 'conversations.info' | 'conversations.members' | 'files.info' | 'chat.postEphemeral' | 'views.open' | 'chat.postMessage' | 'chat.update' | 'entity.presentDetails' | 'files.getUploadURLExternal' | 'files.completeUploadExternal';
 export interface SlackApi {call(method: Method, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>>;}
+const queryMethods = new Set<Method>(['conversations.info','conversations.members','files.info']);
 const reads = new Set<Method>(['auth.test','conversations.info','conversations.members','files.info']);
 export async function readBounded(response: Response, limit: number): Promise<Buffer> {
   if (Number(response.headers.get('content-length')) > limit) {
@@ -26,9 +27,15 @@ export class HttpSlackApi implements SlackApi {
     for (let attempt=0; ; attempt++) {
       deadline.throwIfAborted();
       const requestSignal=AbortSignal.any([deadline,AbortSignal.timeout(10_000)]);
-      const response=await this.fetcher(`https://slack.com/api/${method}`, {
-        method:'POST', redirect:'error', signal:requestSignal,
-        headers:{Authorization:`Bearer ${this.token}`,'Content-Type':'application/json'}, body:JSON.stringify(args),
+      const url=new URL(`https://slack.com/api/${method}`);
+      const query=queryMethods.has(method);
+      // Match the Slack SDK's form encoding, including nested blocks/files/view JSON.
+      const form=new URLSearchParams(Object.entries(args).filter(([,v])=>v!==undefined&&v!==null).map(([k,v]):[string,string]=>[k,typeof v==='object'?JSON.stringify(v):String(v)]));
+      if(query)for(const [key,value] of Object.entries(args))url.searchParams.set(key,String(value));
+      const response=await this.fetcher(url.href, {
+        method:query?'GET':'POST', redirect:'error', signal:requestSignal,
+        headers:{Authorization:`Bearer ${this.token}`,...(query?{}:{'Content-Type':'application/x-www-form-urlencoded'})},
+        ...(query?{}:{body:form.toString()}),
       });
       if (reads.has(method) && attempt<2 && (response.status===429 || response.status>=500)) {
         const wait = response.status===429 ? Number(response.headers.get('retry-after'))*1000 : 250*(attempt+1);

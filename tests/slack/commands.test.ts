@@ -30,7 +30,8 @@ test('configuration rejects missing/invalid settings without printing secret val
   assert.throws(()=>loadConfig({}),/SLACK_CHANNEL_IDS/);
   assert.throws(()=>loadConfig({SLACK_CHANNEL_IDS:'CTEST',SLACK_SIGNING_SECRET:'private-value'}),e=>e instanceof Error&&!e.message.includes('private-value'));
   const result=loadConfig({APP_ORIGIN:'https://editor.example.com',SLACK_CHANNEL_IDS:'CTEST, CPRIVATE',SLACK_SIGNING_SECRET:'a'.repeat(32),SLACK_BOT_TOKEN:'xoxb-test',SLACK_TEAM_ID:'TTEST',SLACK_APP_ID:'ATEST',SLACK_WORKSPACE_HOST:'rhwp-test.slack.com'});
-  assert.equal(result.channelIds.size,2);assert.equal(result.port,3000);
+  assert.equal(result.channelIds.size,2);assert.equal(result.port,3000);assert.equal(result.host,'127.0.0.1');
+  assert.throws(()=>loadConfig({HOST:'untrusted-host',SLACK_CHANNEL_IDS:'CTEST'}),/HOST/);
 });
 test('selection binds user, workspace and exact candidates, then expires',()=>{
   let now=0;const store=new Selections(()=>now,10);

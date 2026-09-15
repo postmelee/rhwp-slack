@@ -37,3 +37,19 @@ test('partial, repeated and failed membership results cannot authorize',async()=
   }
   const api=new FakeApi();api.handler=async()=>{throw new Error('API unavailable');};await assert.rejects(authorizeFile(api,config,actor,'FTEST'));
 });
+
+test('ordinary Slack hosted-file shape supports omitted restriction flag only with complete channel evidence',async()=>{
+  // Shape from Slack's working-with-files example, confirmed on the private test app.
+  const ordinary={...file,is_restricted_sharing_enabled:undefined,file_access:'visible',user_team:'TTEST',has_more_shares:false,channels:['CTEST'],groups:[],ims:[]};
+  const check=async(patch:Record<string,unknown>,privateChannel=false)=>{
+    const api=new FakeApi();api.handler=async(method,args)=>{
+      if(method==='conversations.info'&&privateChannel)return {ok:true,channel:{...channel,is_private:true}};
+      if(method==='files.info')return {ok:true,file:{...ordinary,...patch}};
+      return api.response(method,args);
+    };
+    return authorizeFile(api,config,actor,'FTEST');
+  };
+  assert.equal((await check({})).id,'FTEST');
+  assert.equal((await check({channels:[],groups:['CTEST'],shares:{private:{CTEST:[{team_id:'TTEST',ts:'123.4'}]}}},true)).id,'FTEST');
+  for(const patch of [{file_access:undefined},{file_access:'check_file_info'},{user_team:undefined},{has_more_shares:undefined},{has_more_shares:true},{channels:undefined},{channels:[]},{groups:undefined},{ims:undefined},{ims:['DTEST']},{is_restricted_sharing_enabled:true},{is_restricted_sharing_enabled:null},{restriction_type:1},{skipped_shares:true},{shares:{}},{shares:{public:{CTEST:[{team_id:'TOTHER',ts:'123.4'}]}}}])await assert.rejects(check(patch));
+});

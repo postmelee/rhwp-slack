@@ -2,9 +2,9 @@
 
 Slack에서 HWP/HWPX를 편집하고 `/rhwp` 명령으로 PDF와 PNG를 만들기 위한 비공개 프로젝트입니다.
 
-## 현재 구현 — Stage 5
+## 현재 구현 — Stage 6 (Linux·실제 Slack 연결 검증)
 
-- **문서 열기**: PDF 중간 화면 없이 자체 호스팅 rhwp-studio 편집기로 바로 진입합니다. 기존 `/viewer/` 주소도 `/editor/`로 이동합니다.
+- **문서 열기**: Slack 카드의 문서 제목을 누르면 PDF 중간 화면 없이 자체 호스팅 rhwp-studio 편집기로 바로 진입합니다. 기존 `/viewer/` 주소도 `/editor/`로 이동합니다.
 - 편집기는 화면 전체를 사용합니다. 별도 상단 메뉴·보기/편집 전환·PDF.js 화면을 제거했고 Studio 메뉴·툴바는 유지합니다. 파일명과 미저장 표시(`*`)는 브라우저 탭 제목, 변경 상태는 접근성 안내로 제공합니다. 로딩·오류 안내는 필요할 때만 표시합니다.
 - **서버 PDF 변환**: HWP/HWPX를 실제 PDF로 만드는 기능을 유지합니다. 원본 PDF는 미저장 편집에 따라 바뀌지 않습니다.
 - 이전 문서 복구·자동 저장·최근 문서·영속 이력을 비활성화합니다. 테스트 파일 선택은 개발 빌드의 `?devtools=1`에서만 표시하며 문서를 열면 닫힙니다.
@@ -13,17 +13,17 @@ Slack에서 HWP/HWPX를 편집하고 `/rhwp` 명령으로 PDF와 PNG를 만들�
 
 | 버튼 | 동작 |
 | --- | --- |
-| 문서 열기 | 원본을 rhwp-studio 편집으로 직접 열기 |
+| 문서 제목 / 사이드 패널에서 열기 | 원본을 rhwp-studio 편집으로 직접 열기 |
 | PDF로 보기 | 생성·업로드·공유가 완료된 Slack PDF 파일의 미리보기 열기 |
 | 첫 페이지 이미지 | 첫 페이지 PNG 제공 (후속 task) |
 
-`/rhwp open`과 `/rhwp edit`는 Studio, `/rhwp pdf`는 Slack PDF 미리보기로 연결합니다. PDF 준비 중이나 실패 시에는 상태를 안내하고, 완료 후에만 PDF 링크를 제공합니다. PDF 준비 여부가 편집 진입을 막지 않도록 합니다. 썸네일 도입 시 PDF도 함께 미리 준비합니다. Slack 기본 미리보기가 링크 클릭으로 열리는 동작은 실제 웹·데스크톱에서 검증해야 합니다.
+`/rhwp open`과 `/rhwp edit`는 Studio, `/rhwp pdf`는 Slack PDF 미리보기로 연결합니다. PDF 준비 중이나 실패 시에는 상태를 안내하고, 완료 후에만 PDF 링크를 제공합니다. PDF 준비 여부가 편집 진입을 막지 않도록 합니다. 썸네일 도입 시 PDF도 함께 미리 준비합니다. PDF 버튼은 Slack 파일 링크로 연결되어 브라우저·앱 선택을 거칠 수 있습니다. 데스크톱에서 공유된 PDF 첨부를 클릭해 Slack 기본 PDF 뷰어가 표시되는 것은 확인했습니다.
 
 **Slack 수신 서버와 Work Objects·편집본 저장 adapter를 구현했습니다.** `/rhwp open`·`edit`·`pdf`·`help`, 메시지의 다중 파일 선택, 서명·채널 참여·공유 권한 검사, 인증 다운로드와 임시 보관을 처리합니다. 설치 설정은 [Slack 개발 서버 문서](docs/development.md)를 따릅니다.
 
-카드 클릭에서 일회용 ticket을 발급하고 인증된 원본을 Studio로 전달합니다. 실제 세션에는 **편집본을 Slack에 저장** 버튼을 표시하며, 원래 대화에 새 HWP/HWPX를 공유한 뒤 그 편집본의 PDF를 생성합니다. 저장 중 추가 변경은 미저장 상태로 남깁니다. [인증·저장 구조](docs/architecture.md)를 참고하세요.
+카드 클릭에서 일회용 ticket을 발급하고 인증된 원본을 Studio로 전달합니다. 실제 세션에는 **편집본을 Slack에 저장** 버튼을 표시하며, 열었던 카드의 스레드에 새 HWP/HWPX와 그 편집본의 PDF를 답글로 추가합니다. 기존 스레드에서 만든 카드는 같은 부모 스레드를 유지합니다. 저장 중 추가 변경은 미저장 상태로 남깁니다. [인증·저장 구조](docs/architecture.md)를 참고하세요.
 
-실제 workspace 설치와 Slack 웹·데스크톱 동작은 미검증입니다. Linux 실행·실제 Slack 수용은 Stage 6, 썸네일·전체/지정 PNG·ZIP은 후속 task입니다.
+실제 테스트 앱 설치와 비공개 채널의 명령·업로드·웹 Studio 편집/저장, 데스크톱 Studio 열기·PDF 첨부 미리보기를 확인했습니다. Linux 컨테이너 검사도 통과했습니다. 데스크톱 직접 입력/저장은 사용자 확인을 받았으며, 실제 권한 회수 등 남은 시나리오는 [Stage 6 보고서](mydocs/working/task_m010_1_stage6.md)에 구분합니다. 썸네일·전체/지정 PNG·ZIP은 후속 task입니다.
 
 ## 로컬 실행
 
@@ -47,14 +47,8 @@ npm run dev
 
 ```sh
 npm ci
-npm run prepare:studio
-npm run typecheck
-npm test
-npm run test:slack
-npm run test:security
-npm run build
 npm exec playwright install chromium
-npm run test:viewer
+npm run check
 git diff --check
 ```
 
@@ -62,9 +56,15 @@ Linux 브라우저 의존성은 `npm exec playwright install --with-deps chromiu
 
 실제 HWP/HWPX→서버 PDF 변환 및 스냅샷 유지, 기존 주소→동일 원본 Studio 직접 열기, 400px/669px 전체 높이 편집 화면, 기본/production 테스트 도구 부재, ticket 만료·동시성·Origin·변환 deadline, SDK·Studio 편집과 export 왕복, 키보드·서식·표, undo/redo, 기존 복구본 격리, 설정 재활성화·시간 경과·재열기, iframe 및 입력 한도를 검사합니다. 합성 문서만 사용하며 스크린샷은 `test-results/`에 생성합니다.
 
+## Slack 앱 등록과 Linux 실행
+
+[처음 앱을 등록하는 순서](docs/development.md#처음-slack-앱을-등록하는-순서)에 앱 생성용 JSON·설정값 위치·테스트용 HTTPS 연결을 정리했습니다. Slack 클라이언트 설치와 별도로 개발용 앱 등록이 필요합니다. `scripts/slack-manifest.mjs --bootstrap`은 URL 없이 등록할 JSON을 만들고 `--origin https://HOST`는 서버 실행 후 적용할 연결용 JSON을 만듭니다.
+
+Dockerfile/Compose는 고정 Node 이미지, 일반 사용자·읽기 전용 파일시스템·자원 제한을 사용합니다. [컨테이너 실행·검증](docs/development.md#linux-컨테이너-실행)을 따릅니다. `npm run preflight:slack`은 설치 상태만 읽어 확인하며 실제 Slack 화면·파일 공유 검증을 대신하지 않습니다.
+
 ## 알려진 한계
 
-- 실제 Slack 웹·데스크톱 embeds와 클립보드, OS 인쇄·다운로드는 미검증입니다. SDK는 opaque origin을 거절하므로 Slack의 `allow-same-origin` 설정이 필요합니다.
+- 실제 Slack 웹·데스크톱 embeds 열기는 확인했습니다. 데스크톱 직접 입력/저장은 사용자 확인을 받았습니다. 클립보드, OS 인쇄·다운로드의 전체 수용은 미완료입니다. SDK는 opaque origin을 거절하므로 Slack의 `allow-same-origin` 설정이 필요합니다.
 - 편집 내용은 이 창의 메모리에만 존재합니다. 새로고침하거나 창을 닫으면 없어집니다. Slack 저장 버튼이 성공한 편집본만 서버에 공유합니다. export만으로 저장 완료 상태를 만들지 않으며, 저장 결과가 불확실하면 같은 요청으로 재확인합니다.
 - 입력은 20 MiB, 파싱 후 200페이지로 제한합니다. 편집 SDK 요청 시간 제한 60초는 WASM의 강제 종료나 메모리 상한을 보장하지 않습니다. 서버 PDF 변환은 별도 파서와 Chromium 프로세스에 60초 deadline을 적용하고 종료합니다. 출력은 50 MiB, 동시 변환은 1개, 문서 보관 총량은 200 MiB입니다. Studio는 이전 Stage 1의 전용 worker와 실행 구조가 다릅니다.
 - Studio 0.8.6에서 혼합 서식을 전체 선택해 굵게를 변경한 뒤 취소하면 이전 굵기·문단/표 배치가 달라지는 사례가 있습니다. 해당 기대값을 유지하는 known-failure 테스트로 추적합니다.

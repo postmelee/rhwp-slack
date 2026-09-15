@@ -35,13 +35,13 @@ POST는 정확한 Origin을 요구합니다. GET은 bearer로 인증하고 Origi
 3. 20 MiB·signature·형식을 검사하고 Slack 자격 증명 없는 별도 Node 프로세스에서 파싱합니다. 200페이지 상한과 30초 종료 제한을 적용합니다. 파서 실패 시 Slack 업로드를 시작하지 않습니다.
 4. 업로드 URL은 HTTPS `files.slack.com/upload/v1/`만 허용합니다. 이 주소에는 bot token을 보내지 않고 redirect를 거부합니다. 최종 공유 직전에 접근 권한을 다시 확인합니다.
 5. `completeUploadExternal`은 발급받은 파일 ID마다 한 번만 시도합니다. 응답이 불확실하면 그 ID의 현재 채널·team·원래 thread 공유 증거를 조회합니다. 증거가 부족하면 불확실 상태를 보존하고 같은 요청을 재확인합니다.
-6. 공유 완료가 확인된 HWP/HWPX 영수증은 PDF와 독립적입니다. 원래 채널/스레드에 새 파일을 공유한 뒤 동일 export bytes의 PDF를 직렬 변환 큐로 보냅니다. 원본은 수정하지 않습니다.
+6. 공유 완료가 확인된 HWP/HWPX 영수증은 PDF와 독립적입니다. 카드가 속한 부모 스레드(새 최상위 카드는 자신의 메시지 ts)에 새 파일을 답글로 공유한 뒤 동일 export bytes의 PDF를 직렬 변환 큐로 보냅니다. 원본은 수정하지 않습니다.
 7. 호스트는 저장 성공 후 Studio 내부의 `notifySavedIfUnchanged`를 호출합니다. Studio가 현재 revision을 동기 비교한 뒤, await 없이 clean 처리에 진입합니다. 업로드 중 추가 편집이 있으면 clean 처리하지 않습니다. PDF 실패도 성공한 HWP/HWPX 저장을 되돌리지 않습니다.
 
 재시도 기록은 프로세스 메모리에만 있습니다. 응답 손실 시 같은 창의 같은 요청은 중복 공유를 피하지만 재시작·새 세션을 넘는 exactly-once 보장은 없습니다. 동시 편집 병합이나 원본 덮어쓰기 기능은 제공하지 않습니다. 세션 만료는 이미 브라우저에 전달된 bytes를 회수하지 않으며 후속 서버 접근을 차단합니다.
 
 ## 자원과 검증 경계
 
-준비 원본은 총 200 MiB, 다운로드 2개·대기 20개, PDF는 실행 포함 대기 4개·실행 1개, 저장은 동시 2개로 제한합니다. PDF/저장 큐에서 보유한 bytes와 파서·Chromium 메모리는 원본 보관량 외에 추가됩니다. 운영체제 수준의 메모리/CPU·네트워크 격리는 Stage 6 배포에서 다룰 항목입니다.
+준비 원본은 총 200 MiB, 다운로드 2개·대기 20개, PDF는 실행 포함 대기 4개·실행 1개, 저장은 동시 2개로 제한합니다. PDF/저장 큐에서 보유한 bytes와 파서·Chromium 메모리는 원본 보관량 외에 추가됩니다. Stage 6 Compose는 메모리 4 GiB·CPU 2개·PID 256개·read-only·non-root 제한을 적용합니다. PDF parser/Chromium 환경에서는 Slack 및 임의 호스트 비밀 환경변수를 제거합니다. Chromium 내부 sandbox·worker별 강한 격리·운영 egress 정책은 별도 잔여 항목입니다.
 
 검증은 실제 Bolt HTTP·production 서버·Studio·격리 파서·실제 PDF 변환을 실행하되 Slack API/파일 전송은 합성 응답으로 대체합니다. 따라서 앱 설정 수용, 실제 파일 권한 필드, Slack iframe, PDF 기본 보기, 토큰 권한은 실제 워크스페이스에서 별도 검증해야 합니다. 전체 C 방식 출시 완료로 간주하지 않습니다.

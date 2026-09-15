@@ -31,10 +31,9 @@ export class Documents {
   private metadata(card:Card,previewUrl?:string):Record<string,unknown> {
     return {url:this.url(card.id),external_ref:{id:card.id,type:'document'},entity_type:'slack#/entities/file',entity_payload:{
       attributes:{title:{text:card.name},product_name:'rhwp',full_size_preview:{is_supported:true,mime_type:'application/vnd.slack-embed',...(previewUrl?{preview_url:previewUrl}:{})}},
-      fields:{},actions:{primary_actions:[{text:'문서 열기',action_id:'rhwp_open',value:card.id},
-        ...(card.pdfUrl?[{text:'PDF로 보기',action_id:'rhwp_pdf',value:card.id,url:card.pdfUrl}]:[])]}}};
+      fields:{},actions:{primary_actions:card.pdfUrl?[{text:'PDF로 보기',action_id:'rhwp_pdf',value:card.id,url:card.pdfUrl}]:[]}}};
   }
-  private text(card:Card):string{return `${card.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')} · 문서 열기${card.pdf==='pending'?' · PDF 준비 중':card.pdf==='failed'?' · PDF 준비 실패':' · PDF로 보기'}`;}
+  private text(card:Card):string{return `${card.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')} · 문서 제목을 눌러 편집${card.pdf==='pending'?' · PDF 준비 중':card.pdf==='failed'?' · PDF 준비 실패':' · PDF로 보기'}`;}
   async publish(job:Readonly<Job>):Promise<void> {
     if(!job.source||!job.bytes||job.state!=='ready')return;
     this.sweep();if(this.closed||this.cards.size>=1000)throw new UserError('busy','문서 요청이 많습니다.');
@@ -43,7 +42,10 @@ export class Documents {
     try {
       await this.authorize(card.id,card.actor);
       const posted=await this.api.call('chat.postMessage',{channel:card.actor.channelId,text:this.text(card),parse:'none',unfurl_links:false,unfurl_media:false,metadata:{entities:[this.metadata(card)]},...(card.actor.threadTs?{thread_ts:card.actor.threadTs}:{})});
-      if(typeof posted.ts==='string')card.messageTs=posted.ts;
+      if(typeof posted.ts!=='string'||!/^\d+\.\d+$/.test(posted.ts))throw new UserError('card_failed','문서 카드의 대화를 확인하지 못했습니다. 다시 요청해 주세요.');
+      card.messageTs=posted.ts;
+      // A top-level card owns its reply thread; a reply keeps the existing parent.
+      card.actor.threadTs??=posted.ts;
     }catch(error){this.cards.delete(card.id);throw error;}
     void this.pdf.run(job.bytes,async(bytes)=>{
       const upload=await this.uploads.share({},bytes,card.name.replace(/\.(hwp|hwpx)$/i,'.pdf'),card.actor,async()=>{await this.authorize(card.id,card.actor);});

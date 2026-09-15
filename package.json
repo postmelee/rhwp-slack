@@ -18,17 +18,19 @@
     "prepare:studio": "node scripts/prepare-studio.mjs",
     "start:slack": "node --env-file=.env --import tsx src/server/main.ts",
     "test:slack": "node scripts/run-tests.mjs slack",
-    "test:security": "node scripts/run-tests.mjs security"
+    "test:security": "node scripts/run-tests.mjs security",
+    "check": "node scripts/check.mjs",
+    "preflight:slack": "node --env-file=.env --import tsx scripts/slack-preflight.ts"
   },
   "dependencies": {
     "@rhwp/core": "0.8.6",
     "@rhwp/editor": "0.8.6",
-    "@slack/bolt": "5.1.0"
+    "@slack/bolt": "5.1.0",
+    "@playwright/test": "1.63.0",
+    "tsx": "4.23.13"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0",
     "@types/node": "24.13.4",
-    "tsx": "4.23.13",
     "typescript": "5.9.3",
     "vite": "8.3.0"
   }

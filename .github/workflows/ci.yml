@@ -26,3 +26,25 @@ jobs:
           name: viewer-test-evidence
           path: test-results/
           retention-days: 7
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: docker build --target smoke -t rhwp-slack:smoke .
+      - name: Test server PDF with production memory limit
+        run: >-
+          docker run --rm --init --network none --read-only
+          --tmpfs /tmp:rw,nosuid,nodev,size=512m,mode=1777
+          --shm-size=256m --memory=4g --cpus=2 --pids-limit=256
+          --cap-drop=ALL --security-opt=no-new-privileges
+          rhwp-slack:smoke node scripts/container-smoke.mjs --server-only
+      - name: Test isolated runtime with synthetic Slack
+        run: >-
+          docker run --rm --init --network none --read-only
+          --tmpfs /tmp:rw,nosuid,nodev,size=512m,mode=1777
+          --shm-size=256m --memory=4g --cpus=2 --pids-limit=256
+          --cap-drop=ALL --security-opt=no-new-privileges
+          rhwp-slack:smoke
+      - run: docker build --target release -t rhwp-slack:release .

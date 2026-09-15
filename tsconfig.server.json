@@ -16,7 +16,8 @@
     "studio/vite.config.ts",
     "src/server/**/*.ts",
     "tests/slack/**/*.ts",
-    "tests/security/**/*.ts"
+    "tests/security/**/*.ts",
+    "scripts/slack-preflight.ts"
   ],
   "exclude": []
 }

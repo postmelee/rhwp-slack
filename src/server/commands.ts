@@ -7,7 +7,7 @@ export const HELP = [
   '/rhwp edit <Slack 파일 링크> — 문서 열기와 동일',
   '/rhwp pdf <Slack 파일 링크> — PDF로 볼 문서 준비',
   '/rhwp help — 사용법',
-  '문서 열기는 Studio 편집기로, PDF로 보기는 Slack에 공유한 PDF로 연결합니다. 편집본은 새 파일로 저장합니다.',
+  '카드의 문서 제목을 누르면 Studio 편집기가 열립니다. PDF로 보기는 Slack에 공유한 PDF로 연결합니다. 편집본은 새 파일로 저장합니다.',
   '첫 페이지 이미지와 전체/지정 페이지 PNG·ZIP은 추후 제공됩니다.',
 ].join('\n');
 export function parseFileLink(raw: string, workspaceHost: string): string {
@@ -19,7 +19,7 @@ export function parseFileLink(raw: string, workspaceHost: string): string {
   }
   if (/[\s\\]/.test(value)) throw new UserError('invalid_link','지원되지 않는 Slack 파일 링크입니다.');
   let url: URL;
-  try {url=new URL(value);} catch {throw new UserError('invalid_link','Slack 파일 링크를 입력하세요.');}
+  try {url=new URL(value);} catch {throw new UserError('invalid_link','Slack 파일 URL을 입력하세요. 붙여넣기 후 파일명으로 바뀌면 한 번 실행 취소해 URL로 되돌리거나 메시지 메뉴의 한글 문서 열기를 사용하세요.');}
   if (!value.startsWith(`https://${workspaceHost}/files/`)) throw new UserError('invalid_link','현재 워크스페이스의 Slack 파일 링크를 입력하세요.');
   const rawPath=value.slice(`https://${workspaceHost}`.length);
   const match=/^\/files\/([UW][A-Z0-9]+)\/(F[A-Z0-9]+)(?:\/[^/]+)?\/?$/.exec(rawPath);

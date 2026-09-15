@@ -28,11 +28,21 @@ export async function authorizeFile(api: SlackApi, config: Config, actor: Actor,
   }
   if (!found) denied();
   const f=object((await api.call('files.info',{file:fileId},signal)).file);
-  if (f.id!==fileId || f.mode!=='hosted' || f.is_external!==false || f.is_restricted_sharing_enabled!==false ||
-      (f.file_access!==undefined && f.file_access!=='visible') || f.is_tombstoned===true || f.has_more_shares===true ||
+  if (f.id!==fileId || f.mode!=='hosted' || f.is_external!==false || (f.is_restricted_sharing_enabled!==undefined && f.is_restricted_sharing_enabled!==false) ||
+      (f.file_access!==undefined && f.file_access!=='visible') || f.is_tombstoned===true || f.has_more_shares===true || f.skipped_shares===true ||
+      (f.restriction_type!==undefined && f.restriction_type!==0) ||
       (f.user_team!==undefined && f.user_team!==actor.teamId)) denied();
   for (const key of ['external_workspaces_with_read_access','dm_mpdm_users_with_file_access']) {
     if (f[key]!==undefined && (!Array.isArray(f[key]) || f[key].length!==0)) denied();
+  }
+  // Slack's ordinary hosted-file response can omit the restricted-sharing flag.
+  // Require the complete visible channel-sharing shape; omission alone grants nothing.
+  if(f.is_restricted_sharing_enabled===undefined){
+    const listed=f[c.is_private?'groups':'channels'];
+    if(f.file_access!=='visible' || f.user_team!==actor.teamId || f.has_more_shares!==false ||
+        !Array.isArray(f.channels) || !f.channels.every(id=>typeof id==='string'&&ID.channel.test(id)) ||
+        !Array.isArray(f.groups) || !f.groups.every(id=>typeof id==='string'&&ID.channel.test(id)) ||
+        !Array.isArray(f.ims) || f.ims.length!==0 || !Array.isArray(listed) || !listed.includes(actor.channelId)) denied();
   }
   const shares=object(object(f.shares)[c.is_private?'private':'public'])[actor.channelId];
   if (!Array.isArray(shares) || !shares.some(value=>{

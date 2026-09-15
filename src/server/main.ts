@@ -6,8 +6,8 @@ try {
   const api=new HttpSlackApi(config.botToken);
   const identity=await verifyInstallation(api,config);
   const runtime=createSlackReceiver(config,api,identity);
-  await runtime.receiver.start({port:config.port,host:'127.0.0.1'});
-  console.log(`Slack 요청 수신 서버: http://127.0.0.1:${config.port}/slack/events`);
+  await runtime.receiver.start({port:config.port,host:config.host??'127.0.0.1'});
+  console.log(`Slack 요청 수신 서버: http://${config.host??'127.0.0.1'}:${config.port}/slack/events`);
   let stopping=false;
   const stop=async()=>{
     if(stopping)return;stopping=true;

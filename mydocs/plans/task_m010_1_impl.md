@@ -4,7 +4,7 @@
 
 GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1) / 마일스톤 M010 / 변경일 2026-09-15
 
-상태: Stage 4 Slack 명령·접근 권한 구현과 검증 완료. Stage 2는 adf6898로 완료. 사용자 승인으로 Stage 3 PDF 기본 열람·편집 분리 구현 및 검증을 완료했다. Stage 1의 소스·14개 테스트 결과는 [기존 보고서](../working/task_m010_1_stage1.md)에 역사적 기록으로 보존한다.
+상태: Stage 1~5 완료, Stage 6 Linux·실제 Slack 연결 구현과 자동 검증 완료. 실제 웹 편집/저장·데스크톱 Studio 열기/PDF 첨부를 확인했으며 남은 수용 시나리오는 Stage 6 보고서에 기록한다. 원격 게시·이슈 종료 전이다.
 
 ## 단계 개요
 
@@ -24,7 +24,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1) / 마일스
 | 제품 진입점 | README.md | 동일 | OK |
 | 의존성과 overlay | docs/dependencies.md | 동일 | OK |
 | 설정·아키텍처 | docs/development.md, docs/architecture.md | 동일 | OK |
-| 단계 보고 | mydocs/working/ | task_m010_1_stage2.md ~ stage5.md | OK |
+| 단계 보고 | mydocs/working/ | task_m010_1_stage2.md ~ stage6.md | OK |
 | 최종 보고 | mydocs/report/ | task_m010_1_report.md | OK |
 
 ## 공통 구현 계약
@@ -274,3 +274,26 @@ Dockerfile/.dockerignore/check script, 문서 갱신, Stage 6·최종 보고서.
 - 기존 공식 문서 위치 docs/architecture.md, docs/development.md, README, dependencies를 사용한다. 계획·orders·Stage 5 보고서는 기존 mydocs 경로를 사용한다.
 
 Stage 5 구현·검증 결과는 [Stage 5 보고서](../working/task_m010_1_stage5.md)에 기록했다. Node 41개·브라우저 16개 정상 통과, 기존 B-004 expected-failure 1개를 재현했다. 실제 Slack 수용은 Stage 6에서 별도 확인한다.
+
+
+## Stage 6 진입 승인
+
+사용자의 “다음을 진행해줘”를 Stage 6 구현·검증 승인으로 적용한다. 기준 소스는 `8d935f3`이다. Dockerfile·빌드 입력 제외 목록·통합 check·컨테이너 smoke·운영 문서를 구현한다. 기존 `docs/development.md`, `docs/architecture.md`, `docs/dependencies.md`, README를 사용하며 별도 제품 문서 루트를 만들지 않는다.
+
+- 고정 Node 이미지와 lockfile로 Linux 빌드한다. runtime에 실제 필요한 Playwright·tsx를 일반 의존성으로 분류하고 Studio source/폰트의 필요한 변환 자산만 포함한다.
+- 기본 로컬 수신은 127.0.0.1을 유지하고 컨테이너만 명시적으로 0.0.0.0에 바인딩한다. 외부 노출은 localhost 포트와 운영자가 마련한 HTTPS reverse proxy로 제한한다.
+- non-root·read-only·tmpfs·메모리/CPU/pids 제한 아래 실제 파싱·PDF·HTTP·Studio를 검증한다. worker와 Chromium에 Slack 비밀 환경변수를 상속하지 않는다. Chromium 내부 sandbox와 컨테이너 격리를 같은 것으로 주장하지 않는다.
+- 실제 Slack .env/HTTPS가 없으면 credentials나 외부 게시를 합성하지 않고 미검증으로 기록한다. 사용자에게 준비 여부를 요청하면서 독립적인 Linux 작업을 계속한다.
+- 완료 보고는 구현 완료와 실제 Slack 수용 대기를 구별한다. 실제 수용 기준이 남아 있으면 전체 C 방식 출시 완료나 이슈 close를 선언하지 않는다.
+
+### Stage 6 실제 API 대조 보정
+
+실제 비공개 테스트 채널 연결에서 JSON POST 조회 인수가 무시되고 업로드 발급이 invalid_arguments로 거절됨을 재현했다. 조회는 공식 GET query, 쓰기는 Slack SDK와 같은 form 인코딩(중첩 값 JSON 문자열)으로 변경한다. 공식 업로드 예제와 실제 일반 파일 응답은 제한 공유 플래그를 생략하므로 Stage 4의 무조건 false 요구를 보정한다. 플래그가 없는 경우 visible·동일 user_team·전체 공유·채널 종류별 목록·빈 DM 목록과 기존 현재 채널 공유/멤버십 증거를 함께 요구한다. 명시적 제한과 불완전 응답은 계속 거절한다. 이는 일반 hosted 파일의 채널 공유 정책이며 사용자별 권한 API 검증으로 승격하지 않는다.
+
+Linux 2 GiB 검사는 서버만 실행해도 실제 PDF 중 OOM으로 실패했다. 4 GiB 서버 단독 및 Studio 브라우저 포함 검사에서 통과했으므로 Compose와 CI 상한을 4 GiB로 보정한다. 합성 입력 실측을 최대 입력의 메모리 보장으로 해석하지 않는다.
+
+실제 Slack 웹에서 일반 rhwp_open action trigger는 entity.presentDetails의 invalid_trigger_id로 거절됐고, 기본 카드 열기의 entity_details_requested는 같은 metadata로 Studio를 성공적으로 열었다. 새 카드에서 별도 열기 action을 제거하고 문서 제목·기본 사이드 패널 열기를 편집 진입으로 사용한다. PDF로 보기 action은 유지하며 과거 열기 버튼은 기본 제목 클릭 안내만 반환한다. 파일 링크 자동 제목 치환으로 명령에 URL이 전달되지 않는 경우를 확인해 사용법과 오류 안내에 복원/메시지 메뉴 경로를 추가한다.
+
+### Stage 6 저장 스레드 연결 보정 (사용자 승인)
+
+사용자가 실제 저장본이 새 채팅으로 게시되어 추적하기 어렵다고 보고하고 첨부 화면의 오른쪽 카드 스레드에 수정본이 누적되기를 요청했다. 새 최상위 카드의 게시 응답 ts를 답글의 부모로 저장하고, 기존 스레드에 게시한 카드는 기존 부모 thread_ts를 유지한다. 최초 PDF·편집 세션·수정본 HWP/HWPX·수정본 PDF 모두 이 서버 측 부모를 사용한다. 게시 응답의 유효한 ts가 없으면 채널 최상위로 업로드하지 않고 실패로 처리한다. 최상위 카드와 기존 스레드의 다른 ts를 각각 검사하고 production Studio 저장 통합 검사를 명령어 진입(스레드 없음)으로 보정한다. 기존 README/docs/보고서 위치를 사용한다.

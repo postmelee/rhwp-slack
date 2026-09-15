@@ -1,0 +1,25 @@
+services:
+  rhwp:
+    build:
+      context: .
+      target: release
+    image: rhwp-slack:local
+    init: true
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: '3000'
+      HOME: /tmp
+    ports:
+      - '127.0.0.1:3000:3000'
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m,mode=1777
+    shm_size: 256m
+    mem_limit: 4g
+    cpus: 2
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 90s

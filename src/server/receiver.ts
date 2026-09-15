@@ -112,7 +112,8 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
       if(b.channel&&object(b.channel).id!==who.channelId)denied();
       if(actionId==='rhwp_open'){
         const t=trigger(b.trigger_id);if(!replays.claim(`open:${who.teamId}:${t}`))return;
-        await documents.present(a.value,who,t);
+        await documents.authorize(a.value,who);
+        await notice(who,'문서 제목을 누르면 Slack 안에서 편집기가 열립니다.');
       }else await documents.authorize(a.value,who);
     }catch(error){if(who)await notice(who,userMessage(error)).catch(()=>{});}
   });
