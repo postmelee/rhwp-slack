@@ -15,7 +15,7 @@
 5. `SLACK_WORKSPACE_HOST`에는 URL이 아닌 `my-workspace.slack.com` 형태의 hostname, `SLACK_CHANNEL_IDS`에는 허용할 일반 채널 ID를 쉼표로 입력합니다.
 6. `APP_ORIGIN`에 편집기·Studio·수신기를 함께 서비스할 HTTPS origin을 입력합니다. 경로·query 없이 `https://editor.example.com` 형태로 설정합니다. Origin은 요청 Host header에서 추정하지 않습니다.
 7. 앱 설정의 **Work Object Previews**에서 Work Objects와 file entity를 활성화하고, embeds 도메인 허용 목록에 APP_ORIGIN의 hostname을 등록합니다. SDK의 같은 origin 통신을 위해 **allow-same-origin**을 활성화합니다. 이 설정은 앱 관리 화면에서 확인해야 하며 manifest만으로 활성화했다고 간주하지 않습니다.
-8. manifest는 `files:write`와 `entity_details_requested`를 포함합니다. 기존 앱이면 scope 변경 후 재설치가 필요합니다.
+8. manifest에는 `file_shared`, `app_mention`, `entity_details_requested`, `file_deleted`, `file_unshared` 이벤트가 있습니다. `app_mentions:read`를 추가한 기존 앱은 재설치가 필요합니다. `channels:history`/`groups:history` 권한은 사용하지 않습니다.
 9. 허용 채널에 bot을 초대하고 요청자도 해당 채널에 참여하게 합니다. 공개·비공개 채널 모두 이 조건이 필요합니다.
 
 앱 등록·설치·HTTPS 연결은 실제 Slack 관리 작업입니다. 이 저장소의 로컬 테스트나 manifest 생성만으로 설치가 완료되지 않습니다.
@@ -32,7 +32,7 @@ npm run start:slack
 
 서버는 기본 `127.0.0.1:3000`에서 실행하며 `PORT`로 포트를 바꿀 수 있습니다. 시작 시 `auth.test`로 토큰의 workspace·bot 정보를 확인합니다. `.env` 설정 또는 실제 workspace가 맞지 않으면 서버를 열지 않습니다.
 
-- `POST /slack/events`: 명령, 메시지 바로가기, 모달 제출, Work Object 열기, 파일 삭제·공유 해제 이벤트.
+- `POST /slack/events`: 명령, 메시지 바로가기, 모달 제출, Work Object 열기, 파일 공유·멘션·삭제·공유 해제 이벤트.
 - `/editor/`, `/studio/`: 자체 호스팅 production 편집 자산.
 - `/api/editor/*`: ticket 교환·인증 원본 읽기·편집본 저장·결과 조회. [API 경계](architecture.md)를 참고하세요.
 - `GET /healthz`: 프로세스 상태. 문서나 설정 값을 반환하지 않습니다.
@@ -46,6 +46,8 @@ npm run start:slack
 | `/rhwp edit <파일 링크>` | open과 동일 | Studio 편집으로 직접 열기 |
 | `/rhwp pdf <파일 링크>` | 접근 확인·PDF 변환·공유 | Slack에 공유한 PDF로 보기 |
 | `/rhwp help` | 사용법과 미제공 기능 안내 | 동일 |
+| HWP/HWPX 업로드 | 파일 공유 이벤트로 원본 메시지 식별 | 원본 스레드에 미리보기 댓글 한 개 |
+| `@rhwp` + 첨부 / 관찰한 스레드 | 첨부 또는 같은 스레드의 관찰 파일 사용 | 자동 업로드 요청과 같은 댓글 재사용 |
 | 메시지 메뉴 → 한글 문서 열기 | HWP/HWPX가 여러 개면 선택 창 | 선택한 원본을 Studio로 열기 |
 
 링크는 설정된 workspace의 `https://workspace.slack.com/files/USER/FILE_ID/파일명` 형식입니다. Slack의 `<url|이름>` 표기와 한글 파일명 인코딩을 처리합니다. 메시지 permalink·다른 workspace·임의 외부 URL은 지원하지 않습니다. `/rhwp thumbnail`과 `/rhwp png`는 미제공 안내를 반환하며 페이지 PNG/ZIP 요구는 후속 task에 유지합니다.
@@ -82,7 +84,7 @@ DM/MPDM, Slack Connect, 조직 공유, 제한된 사용자 공유, remote file�
 | 편집 세션 | 10분 idle·최대 60분, 최대 1,000개 |
 | 저장 입력·파싱 | 20 MiB·200페이지, 수신 30초·격리 파서 30초, 동시 저장 2개 |
 | 저장 요청 기록 | 60분, 최대 1,000개; 같은 세션·요청 ID·내용 hash로 결속 |
-| PDF 작업 | 실행 1개·실행 포함 최대 4개, 변환 60초·PDF 50 MiB + 첫 페이지 PNG 5 MiB |
+| PDF 작업 | 실행 1개·실행 포함 최대 4개, 변환 60초·PDF 50 MiB, PNG 각각 5 MiB·합계 25 MiB·최대 10페이지 |
 
 읽기 요청의 429/5xx만 제한적으로 재시도합니다. 429는 Retry-After를 따르되 30초 전체 제한을 넘기지 않습니다. 메시지와 모달 쓰기는 응답이 불확실할 때 자동 재시도하지 않습니다. 알림 실패가 이미 완료한 다운로드를 반복하게 만들지 않습니다. bot이 채널에 없거나 Slack이 알림을 거절하면 최종 ephemeral 알림은 전달되지 않을 수 있습니다.
 
@@ -93,7 +95,7 @@ raw payload, response_url, 토큰·서명, Slack의 원문 오류를 로그에 �
 ## 편집본 저장과 PDF
 
 - 명령 실행은 지정 채널에, 메시지 메뉴 실행은 원본 메시지의 스레드에 카드와 파일을 공유합니다. 기존 스레드에서는 부모 thread_ts를 유지합니다. 클릭 payload의 임의 thread_ts로 저장 위치를 바꾸지 않습니다.
-- 카드의 **문서 제목** 또는 **사이드 패널에서 열기**는 PDF를 기다리지 않고 Studio를 엽니다. 일반 action 버튼의 trigger는 실제 Slack에서 entity.presentDetails가 invalid_trigger_id로 거절하므로 별도 문서 열기 버튼은 제공하지 않습니다. PDF와 첫 페이지 PNG를 비공개 업로드한 뒤 카드 metadata로 같은 메시지에 공유합니다. **PDF로 보기**는 그 메시지 상단의 실제 Slack 파일 링크이며, URL action 버튼을 사용하지 않습니다.
+- 카드의 **문서 제목** 또는 **사이드 패널에서 열기**는 PDF를 기다리지 않고 Studio를 엽니다. 일반 action 버튼의 trigger는 실제 Slack에서 entity.presentDetails가 invalid_trigger_id로 거절하므로 별도 문서 열기 버튼은 제공하지 않습니다. PDF와 첫 3페이지 PNG를 비공개 업로드합니다. PDF는 카드 metadata, PNG는 `chat.update.file_ids`로 같은 메시지에 공유합니다. 추가 페이지는 최대 10까지 같은 댓글의 갤러리에 붙입니다. **PDF로 보기**는 그 메시지 상단의 실제 Slack 파일 링크이며, URL action 버튼을 사용하지 않습니다.
 - 편집본 저장은 새 HWP/HWPX를 만듭니다. 이름은 `원본명_편집본_1.hwp`처럼 번호를 붙이며 형식은 `.hwp` 또는 `.hwpx`이며 원본 파일·원본 PDF는 바꾸지 않습니다. 저장 성공 뒤 같은 편집본 bytes로 PDF·PNG를 생성해 해당 수정본 카드에 갱신합니다. 수정본 제목을 누르면 그 수정본을 Studio에서 다시 편집합니다.
 - 업로드 완료 호출은 파일 ID마다 한 번만 수행합니다. 비공개 업로드 완료와 카드에 대한 실제 공유를 구분합니다. 응답이 불확실하면 동일 파일의 공유 상태로 확인하며, 클라이언트의 **같은 저장 요청 다시 확인**은 같은 ID·bytes를 재전송합니다. 불확실한 파일을 두고 새 사본을 자동 생성하지 않습니다.
 - PDF 실패는 HWP/HWPX 저장 성공을 취소하지 않습니다. 저장 중 추가 편집은 Studio dirty 상태와 저장 패널에 남습니다. PDF 전용 재시도 버튼은 아직 없으며 저장된 파일에 `/rhwp pdf <파일 링크>`를 사용할 수 있습니다.
@@ -193,7 +195,7 @@ Work Object Previews에서 file entity·embeds를 활성화하고 허용 도메�
 
 실행 실적은 [Stage 6 보고서](../mydocs/working/task_m010_1_stage6.md)에 기록합니다. 현재 비공개 채널의 명령·웹 편집/저장·데스크톱 Studio 열기·PDF 첨부 미리보기는 확인했습니다. 실제 탈퇴/공유 해제 및 저장 장애 주입 등은 자동 검사와 구분해 수용 대기로 남깁니다.
 
-PDF 링크는 Slack mrkdwn 파일 링크로 구현합니다. 실제 Slack 웹에서 같은 탭의 미디어 뷰어, macOS 데스크톱에서 Slack PDF 뷰어로 두 페이지가 열리는 것을 확인했습니다. Work Object의 URL action은 외부 브라우저로 이동하므로 제거했습니다. 썸네일 카드의 내부 추가 필드가 가려지는 현상을 확인해 PDF 링크를 같은 메시지 상단에 표시합니다. [Slack Work Objects 파일 자동 공유](https://docs.slack.dev/messaging/work-objects-implementation/#automatic-file-shares)를 사용합니다.
+PDF 링크는 Slack mrkdwn 파일 링크로 구현합니다. 실제 Slack 웹에서 같은 탭의 미디어 뷰어, macOS 데스크톱에서 Slack PDF 뷰어로 두 페이지가 열리는 것을 확인했습니다. Work Object의 URL action은 외부 브라우저로 이동하므로 제거했습니다. PDF 링크를 같은 메시지 상단에 표시하고 PNG는 Slack 기본 이미지 갤러리를 사용합니다. [Slack Work Objects 파일 자동 공유](https://docs.slack.dev/messaging/work-objects-implementation/#automatic-file-shares)를 사용합니다.
 
 ## Linux 컨테이너 실행
 
@@ -224,6 +226,17 @@ smoke target만 합성 fixture·테스트를 포함합니다. 실제 runtime 계
 
 ### 편집본을 모으는 스레드
 
-Slack 클라이언트는 HWP 카드와 PDF를 같은 댓글 안의 첨부 두 개로 묶고 썸네일을 접어서 표시할 수 있습니다. 펼침 상태는 Slack이 관리합니다.
+Slack 클라이언트는 이미지·PDF·편집 카드를 같은 댓글 안의 첨부 묶음으로 표시할 수 있습니다. 기본 갤러리에서는 일부 썸네일과 `+N`이 보이고 이미지를 누르면 Slack 미디어 뷰어에서 넘겨 볼 수 있습니다. 편집 패널 등 다른 위치에서는 목록이나 격자로 표시될 수 있으며 펼침 상태·가로 스크롤 여부를 앱에서 강제하지 않습니다.
 
 명령어로 만든 최상위 문서 카드는 자신의 메시지를 부모로 삼아 이후 수정본 카드를 답글로 추가합니다. 최초 PDF·PNG는 원본 카드에, 수정본 PDF·PNG는 해당 수정본 카드에 갱신하며 별도 댓글을 생성하지 않습니다. 기존 스레드에서 만든 카드는 그 스레드의 부모를 유지합니다. 클라이언트가 전달한 임의의 스레드 대신 서버가 게시한 카드의 대화를 사용하며, 부모를 확인하지 못하면 채널 최상위로 대체 업로드하지 않습니다. 서버 갱신 후에는 새 명령으로 만든 카드에서 확인하세요. 이전에 최상위로 게시한 테스트 파일은 자동 이동하지 않습니다.
+
+## 자동 미리보기와 갤러리 테스트
+
+1. 최신 manifest의 `file_shared`·`app_mention` 구독과 `app_mentions:read` 설치를 확인하고 서버를 다시 실행합니다.
+2. `node scripts/create-preview-fixture.mjs`로 `.cache/test-documents/`에 12페이지 합성 HWP/HWPX를 만듭니다. 생성물은 Git에 포함하지 않습니다.
+3. 허용 채널에 파일을 업로드합니다. 원본 메시지 스레드에 댓글이 한 개 생기고 PDF 링크·첫 3페이지 이미지·편집 카드가 준비되는지 확인합니다.
+4. **추가 페이지 보기**를 눌러 같은 댓글에 1~10페이지가 순서대로 붙는지 확인합니다. 전체 12페이지는 **PDF로 보기**로 확인합니다.
+5. 편집 카드 제목으로 Slack 내부 Studio를 열고 편집본을 저장합니다. 원본 스레드에 수정본 댓글 한 개가 추가되고, 그 댓글의 PDF·PNG가 준비되어야 합니다.
+6. 파일과 `@rhwp`를 함께 보내거나 이미 감지한 스레드에서 멘션해도 미리보기 댓글이 중복되지 않는지 확인합니다. 서버가 관찰하지 못한 이전 스레드는 원본 메시지 메뉴로 요청합니다.
+
+일반 채널 history 권한은 필요하지 않습니다. 업로드 자동 감지는 `files:read`, 멘션 수신은 `app_mentions:read`를 사용하며, 파일 다운로드·변환 전에 기존 채널 참여/공유 검사를 수행합니다. 원본 메시지에 여러 사람의 공유 기록이 있으면 위치를 추측하지 않고 메시지 메뉴를 안내합니다. 이미 준비된 원본 bytes는 15분 뒤 만료되므로 늦게 열거나 확장할 때는 원본 메뉴로 다시 요청하세요.

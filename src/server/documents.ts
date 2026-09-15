@@ -4,20 +4,23 @@ import type {Config} from './config';
 import type {SlackApi} from './slack-api';
 import type {Preparations,Job} from './jobs';
 import {Sessions} from './sessions';
-import {Uploads} from './uploads';
+import {Uploads,type UploadAttempt} from './uploads';
+import type {PageImages,PageImage} from '../conversion/convert.mjs';
 import {PdfJobs} from './pdf-jobs';
 import {denied,UserError} from './errors';
 export interface Card {
   id:string;actor:Actor;fileId:string;rootFileId:string;name:string;size:number;createdAt:number;
   revision:number;sequence?:number;parentId?:string;parentTs?:string;messageTs?:string;posting?:boolean;
-  pdf:'pending'|'ready'|'failed';pdfUrl?:string;pdfFileId?:string;pngFileId?:string;
+  pdf:'pending'|'ready'|'failed';pdfUrl?:string;pdfFileId?:string;
+  pageCount?:number;images?:{page:number;fileId:string;shared?:boolean}[];imageTarget?:number;imageState?:'pending'|'ready'|'failed';
+  imageAttempts?:Map<number,UploadAttempt>;pdfAttempt?:UploadAttempt;imageWork?:Promise<void>;updates?:Promise<void>;
 }
 export class Documents {
   readonly sessions:Sessions; readonly uploads:Uploads; readonly pdf:PdfJobs;
   private cards=new Map<string,Card>(); private closed=false;
-  constructor(private config:Config,private api:SlackApi,private preparations:Preparations,options:{now?:()=>number;fetcher?:typeof fetch;convert?:ConstructorParameters<typeof PdfJobs>[0]}={}) {
+  constructor(private config:Config,private api:SlackApi,private preparations:Preparations,options:{now?:()=>number;fetcher?:typeof fetch;convert?:ConstructorParameters<typeof PdfJobs>[0];convertImages?:ConstructorParameters<typeof PdfJobs>[1]}={}) {
     this.now=options.now??Date.now;this.sessions=new Sessions(this.now,async(id,actor)=>{await this.authorize(id,actor);});
-    this.uploads=new Uploads(api,config,options.fetcher);this.pdf=new PdfJobs(options.convert);
+    this.uploads=new Uploads(api,config,options.fetcher);this.pdf=new PdfJobs(options.convert,options.convertImages);
   }
   private now:()=>number;
   url(id:string):string{return `${this.config.publicOrigin}/documents/${id}`;}
@@ -37,16 +40,37 @@ export class Documents {
   }
   private metadata(card:Card,previewUrl?:string):Record<string,unknown> {
     return {url:this.url(card.id),external_ref:{id:card.id,type:'document'},entity_type:'slack#/entities/file',entity_payload:{
-      attributes:{title:{text:card.name},product_name:'rhwp',full_size_preview:{is_supported:true,mime_type:'application/vnd.slack-embed',...(previewUrl?{preview_url:previewUrl}:{})}},
-      slack_file:{id:card.fileId,type:/\.hwpx$/i.test(card.name)?'hwpx':'hwp'},
-      fields:!previewUrl&&card.pngFileId?{preview:{type:'slack#/types/image',alt_text:`${card.name} 첫 페이지`,slack_file:{id:card.pngFileId}}}:{},
-      custom_fields:[
+      attributes:{title:{text:'문서 편집 · '+card.name},product_name:'rhwp',full_size_preview:{is_supported:true,mime_type:'application/vnd.slack-embed',...(previewUrl?{preview_url:previewUrl}:{})}},
+      slack_file:{id:card.fileId,type:/\.hwpx$/i.test(card.name)?'hwpx':'hwp'},fields:{},
+      custom_fields:previewUrl?[]:[
         ...(card.pdfFileId?[{key:'pdf_file',label:'PDF 파일',type:'slack#/types/file',slack_file:{id:card.pdfFileId}}]:[]),
-        ...(!card.pdfUrl?[{key:'pdf_status',label:'미리보기',type:'string',value:card.pdf==='failed'?'PDF 준비 실패':'PDF 준비 중'}]:[]),
-      ],display_order:['preview','pdf_status']}};
+      ],display_order:[]}};
   }
   private text(card:Card):string{return card.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-  private message(card:Card):Record<string,unknown>{return {channel:card.actor.channelId,text:this.text(card),blocks:card.pdfUrl?[{type:'section',text:{type:'mrkdwn',text:`<${card.pdfUrl}|PDF로 보기>`}}]:[],parse:'none',unfurl_links:false,unfurl_media:false,metadata:{entities:[this.metadata(card)]}};}
+  private gallery(card:Card){
+    // Slack appends file_ids; keep a contiguous prefix so a failed upload cannot reorder pages.
+    const sorted=[...(card.images??[])].sort((a,b)=>a.page-b.page);
+    const gap=sorted.findIndex((image,index)=>image.page!==index+1);
+    return gap<0?sorted:sorted.slice(0,gap);
+  }
+  private message(card:Card):Record<string,unknown>{
+    const images=this.gallery(card);
+    const detail=card.pageCount?card.pageCount+'페이지':'페이지 확인 중';
+    const pdf=card.pdfUrl?' · <'+card.pdfUrl+'|PDF로 보기>':card.pdf==='failed'?' · PDF 준비 실패':' · PDF 준비 중';
+    const blocks:Record<string,unknown>[]=[{type:'section',text:{type:'mrkdwn',text:'*'+this.text(card)+'* · '+detail+pdf}}];
+    if(card.imageState==='pending')blocks.push({type:'context',elements:[{type:'plain_text',text:'페이지 이미지를 준비하고 있습니다.'}]});
+    else if(card.pageCount&&(images.length<Math.min(10,card.pageCount)||card.imageState==='failed')){
+      blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_more_pages',value:card.id,text:{type:'plain_text',text:card.imageState==='failed'?'이미지 다시 준비':'추가 페이지 보기 (최대 10페이지)'}}]});
+    }
+    if(card.pageCount&&card.pageCount>10&&images.length===10)blocks.push({type:'context',elements:[{type:'plain_text',text:'앞 10페이지를 표시했습니다. 전체 문서는 PDF로 볼 수 있습니다.'}]});
+    blocks.push({type:'context',elements:[{type:'mrkdwn',text:'*문서 편집* · 아래 문서 카드를 누르세요.'}]});
+    return {channel:card.actor.channelId,text:this.text(card)+' · '+detail,blocks,parse:'none',unfurl_links:false,unfurl_media:false,metadata:{entities:[this.metadata(card)]}};
+  }
+  private update(card:Card,actor=card.actor):Promise<void>{
+    const next=(card.updates??Promise.resolve()).catch(()=>{}).then(async()=>{
+      await this.authorize(card.id,actor);await this.api.call('chat.update',{...this.message(card),ts:card.messageTs,...(this.gallery(card).length?{file_ids:this.gallery(card).map(image=>image.fileId)}:{})});
+    });card.updates=next;return next;
+  }
   private async post(card:Card):Promise<void> {
     if(card.posting)return;
     card.posting=true; // An uncertain response is reconciled through this private file's share, never reposted.
@@ -93,26 +117,64 @@ export class Documents {
     await this.authorize(card.id,actor);
     return card;
   }
-  async preview(card:Card,bytes:Buffer):Promise<void> {
-    try{
-      await this.pdf.run(bytes,async(pdf,png)=>{
-        const check=async()=>{await this.authorize(card.id,card.actor);};
-        const file=await this.uploads.store({},pdf,card.name.replace(/\.(hwp|hwpx)$/i,'.pdf'),card.actor,check);
-        if(!file.url)throw new Error('Missing PDF permalink');
-        const image=png?await this.uploads.store({},png,card.name.replace(/\.(hwp|hwpx)$/i,'_첫페이지.png'),card.actor,check):undefined;
-        card.pdfFileId=file.id;card.pdfUrl=file.url;card.pngFileId=image?.id;
-        await check();await this.api.call('chat.update',{...this.message(card),ts:card.messageTs});
-        await this.confirmShare(card,file.id,check);
-        if(image)await this.confirmShare(card,image.id,check);
-        card.pdf='ready';
-      });
-    }catch{
-      card.pdf='failed';card.pdfUrl=undefined;
-      if(!this.closed&&this.cards.get(card.id)===card&&card.messageTs){
-        await this.authorize(card.id,card.actor);
-        await this.api.call('chat.update',{...this.message(card),ts:card.messageTs});
-      }
+  private async storeImage(card:Card,image:PageImage,actor:Actor):Promise<void>{
+    card.images??=[];if(card.images.some(p=>p.page===image.page))return;
+    const attempts=card.imageAttempts??=new Map();let attempt=attempts.get(image.page);
+    if(!attempt){attempt={};attempts.set(image.page,attempt);}
+    const name=card.name.replace(/\.(hwp|hwpx)$/i,'')+'_'+String(image.page).padStart(2,'0')+'페이지.png';
+    const file=await this.uploads.store(attempt,image.png,name,actor,async()=>{await this.authorize(card.id,actor);});
+    card.images.push({page:image.page,fileId:file.id});
+  }
+  private async shareImages(card:Card,images:PageImage[],actor:Actor):Promise<void>{
+    for(let i=0;i<images.length;i+=2){
+      const batch=images.slice(i,i+2);
+      const results=await Promise.allSettled(batch.map(image=>this.storeImage(card,image,actor)));
+      await this.update(card,actor);
+      for(const image of batch){const stored=this.gallery(card).find(p=>p.page===image.page);if(stored){await this.confirmShare(card,stored.fileId,()=>this.authorize(card.id,actor));stored.shared=true;}}
+      if(results.some(r=>r.status==='rejected'))throw new UserError('image_failed','일부 페이지 이미지를 준비하지 못했습니다. 다시 요청하세요.');
     }
+  }
+  async preview(card:Card,bytes:Buffer):Promise<void>{
+    if(card.imageWork)return card.imageWork;
+    card.imageState='pending';card.imageTarget=3;
+    const work=this.pdf.run(bytes,async(pdf,result)=>{
+      card.pageCount=result?.pageCount;card.imageTarget=result?Math.min(3,result.pageCount):0;
+      const first=result?.pages.slice(0,1)??[];
+      const ready=await Promise.allSettled([
+        (async()=>{const file=await this.uploads.store(card.pdfAttempt??={},pdf,card.name.replace(/\.(hwp|hwpx)$/i,'.pdf'),card.actor,async()=>{await this.authorize(card.id,card.actor);});
+          if(!file.url)throw new Error('Missing PDF permalink');card.pdfFileId=file.id;card.pdfUrl=file.url;})(),
+        ...first.map(image=>this.storeImage(card,image,card.actor)),
+      ]);
+      if(ready[0].status==='rejected')card.pdf='failed';
+      await this.update(card);
+      if(card.pdfFileId){await this.confirmShare(card,card.pdfFileId,()=>this.authorize(card.id,card.actor));card.pdf='ready';}
+      for(const image of first){const stored=card.images?.find(p=>p.page===image.page);if(stored){await this.confirmShare(card,stored.fileId,()=>this.authorize(card.id,card.actor));stored.shared=true;}}
+      await this.shareImages(card,result?.pages.slice(1)??[],card.actor);
+      card.imageState=ready.slice(1).some(r=>r.status==='rejected')?'failed':'ready';
+      await this.update(card);
+    }).catch(async()=>{
+      if(card.pdf!=='ready')card.pdf='failed';card.imageState='failed';
+      if(!this.closed&&this.cards.get(card.id)===card&&card.messageTs)await this.update(card).catch(()=>{});
+    });
+    card.imageWork=work;try{await work;}finally{if(card.imageWork===work)card.imageWork=undefined;}
+  }
+  async morePages(id:string,actor:Actor,messageTs:string):Promise<void>{
+    const card=await this.authorize(id,actor);if(card.messageTs!==messageTs)denied();
+    if(card.imageWork)return card.imageWork;
+    if(!card.pageCount)throw new UserError('pages_pending','페이지 수를 확인하지 못했습니다. 문서를 다시 요청하세요.');
+    const target=card.imageState==='failed'?(card.imageTarget??3):Math.min(10,card.pageCount);
+    const have=new Set((card.images??[]).filter(p=>p.shared).map(p=>p.page));
+    const missing=Array.from({length:target},(_,i)=>i+1).filter(page=>!have.has(page));if(!missing.length)return;
+    const bytes=this.source(id);card.imageTarget=target;card.imageState='pending';
+    const work=(async()=>{
+      await this.update(card,actor);
+      await this.pdf.images(bytes,missing[0],target,async(result:PageImages)=>{
+        if(result.pageCount!==card.pageCount)throw new Error('Page count changed');
+        await this.shareImages(card,result.pages.filter(p=>!have.has(p.page)),actor);
+        card.imageState='ready';await this.update(card,actor);
+      });
+    })().catch(async()=>{card.imageState='failed';await this.update(card,actor).catch(()=>{});});
+    card.imageWork=work;try{await work;}finally{if(card.imageWork===work)card.imageWork=undefined;}
   }
   async present(id:string,actor:Actor,triggerId:string):Promise<void> {
     const card=await this.authorize(id,actor);this.source(id);

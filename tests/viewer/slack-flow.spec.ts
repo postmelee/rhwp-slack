@@ -19,7 +19,7 @@ test('production HTTP ticket → real Studio edit → isolated validation → Sl
     await expect(page).toHaveTitle(/^\* /);await page.locator('#slack-save button').click();await expect(page).toHaveTitle('문서.hwp · rhwp',{timeout:60_000});
     await expect(page.locator('#slack-save p')).toHaveText('편집본과 PDF를 Slack에 저장했습니다.',{timeout:60_000});
     await runtime.documents!.pdf.idle();
-    const completions=api.calls.filter(c=>c.method==='files.completeUploadExternal');expect(completions).toHaveLength(5);
+    const completions=api.calls.filter(c=>c.method==='files.completeUploadExternal');expect(completions).toHaveLength(7);
     for(const call of completions){expect(call.args.channel_id).toBeUndefined();expect(call.args.thread_ts).toBeUndefined();}
     const posts=api.calls.filter(c=>c.method==='chat.postMessage');expect(posts).toHaveLength(2);expect(posts[1].args.thread_ts).toBe('123.456');
     const edited=[...api.files.values()].find(f=>String(f.name).endsWith('_편집본_1.hwp'))!;
@@ -37,7 +37,7 @@ test('production HTTP ticket → real Studio edit → isolated validation → Sl
     await page.goto(String(revisionPreview.preview_url));
     await expect(page.locator('#slack-save button')).toBeVisible({timeout:60_000});
     await expect(page).toHaveTitle('문서_편집본_1.hwp · rhwp');
-    const pngFile=[...api.files.values()].find(f=>String(f.name).endsWith('_편집본_1_첫페이지.png'))!;
+    const pngFile=[...api.files.values()].find(f=>String(f.name).endsWith('_편집본_1_01페이지.png'))!;
     const png=uploaded.get(String(pngFile.id))!;expect(png.subarray(0,8).toString('hex')).toBe('89504e470d0a1a0a');writeFileSync(testInfo.outputPath('slack-edited-thumbnail.png'),png);
     expect(runtime.documents!.source(id)).toEqual(bytes);expect(readFileSync('tests/fixtures/viewer-two-pages.hwp')).toEqual(bytes);
     await page.setViewportSize({width:669,height:863});await page.screenshot({path:testInfo.outputPath('slack-production-flow.png')});

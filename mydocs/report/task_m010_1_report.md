@@ -5,7 +5,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 ## 작업 요약
 
-6개 Stage와 Stage 3.1·6.1에서 자체 호스팅 rhwp-studio, Slack 권한·문서 세션, PDF 공유, 편집본 저장, Linux 실행 경계를 구현했다. 웹 편집/저장과 데스크톱 문서 열기/PDF 첨부를 실제 비공개 채널에서 확인했다. Stage 6.1에서 수정본 재편집·카드 썸네일·동일 댓글의 PDF 연결을 검증했다. 전체/지정 PNG·ZIP 명령의 완료를 의미하지 않는다.
+6개 Stage와 Stage 3.1·6.1·6.3에서 자체 호스팅 rhwp-studio, Slack 권한·문서 세션, PDF 공유, 편집본 저장, Linux 실행 경계를 구현했다. 웹 편집/저장과 데스크톱 문서 열기/PDF 첨부를 실제 비공개 채널에서 확인했다. Stage 6.1에서 수정본 재편집·카드 썸네일·동일 댓글의 PDF 연결을 검증했다. Stage 6.3에서 업로드 자동 감지·멘션·같은 스레드의 3→10페이지 기본 이미지 갤러리를 구현하고 실제 HWPX 댓글·Studio·수정본 누적을 확인했다. 전체/지정 PNG·ZIP 명령의 완료를 의미하지 않는다.
 
 ## 변경 파일 목록과 영향 범위
 
@@ -27,12 +27,12 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 ## 변경 전·후 정량 비교
 
-| 지표 | Stage 6 | Stage 6.1 |
-| --- | --- | --- |
-| 정상 자동 검사 | 64 | 67 |
-| 기존 expected-failure | 1 | 1 (해결되지 않음) |
-| Linux 제한 실행 검증 | Node 48 + 브라우저 1 | Node 51 + 브라우저 1 성공 |
-| 실제 Slack | 웹 편집/저장·데스크톱 열기 | 수정본 재열기/재저장·두 댓글, 웹/데스크톱 PDF 링크 내부 열람 |
+| 지표 | Stage 6 | Stage 6.1 | Stage 6.3 |
+| --- | --- | --- | --- |
+| 정상 자동 검사 | 64 | 67 | 80 |
+| 기존 expected-failure | 1 | 1 (해결되지 않음) | 1 (유지) |
+| Linux 제한 실행 검증 | Node 48 + 브라우저 1 | Node 51 + 브라우저 1 성공 | Node 62 + 브라우저 1 성공 |
+| 실제 Slack | 웹 편집/저장·데스크톱 열기 | 수정본 재열기/재저장·두 댓글, 웹/데스크톱 PDF 링크 내부 열람 | HWP/HWPX 자동/멘션·단일 댓글 확장·갤러리·Studio·수정본 누적 |
 
 ## 검증 결과
 
@@ -40,13 +40,14 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 | --- | --- |
 | Studio 직접 편집, PDF 모드 화면 제거 | OK — 로컬 HWP/HWPX 및 실제 Slack 기본 카드 진입 |
 | 문서 복구·자동 저장·최근 문서·영속 이력 금지 | OK — 저장소 호출/재열기/설정 경로 자동 검사 |
-| 권한·서명·세션·저장 재시도·변환 | OK — 정상 67개; 실제 기본 API 연결 확인. 실제 권한 회수·장애 주입은 별도 미검증 |
+| 권한·서명·세션·저장 재시도·변환 | OK — 정상 80개; 실제 기본 API 연결 확인. 실제 권한 회수·장애 주입은 별도 미검증 |
 | 편집본 새 파일과 PDF | OK — 웹 실제 저장 성공 안내, 원본 재다운로드 해시 일치; revision bytes와 PDF 연계는 자동 통합 검사 |
 | Linux 빌드/실행 | OK — non-root/read-only/4 GiB/egress 없음 합성 API smoke |
 | 수정본을 카드 스레드에 누적 | OK — 실제 첫 수정본 재열기→둘째 수정본 저장 뒤 동일 스레드의 두 댓글 확인; PDF는 각 댓글에 갱신; 최상위/기존 부모·공유 지연·응답 유실 회귀 검사 |
 | 실제 Slack 데스크톱 입력/저장 | 사용자 확인 — 정상 동작 답변 및 저장 완료 화면. 저장 위치 문제는 카드 스레드 누적으로 수정 |
 | PDF 링크로 Slack 내부 열람 | OK — URL action 제거. 실제 웹·macOS 데스크톱에서 PDF 링크 클릭으로 기본 뷰어 두 페이지 확인 |
-| PNG·썸네일·ZIP | 첫 페이지 카드 썸네일 완료; 단독/전체/지정 PNG·ZIP 명령은 후속 |
+| PNG·썸네일·ZIP | 같은 스레드의 기본 3페이지/추가 10페이지 native 갤러리 완료; 단독/전체/지정 PNG·ZIP 명령은 후속 |
+| 자동 업로드·멘션 | file_shared·app_mention으로 같은 원본 스레드에 댓글; 일반 채널 history 권한 없음 |
 | 원격 CI/PR/운영 배포 | 미실행 |
 
 ### 단계별 검증 결과
@@ -58,6 +59,8 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 - [Stage 5](../working/task_m010_1_stage5.md): Work Objects·세션·저장·revision PDF.
 - [Stage 6](../working/task_m010_1_stage6.md): 실제 API 보정·Linux·실제 Slack 검증과 잔여 항목.
 - [Stage 6.1](../working/task_m010_1_stage6.1.md): 수정본 카드·썸네일·PDF 내부 열람과 실제 두 번 저장 검증.
+
+- [Stage 6.3](../working/task_m010_1_stage6.3.md): 자동 업로드·멘션·같은 댓글의 3→10페이지 Slack 갤러리·실제 수용 및 UI 제약.
 
 ## 잔여 위험과 후속 작업
 

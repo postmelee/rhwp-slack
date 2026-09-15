@@ -35,7 +35,8 @@
         "files:read",
         "channels:read",
         "groups:read",
-        "files:write"
+        "files:write",
+        "app_mentions:read"
       ]
     }
   },
@@ -45,7 +46,9 @@
       "bot_events": [
         "file_deleted",
         "file_unshared",
-        "entity_details_requested"
+        "entity_details_requested",
+        "file_shared",
+        "app_mention"
       ]
     },
     "interactivity": {

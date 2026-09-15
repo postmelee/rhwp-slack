@@ -6,7 +6,7 @@ export class EditorApi extends FakeApi {
   override response(method:Method,args:Record<string,unknown>):Record<string,unknown>{
     if(method==='chat.postMessage'||method==='chat.update'){
       const ts=method==='chat.postMessage'?`123.${456+this.messageSequence++}`:String(args.ts);
-      const message={...this.messages.get(ts),...args};this.messages.set(ts,message);
+      const message:Record<string,unknown>={...this.messages.get(ts),...args};this.messages.set(ts,message);
       const visit=(v:unknown)=>{
         if(!v||typeof v!=='object')return;
         const object=v as Record<string,unknown>;
@@ -18,7 +18,12 @@ export class EditorApi extends FakeApi {
         }
         for(const value of Object.values(object))visit(value);
       };
-      visit(args.metadata);return {ok:true,ts};
+      visit(args.metadata);
+      if(Array.isArray(args.file_ids)){
+        for(const id of args.file_ids)visit({slack_file:{id}});
+        message.files=[...new Set([...(message.files as {id:string}[]??[]).map(f=>f.id),...args.file_ids])].map(id=>({id}));
+      }
+      return {ok:true,ts,message};
     }
     if(method==='files.getUploadURLExternal'){const id=`FUPLOAD${++this.sequence}`;this.files.set(id,{id,name:args.filename,size:args.length});return {ok:true,file_id:id,upload_url:`https://files.slack.com/upload/v1/${id}`};}
     if(method==='files.completeUploadExternal'){
@@ -31,10 +36,10 @@ export class EditorApi extends FakeApi {
     return super.response(method,args);
   }
 }
-export async function editorServer(options:{api?:EditorApi;convert?:(bytes:Uint8Array)=>Promise<Buffer>;fetcher?:typeof fetch;now?:()=>number;origin?:string}={}){
+export async function editorServer(options:{api?:EditorApi;convert?:NonNullable<Parameters<typeof createSlackReceiver>[3]>['convert'];convertImages?:NonNullable<Parameters<typeof createSlackReceiver>[3]>['convertImages'];fetcher?:typeof fetch;now?:()=>number;origin?:string}={}){
   const api=options.api??new EditorApi();const publicOrigin=options.origin??'https://editor.example.com';
   const runtime=createSlackReceiver({...config,publicOrigin},api,{botId:'BBOT',botUserId:'UBOT'},
-    {download:async()=>bytes,convert:options.convert??(async()=>Buffer.from('%PDF-synthetic')),fetcher:options.fetcher??(async()=>new Response('ok')),now:options.now});
+    {download:async()=>bytes,convertImages:options.convertImages,convert:options.convert??(async()=>Buffer.from('%PDF-synthetic')),fetcher:options.fetcher??(async()=>new Response('ok')),now:options.now});
   const server=await runtime.receiver.start({host:'127.0.0.1',port:0});const address=server.address();if(!address||typeof address==='string')throw new Error('listen');
   const origin=`http://127.0.0.1:${address.port}`;
   return {...runtime,api,origin,publicOrigin,async prepare(){const job=runtime.preparations.submit(actor,'FTEST','open','test');await runtime.preparations.idle();return job.id;},

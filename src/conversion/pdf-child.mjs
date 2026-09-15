@@ -8,6 +8,9 @@ import { createPrintPage } from '../../.cache/studio-source/rhwp-studio/src/comm
 import { FONT_RULE_CANVAS2D_WEBFONT_RULES } from '../../.cache/studio-source/rhwp-studio/src/core/generated/font-rule-projections/webfont-supply.ts';
 console.log=console.info=console.warn=()=>{};
 let browser,doc;
+const [mode='pdf',first='0',last='0']=process.argv.slice(2);
+const start=Number(first),end=Number(last);
+if(!['pdf','preview','images'].includes(mode)||(mode!=='pdf'&&(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<1||end<start||end>10)))throw new Error('range');
 try {
   const chunks=[];let size=0;
   for await (const chunk of process.stdin) {size+=chunk.length;if(size>MAX_FILE_BYTES)throw new Error('size');chunks.push(chunk);}
@@ -16,7 +19,7 @@ try {
   doc=new HwpDocument(bytes);
   const count=doc.pageCount();if(count<1||count>MAX_PAGES)throw new Error('pages');
   const pages=[];let svgSize=0;
-  for(let i=0;i<count;i++) {
+  for(let i=mode==='images'?start-1:0;i<(mode==='images'?Math.min(end,count):count);i++) {
     const svg=doc.renderPageSvgWithProfile(i,'print');svgSize+=Buffer.byteLength(svg);
     if(svgSize>100*1024*1024)throw new Error('svg-size');
     const info=JSON.parse(doc.getPageInfo(i));
@@ -55,20 +58,22 @@ try {
   },{pages,fonts});
   await page.emulateMedia({media:'print'});
   await page.evaluate(async()=>{await document.fonts.ready;await Promise.all([...document.images].map(img=>img.decode().catch(()=>{})));});
-  const pdf=await page.pdf({preferCSSPageSize:true,printBackground:true,displayHeaderFooter:false});
-  if(process.argv.includes('--preview')) {
-    // Capture the same sanitized print DOM, with fonts loaded, at a bounded thumbnail scale.
-    await page.evaluate(()=>{
-      const first=document.querySelector('.page');
-      if(!first)throw new Error('page');
-      const rect=first.getBoundingClientRect();
-      const scale=Math.min(1,800/rect.width,1200/rect.height);
-      first.style.zoom=String(scale);
-    });
-    const png=await page.locator('.page').first().screenshot({type:'png',timeout:10_000});
-    if(png.length>5*1024*1024||pdf.length>50*1024*1024)throw new Error('preview-size');
-    const header=Buffer.alloc(8);header.writeUInt32BE(pdf.length,0);header.writeUInt32BE(png.length,4);
-    process.stdout.write(header);process.stdout.write(pdf);process.stdout.write(png);
-  } else process.stdout.write(pdf);
+  const pdf=mode==='images'?Buffer.alloc(0):await page.pdf({preferCSSPageSize:true,printBackground:true,displayHeaderFooter:false});
+  if(pdf.length>50*1024*1024)throw new Error('pdf-size');
+  if(mode==='pdf')process.stdout.write(pdf);
+  else {
+    const images=[];let total=0;
+    for(let number=start;number<=Math.min(end,count);number++){
+      const element=page.locator('.page').nth(mode==='images'?number-start:number-1);
+      await element.evaluate(el=>{const rect=el.getBoundingClientRect();el.style.zoom=String(Math.min(1,800/rect.width,1200/rect.height));});
+      const png=await element.screenshot({type:'png',timeout:10_000});total+=png.length;
+      if(png.length>5*1024*1024||total>25*1024*1024)throw new Error('preview-size');
+      images.push({page:number,png});
+    }
+    const manifest=Buffer.from(JSON.stringify({pageCount:count,pdfBytes:pdf.length,pages:images.map(({page,png})=>({page,bytes:png.length}))}));
+    const length=Buffer.alloc(4);length.writeUInt32BE(manifest.length);
+    process.stdout.write(length);process.stdout.write(manifest);process.stdout.write(pdf);
+    for(const {png} of images)process.stdout.write(png);
+  }
 } catch { process.exitCode=1; }
 finally {doc?.free();await browser?.close();}

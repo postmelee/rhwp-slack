@@ -8,7 +8,8 @@ export const HELP = [
   '/rhwp pdf <Slack 파일 링크> — PDF로 볼 문서 준비',
   '/rhwp help — 사용법',
   '카드의 문서 제목을 누르면 Studio 편집기가 열립니다. PDF로 보기는 Slack에 공유한 PDF로 연결합니다. 편집본은 새 파일로 저장합니다.',
-  '첫 페이지 이미지와 전체/지정 페이지 PNG·ZIP은 추후 제공됩니다.',
+  'HWP/HWPX 업로드 또는 @rhwp 멘션으로 스레드 미리보기를 만듭니다. 처음 3페이지를 보여주며 추가 페이지 보기로 앞 10페이지까지 펼칩니다.',
+  '이미지 단독·전체/지정 PNG·ZIP 명령은 추후 제공됩니다.',
 ].join('\n');
 export function parseFileLink(raw: string, workspaceHost: string): string {
   let value=raw.trim();

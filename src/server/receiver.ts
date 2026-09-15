@@ -1,7 +1,8 @@
+import {setTimeout as delay} from 'node:timers/promises';
 import {App, ExpressReceiver, LogLevel, type Logger} from '@slack/bolt';
 import type {Config} from './config';
 import {ID} from './config';
-import {assertActor, type Actor} from './access';
+import {assertActor, authorizeFile, type Actor} from './access';
 import type {SlackApi} from './slack-api';
 import {Preparations, type Job} from './jobs';
 import {HELP, parseCommand} from './commands';
@@ -23,7 +24,7 @@ function trigger(value:unknown):string {
   if (typeof value!=='string' || value.length<1 || value.length>256) throw new UserError('bad_trigger','요청 식별자가 올바르지 않습니다. 다시 요청하세요.');
   return value;
 }
-export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotIdentity,options:{download?:typeof import('./download').downloadFile;now?:()=>number;fetcher?:typeof fetch;convert?:ConstructorParameters<typeof import('./pdf-jobs').PdfJobs>[0]}={}) {
+export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotIdentity,options:{download?:typeof import('./download').downloadFile;now?:()=>number;fetcher?:typeof fetch;convert?:ConstructorParameters<typeof import('./pdf-jobs').PdfJobs>[0];convertImages?:ConstructorParameters<typeof import('./pdf-jobs').PdfJobs>[1]}={}) {
   const receiver=new ExpressReceiver({signingSecret:config.signingSecret,endpoints:'/slack/events',signatureVerification:true,
     processBeforeResponse:false,logger:quietLogger,bodyLimit:'256kb'});
   const app=new App({receiver,logger:quietLogger,ignoreSelf:false,authorize:async({teamId})=>{
@@ -94,6 +95,80 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
       await ack();
     } catch(error){await ack({response_action:'errors',errors:{document:userMessage(error)}});}
   });
+  // Keep file/share identifiers only; app_mention never fetches channel message history.
+  const observed=new Map<string,{team:string;channel:string;parent:string;file:string;expires:number}>();
+  const threadRequests=new Map<string,string>();
+  const clock=options.now??Date.now;
+  const remember=(who:Actor,fileId:string)=>{
+    for(const [key,item] of observed)if(item.expires<=clock())observed.delete(key);
+    const key=JSON.stringify([who.teamId,who.channelId,who.threadTs,fileId]);
+    if(observed.size>=1000&&!observed.has(key))observed.delete(observed.keys().next().value!);
+    observed.set(key,{team:who.teamId,channel:who.channelId,parent:who.threadTs!,file:fileId,expires:clock()+24*60*60_000});
+  };
+  const requestThread=(who:Actor,fileId:string)=>{
+    const key=JSON.stringify([who.teamId,who.channelId,who.threadTs,fileId]);
+    const previous=threadRequests.get(key),job=previous?preparations.get(previous):undefined;
+    if(job&&['queued','downloading','ready'].includes(job.state))return;
+    if(threadRequests.size>=1000)threadRequests.delete(threadRequests.keys().next().value!);
+    // Automatic file events and mentions from different members share one request.
+    const result=preparations.submit(who,fileId,'open','thread:'+key+':'+clock());
+    threadRequests.set(key,result.id);remember(who,fileId);
+  };
+  app.event('file_shared',async({body,event})=>{
+    if(!documents)return;const e=object(event);
+    if(e.user_id===botIdentity.botUserId||typeof e.file_id!=='string'||!ID.file.test(e.file_id)||typeof body.event_id!=='string'||!body.event_id)return;
+    let who:Actor;try{who=actor(body.team_id,e.user_id,e.channel_id);}catch{return;}
+    if(!replays.claim('file-shared:'+who.teamId+':'+body.event_id))return;
+    try{
+      const file=object((await api.call('files.info',{file:e.file_id})).file);
+      if(file.user===botIdentity.botUserId||file.id!==e.file_id||typeof file.name!=='string'||!/\.(hwp|hwpx)$/i.test(file.name))return;
+      const shares=object(file.shares);
+      const candidates=[object(shares.public??{})[who.channelId],object(shares.private??{})[who.channelId]].filter(Array.isArray).flat().map(object);
+      const valid=candidates.filter(s=>s.share_user_id!==botIdentity.botUserId&&s.team_id===who.teamId&&typeof s.ts==='string'&&/^\d+\.\d+$/.test(s.ts));
+      // File events omit a message ts. Never guess which of several shares owns the new reply.
+      if(valid.length!==1){await notice(who,'미리보기를 달 메시지를 특정하지 못했습니다. 해당 메시지 메뉴에서 한글 문서 열기를 선택해 주세요.');return;}
+      const share=valid[0],parent=share.thread_ts??share.ts;
+      if(typeof parent!=='string'||!/^\d+\.\d+$/.test(parent))return;
+      who.threadTs=parent;
+      requestThread(who,e.file_id);
+    }catch{/* No automatic public fallback or raw Slack error output. */}
+  });
+  app.event('app_mention',async({body,event})=>{
+    if(!documents)return;const e=object(event);let who:Actor|undefined;
+    try{
+      if(e.user===botIdentity.botUserId||e.bot_id||typeof body.event_id!=='string'||!body.event_id)return;
+      who=actor(body.team_id,e.user,e.channel);
+      const parent=e.thread_ts??e.ts;if(typeof parent!=='string'||!/^\d+\.\d+$/.test(parent))denied();
+      who.threadTs=parent;
+      if(!replays.claim('mention:'+who.teamId+':'+body.event_id))return;
+      let files:string[]=[];
+      if(Array.isArray(e.files))files=candidatesFrom(e.files).map(f=>f.id);
+      else {
+        // file_shared and app_mention may arrive in either order.
+        for(let attempt=0;attempt<5;attempt++){
+          files=[...observed.values()].filter(item=>item.expires>clock()&&item.team===who!.teamId&&item.channel===who!.channelId&&item.parent===parent).map(item=>item.file);
+          if(files.length)break;
+          if(attempt<4)await delay(250);
+        }
+      }
+      if(!files.length){await notice(who,'HWP/HWPX 파일과 함께 @rhwp를 멘션해 주세요. 이전 파일은 해당 메시지 메뉴의 한글 문서 열기로 요청할 수 있습니다.');return;}
+      if(files.length>10)throw new UserError('too_many_files','한 번에 문서 10개까지 요청할 수 있습니다. 메시지 메뉴에서 문서를 선택해 주세요.');
+      for(const fileId of new Set(files)){
+        await authorizeFile(api,config,who,fileId);
+        requestThread(who,fileId);
+      }
+    }catch(error){if(who)await notice(who,userMessage(error)).catch(()=>{});}
+  });
+  app.action('rhwp_more_pages',async({body,action,ack})=>{
+    await ack();if(!documents)return;let who:Actor|undefined;
+    try{
+      const b=object(body),a=object(action),container=object(b.container);
+      who=actor(object(b.team).id,object(b.user).id,container.channel_id);
+      if(container.type!=='message'||typeof container.message_ts!=='string'||typeof a.value!=='string')denied();
+      if(b.channel&&object(b.channel).id!==who.channelId)denied();
+      await documents.morePages(a.value,who,container.message_ts);
+    }catch(error){if(who)await notice(who,userMessage(error)).catch(()=>{});}
+  });
   app.event('entity_details_requested',async({body,event})=>{
     if(!documents)return;let who:Actor|undefined;
     try {
@@ -120,7 +195,7 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
   for(const type of ['file_deleted','file_unshared'] as const) app.event(type,async({body,event})=>{
     if(body.team_id!==config.teamId || typeof body.event_id!=='string' || !body.event_id || !replays.claim(`event:${body.team_id}:${body.event_id}`))return;
     const e=object(event);const fileId=e.file_id;
-    if(typeof fileId==='string'&&ID.file.test(fileId)){preparations.invalidate(body.team_id,fileId);documents?.invalidate(body.team_id,fileId);}
+    if(typeof fileId==='string'&&ID.file.test(fileId)){for(const [key,item] of observed)if(item.team===body.team_id&&item.file===fileId)observed.delete(key);preparations.invalidate(body.team_id,fileId);documents?.invalidate(body.team_id,fileId);}
   });
   app.error(async()=>{}); // No raw payload/token logging; callers receive safe errors above.
   receiver.router.get('/healthz',(_req,res)=>{res.json({ok:true});});
