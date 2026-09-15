@@ -309,3 +309,46 @@ Linux 2 GiB 검사는 서버만 실행해도 실제 PDF 중 OOM으로 실패했�
 - 검증: 실제 Slack 파일 요소 클릭과 내부 PDF 표시, 댓글 수, 썸네일 표시, 수정본 재열기·다시 저장; 보안/재시도 회귀; npm run check; Linux smoke. 실제 클라이언트의 렌더링 제약은 결과와 구분해 보고한다.
 
 Stage 6.1 결과: [수정본 카드·미리보기 통합 보고서](../working/task_m010_1_stage6.1.md). 실제 Slack 썸네일 카드가 내부 필드를 가리는 제약을 확인해 PDF 링크를 같은 메시지 상단의 mrkdwn 파일 링크로 보정했다. 웹·macOS 데스크톱 내부 열람과 두 번 저장/두 댓글을 확인했다.
+
+## Stage 6.2 — 썸네일 카드 동작 검증 (설계 확인 중)
+
+사용자가 큰 썸네일 카드를 유지하면서 하단 버튼을 요청했고, 후속으로 제목·이미지는 Slack PDF, 하단 “문서 편집”은 Slack 내부 Studio를 여는 구성을 문의했다. 기준 `9a9b36e`에서 합성 카드로 검증했다. 제품 구현은 Stage 6.1을 유지하며, 준비했던 하단 PDF 버튼 변경은 보류했다.
+
+- 공식 파일 deep link를 footer URL로 사용하면 macOS Slack에서 PDF 파일 상세 패널이 열린다. PDF 뷰어까지는 추가 클릭이 필요하다. 웹에서는 새 빈 탭과 데스크톱 앱 호출이 발생하여 웹 내부 한 번 열기를 충족하지 못했다.
+- 일반 버튼에서 `entity.presentDetails`를 즉시 호출한 실제 웹 검증: `invalid_trigger_id`, API 왕복 407ms. 같은 합성 카드의 제목 클릭 이벤트로 같은 metadata를 전달하면 성공(532/533ms)했고 Slack 내부 iframe에 합성 화면이 표시되었다. 문서 다운로드·권한 조회 지연 없이도 버튼 경로가 거절되므로 현재 경로로 역할을 뒤집는 구성을 제공할 수 있다고 주장하지 않는다.
+- `full_size_preview`의 application/pdf는 공식 지원되지만 실제 비공개 PDF 전달·만료 URL·CORS 구현은 이번 검증에서 수행하지 않았다. 기존 Slack PDF 링크 열람과 이 방식을 구분한다.
+- 합성 검증 메시지: https://rhwphq.slack.com/archives/C0C1X3ENGD8/p1789466826096809 . 임시 harness는 `.cache/slack/probe-edit-action.mts`, 보류 patch는 `.cache/slack/stage62-pdf-footer-deferred.patch` (모두 git ignored). 사용자 실문서는 사용하지 않았다.
+- 공식 근거: https://docs.slack.dev/messaging/work-objects-implementation/ 및 https://docs.slack.dev/reference/methods/entity.presentDetails/ . 이 결과는 시험한 Work Object footer 경로의 제약이며 모든 Slack 통합 방식의 불가능성을 뜻하지 않는다.
+
+
+### Stage 6.2 하단 편집 진입 재검증 — 2026-09-15
+
+사용자가 채팅 카드의 제목·미리보기는 Slack PDF, 하단 “문서 편집”은 내부 Studio를 여는 구성을 다시 검증해 달라고 요청했다. 같은 합성 HWP와 비공개 테스트 채널에서 일반 버튼·처리 표시 옵션·이미 열린 상세 패널을 비교했다. 제품 소스 기준은 `9a9b36e`이며 이번에는 제품 소스를 바꾸지 않았다.
+
+| 실행 경로 | 실제 결과 | 대조 근거 |
+| --- | --- | --- |
+| 채팅 카드 하단 일반 버튼 (`message_attachment`) | `entity.presentDetails`: `invalid_trigger_id`, API 354 ms | 같은 trigger의 `views.open`은 264 ms에 성공, Slack 대화상자 직접 확인. API 완료까지 클릭 후 1,075 ms |
+| 채팅 카드 하단 `processing_state` 버튼 | `invalid_trigger_id`, API 316 ms | 같은 trigger의 `views.open`은 262 ms에 성공. API 완료까지 클릭 후 490 ms |
+| 제목으로 상세 패널 열기 | `entity.presentDetails` 성공, 397 ms | 실제 Slack 상세 패널에 두 버튼 표시 |
+| 이미 열린 상세 패널의 일반 버튼 (`entity_detail`) | `entity.presentDetails` 성공, 381 ms | 최초 시도는 뒤이어 발생한 `entity_details_requested`에 기본 metadata를 반환하여 iframe 진입 판정에서 제외 |
+| 상세 패널 버튼 → 실제 Studio | 버튼 API 326 ms, 후속 상세 이벤트 API 302 ms에 성공 | 다음 상세 이벤트에도 편집 metadata를 반환하니 Slack 내부 iframe에 Studio·합성 HWP 두 페이지·저장 버튼 표시 |
+
+- 일반 버튼의 클릭 식별자가 통째로 잘못되었거나 만료된 상황과, Work Object 상세 열기 API가 버튼 경로를 거절하는 상황을 구분했다. `views.open` 대조는 같은 클릭 trigger로 수행했다.
+- 내부 Studio 수용은 macOS Slack에서 확인했다. 기존 production `authorizeFile`·다운로드·세션 발급·ticket 교환·원본 조회 경로를 사용했다. 시험용 카드 상태만 ignored harness에서 주입했고, 원본 SHA-256 `176179dea7ddccc397b0497a980e8a2ea1dd2dfe576f5fbee8b8cdf3f995325c`를 고정 대조했다. 실제 저장은 이번 재검증 범위가 아니며 Stage 6.1의 저장 검증과 구별한다.
+- 판정: **이미 열린 상세 패널의 하단 버튼은 실제 Studio 진입이 가능하다. 채팅 카드 하단에서 한 번 클릭해 곧바로 내부 Studio를 여는 요청 조합은 이번 실측에서 성립하지 않았다.** 상세 패널 경로의 성공을 채팅 카드 경로의 성공으로 확대하지 않는다. 웹·모바일 및 별도 remote-file 연계는 이번 추가 검증 범위가 아니다.
+- 공식 [action 처리 문서](https://docs.slack.dev/messaging/work-objects-implementation/#handling-block_actions-events)는 `message_attachment`와 `entity_detail`을 구분하고, 상세 패널 action 이후 `entity.presentDetails`로 갱신하는 흐름을 설명한다. [API 문서](https://docs.slack.dev/reference/methods/entity.presentDetails/)와 실제 응답을 함께 근거로 사용했다.
+- 증적은 git ignored `.cache/slack/recheck-edit-button-results.ndjson`, `.cache/slack/recheck-edit-button.mts`, `.cache/slack/recheck-studio-desktop.png`다. 결과 로그에는 trigger·ticket·token·원문 payload를 기록하지 않았다. 임시 댓글과 검증 receiver는 정리하고 기존 서버로 복구한다.
+
+
+## Stage 6.3 — 스레드 자동 미리보기·3→10페이지 PNG (승인됨)
+
+사용자의 “그렇게 해서 우선 구현해봐줘. 내가 테스트할 수 있게도 해줘.”를 기본 3페이지 미리보기, 추가 페이지 요청 시 최대 10페이지, 작은 편집용 Work Object 및 실제 테스트 연결의 구현·검증 승인으로 적용한다. 기존 이슈 #1/M010과 local/task1에서 이어간다.
+
+- 원본 HWP/HWPX를 포함해 전송한 메시지를 감지하고 메시지 ts 또는 기존 thread_ts에 한 댓글을 게시한다. 자동 답글은 채널로 동시 게시하지 않는다. bot 메시지·메시지 수정·다른 workspace/허용 밖 채널은 자동 변환하지 않는다. 이벤트 ID와 메시지/파일 ID로 재전송을 중복 제거한다. 정확한 원본 스레드 식별을 위해 message.channels/message.groups와 필요한 history scope를 사용한다. 기존 앱 설정에 반영하고 재설치 후 실제 수신을 검증한다.
+- 댓글 본문은 파일명·전체 페이지 수·Slack PDF permalink, 1-based 페이지 PNG, 최대 10페이지까지 추가하는 동작으로 구성한다. 편집용 Work Object는 썸네일을 제거해 작게 유지하며 제목 클릭으로 내부 Studio를 연다. 공개 PDF URL이나 일반 버튼으로 Studio를 강제 여는 경로는 사용하지 않는다. PNG 이미지 클릭은 이미지 열람이며 PDF는 본문 링크로 연다.
+- 초기 변환은 파싱/print DOM을 한 번 준비해 PDF와 첫 3페이지 PNG를 만든다. PDF와 첫 PNG를 우선 업로드·표시하고 남은 기본 PNG를 같은 댓글에 갱신한다. 추가 요청은 같은 원본/revision에서 아직 없는 페이지를 최대 10까지 생성하고 같은 메시지만 갱신한다. 동시 클릭·업로드 재확인의 상태를 결속하고 이미 업로드한 페이지를 중복 생성/게시하지 않는다.
+- 원본/수정본의 권한·root revocation·메모리 보관 수명·서명/인증 경계는 유지한다. 변환은 기존 격리된 worker와 공유 큐, PNG별 5 MiB·합계 25 MiB·최대 10페이지·800×1200, PDF 50 MiB 한도 안에서 실행한다. 이미지 실패가 이미 공유한 PDF나 HWP 저장 성공을 취소하지 않는다.
+- 문서 위치는 기존 README.md, docs/development.md, docs/architecture.md, mydocs/orders/20260915.md, 본 계획서 및 mydocs/working/task_m010_1_stage6.3.md를 사용한다. 최종 보고서는 기존 mydocs/report/task_m010_1_report.md에 후속 결과만 갱신한다. 기존 제품 문서 루트 선택을 유지한다.
+- 검증은 변환 페이지 범위·상한·출력 연결, 최초 3/확장 10/짧은 문서, 동시 클릭·실패 후 같은 업로드 재확인, 잘못된 채널·메시지·root 접근 거절, 이벤트 중복/스레드와 bot 재귀 방지를 포함한다. npm run check, Linux smoke, 실제 Slack 합성 12페이지 문서에서 원본→자동 댓글→추가 페이지→PDF→Studio를 확인하고 사용자용 테스트 입력/메시지를 준비한다. 불확실한 혼합 메시지 레이아웃은 실제 앱에서 확인해 보정한다.
+
+계획 커밋: `Task #1 [Stage 6.3]: 스레드 자동 미리보기와 페이지 확장 계획`. 구현/보고 커밋: `Task #1 [Stage 6.3]: 자동 스레드 미리보기와 3→10페이지 PNG`. 원격 push·PR·이슈 close는 이번 범위에 포함하지 않는다.
