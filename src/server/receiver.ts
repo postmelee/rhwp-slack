@@ -7,6 +7,9 @@ import {Preparations, type Job} from './jobs';
 import {HELP, parseCommand} from './commands';
 import {Replays} from './replays';
 import {Selections, candidatesFrom, selectionView} from './shortcuts';
+import {Documents} from './documents';
+import {Saves} from './saves';
+import {editorRoutes} from './editor-routes';
 import {denied, userMessage, object, UserError} from './errors';
 // Bolt logs may contain request bodies or SDK response metadata. Do not forward their arguments.
 const quietLogger:Logger={debug(){},info(){},warn(){},error(){},setLevel(){},getLevel(){return LogLevel.ERROR;},setName(){}};
@@ -20,7 +23,7 @@ function trigger(value:unknown):string {
   if (typeof value!=='string' || value.length<1 || value.length>256) throw new UserError('bad_trigger','요청 식별자가 올바르지 않습니다. 다시 요청하세요.');
   return value;
 }
-export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotIdentity,options:{download?:typeof import('./download').downloadFile;now?:()=>number}={}) {
+export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotIdentity,options:{download?:typeof import('./download').downloadFile;now?:()=>number;fetcher?:typeof fetch;convert?:ConstructorParameters<typeof import('./pdf-jobs').PdfJobs>[0]}={}) {
   const receiver=new ExpressReceiver({signingSecret:config.signingSecret,endpoints:'/slack/events',signatureVerification:true,
     processBeforeResponse:false,logger:quietLogger,bodyLimit:'256kb'});
   const app=new App({receiver,logger:quietLogger,ignoreSelf:false,authorize:async({teamId})=>{
@@ -31,13 +34,16 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
   const replays=new Replays(options.now);
   const notice=async(actor:Actor,text:string)=>{await api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text});};
   const notify=async(job:Readonly<Job>)=>{
-    // No links/tickets are published until Stage 5 supplies the actual delivery adapter.
+    if(job.state==='ready'&&documents){try{await documents.publish(job);}catch(error){await notice(job.actor,userMessage(error));}return;}
     const text=job.state==='ready'
       ? `문서 접근 확인을 마쳤습니다. ${job.mode==='pdf'?'PDF 미리보기':'Slack 편집기'} 연결은 아직 사용할 수 없습니다.`
       : job.error??'문서 준비에 실패했습니다.';
     await notice(job.actor,text);
   };
   const preparations=new Preparations(config,api,{download:options.download,now:options.now,notify});
+  const documents=config.publicOrigin?new Documents(config,api,preparations,options):undefined;
+  const saves=documents?new Saves(documents,options.now):undefined;
+  if(documents&&saves)receiver.router.use(editorRoutes(config.publicOrigin!,documents,saves));
   const actor=(team:unknown,user:unknown,channel:unknown):Actor=>{
     if(typeof team!=='string'||typeof user!=='string'||typeof channel!=='string')denied();
     const result={teamId:team,userId:user,channelId:channel};assertActor(config,result);return result;
@@ -66,6 +72,9 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
     try {
       if(shortcut.type!=='message_action')return;
       who=actor(shortcut.team?.id,shortcut.user.id,shortcut.channel.id);
+      const threadTs=shortcut.message.thread_ts??shortcut.message_ts;
+      if(typeof threadTs!=='string'||!/^\d+\.\d+$/.test(threadTs))denied();
+      who.threadTs=threadTs;
       const files=candidatesFrom(shortcut.message.files);
       const requestId=trigger(shortcut.trigger_id);
       const replayKey=JSON.stringify([who.teamId,who.userId,who.channelId,requestId]);
@@ -85,13 +94,35 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
       await ack();
     } catch(error){await ack({response_action:'errors',errors:{document:userMessage(error)}});}
   });
+  app.event('entity_details_requested',async({body,event})=>{
+    if(!documents)return;let who:Actor|undefined;
+    try {
+      const e=object(event);who=actor(body.team_id,e.user,e.channel);
+      const ref=object(e.external_ref);if(ref.type!=='document'||typeof ref.id!=='string'||e.entity_url!==documents.url(ref.id))denied();
+      if(typeof body.event_id!=='string'||!replays.claim(`entity:${body.team_id}:${body.event_id}`))return;
+      await documents.present(ref.id,who,trigger(e.trigger_id));
+    }catch(error){if(who)await notice(who,userMessage(error)).catch(()=>{});}
+  });
+  for(const actionId of ['rhwp_open','rhwp_pdf'])app.action(actionId,async({body,action,ack})=>{
+    await ack();if(!documents)return;let who:Actor|undefined;
+    try {
+      const b=object(body),a=object(action),container=object(b.container);
+      who=actor(object(b.team).id,object(b.user).id,container.channel_id);
+      if(typeof a.value!=='string'||object(container.external_ref).id!==a.value||container.entity_url!==documents.url(a.value))denied();
+      if(b.channel&&object(b.channel).id!==who.channelId)denied();
+      if(actionId==='rhwp_open'){
+        const t=trigger(b.trigger_id);if(!replays.claim(`open:${who.teamId}:${t}`))return;
+        await documents.present(a.value,who,t);
+      }else await documents.authorize(a.value,who);
+    }catch(error){if(who)await notice(who,userMessage(error)).catch(()=>{});}
+  });
   for(const type of ['file_deleted','file_unshared'] as const) app.event(type,async({body,event})=>{
     if(body.team_id!==config.teamId || typeof body.event_id!=='string' || !body.event_id || !replays.claim(`event:${body.team_id}:${body.event_id}`))return;
     const e=object(event);const fileId=e.file_id;
-    if(typeof fileId==='string'&&ID.file.test(fileId))preparations.invalidate(body.team_id,fileId);
+    if(typeof fileId==='string'&&ID.file.test(fileId)){preparations.invalidate(body.team_id,fileId);documents?.invalidate(body.team_id,fileId);}
   });
   app.error(async()=>{}); // No raw payload/token logging; callers receive safe errors above.
   receiver.router.get('/healthz',(_req,res)=>{res.json({ok:true});});
-  const sweep=setInterval(()=>{preparations.sweep();selections.sweep();replays.sweep();},60_000);sweep.unref();
-  return {receiver,app,preparations,selections,async close(){clearInterval(sweep);await preparations.close();}};
+  const sweep=setInterval(()=>{preparations.sweep();selections.sweep();replays.sweep();documents?.sweep();saves?.sweep();},60_000);sweep.unref();
+  return {receiver,app,preparations,selections,documents,saves,async close(){clearInterval(sweep);await preparations.close();await documents?.close();await saves?.close();}};
 }

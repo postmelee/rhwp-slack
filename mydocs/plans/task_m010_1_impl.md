@@ -260,3 +260,17 @@ Dockerfile/.dockerignore/check script, 문서 갱신, Stage 6·최종 보고서.
 - 이번 Stage의 ready는 원본 bytes 확인 완료다. 실제 Studio 세션·Work Object·PDF 업로드는 Stage 5다. 현재 실행 시 최종 연결 미제공을 명확히 안내하고 동작하지 않는 편집/PDF 링크를 만들지 않는다.
 - 현 저장소에는 자격 증명이 없다. 실제 Slack에 메시지를 보내거나 앱 설정을 변경하지 않고, 실제 Bolt receiver와 합성 Slack API를 사용해 서명 및 흐름을 검증한다. 비밀값은 채팅으로 요청하지 않는다.
 - 승인된 제품 문서 위치 `docs/development.md`에 앱 manifest 설정·실행·제약·검증을 작성한다. 기존 README·dependencies·계획·orders를 갱신한다.
+
+
+## Stage 5 진입 승인
+
+사용자의 “진행해줘”를 Stage 4 결과 확인과 Stage 5 구현 승인으로 적용한다. 기준 `6c028e0`에서 Work Object 카드·편집 세션·실제 업로드 adapter·PDF 공유·편집본 저장을 구현한다. 실제 Slack 자격 증명·HTTPS 주소가 없는 동안 네트워크 쓰기는 합성 API로 검증하며 Slack 실제 수용은 구분한다.
+
+- 카드에는 원본 식별 ID와 편집 지원 metadata만 넣는다. 요청 사용자와 채널을 확인한 클릭에서만 60초 일회성 ticket을 발급하고, 교환 후 10분 idle·최대 60분의 메모리 bearer 세션을 사용한다. 이전 15분 idle 계획은 Slack 권고를 반영해 10분으로 줄인다.
+- 원본·저장·저장 결과 조회에서 매번 권한을 확인한다. 문서 복구 및 브라우저 영속 token 저장은 금지한다.
+- Slack 파일 업로드는 파일 ID별 완료 시도를 한 번만 수행한다. 완료 응답이 불확실하면 같은 파일의 공유 상태를 조회하며 새 HWP를 자동 중복 업로드하지 않는다. 클라이언트는 동일 저장 요청 ID와 bytes로 확인을 재시도한다.
+- 저장할 export 전후 문서 epoch/changeSeq/hash를 검사한다. 서버 저장 성공 후 Studio 내부의 동기 비교와 clean 처리를 같은 실행 단계에 묶어 추가 편집이 clean으로 지워지지 않게 한다.
+- 상단 메뉴는 재도입하지 않는다. 실제 세션에만 작은 저장 동작·결과 영역을 제공한다. PDF 생성은 원본 편집 진입 및 HWP 저장 성공과 분리한다.
+- 기존 공식 문서 위치 docs/architecture.md, docs/development.md, README, dependencies를 사용한다. 계획·orders·Stage 5 보고서는 기존 mydocs 경로를 사용한다.
+
+Stage 5 구현·검증 결과는 [Stage 5 보고서](../working/task_m010_1_stage5.md)에 기록했다. Node 41개·브라우저 16개 정상 통과, 기존 B-004 expected-failure 1개를 재현했다. 실제 Slack 수용은 Stage 6에서 별도 확인한다.

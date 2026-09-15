@@ -1,6 +1,6 @@
 import {setTimeout as delay} from 'node:timers/promises';
 import {UserError, object} from './errors';
-export type Method = 'auth.test' | 'conversations.info' | 'conversations.members' | 'files.info' | 'chat.postEphemeral' | 'views.open';
+export type Method = 'auth.test' | 'conversations.info' | 'conversations.members' | 'files.info' | 'chat.postEphemeral' | 'views.open' | 'chat.postMessage' | 'chat.update' | 'entity.presentDetails' | 'files.getUploadURLExternal' | 'files.completeUploadExternal';
 export interface SlackApi {call(method: Method, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>>;}
 const reads = new Set<Method>(['auth.test','conversations.info','conversations.members','files.info']);
 export async function readBounded(response: Response, limit: number): Promise<Buffer> {

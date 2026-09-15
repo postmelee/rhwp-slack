@@ -46,10 +46,12 @@ SDK integrity: `sha512-Hc/rHrQrgZqJ2OSWNsPd/8tKyfnLer8M9r+U81yphJ7O8LaXLuv5A2yUu
 
 고정 rhwp core의 `renderPageSvgWithProfile(page, 'print')`와 Studio의 `print-pages.ts`를 재사용해 페이지 크기 및 SVG ID를 분리하고 Chromium의 PDF 출력으로 저장합니다. native `rhwp export-pdf`/hwp2pdf CLI를 호출하는 구현은 아닙니다. 폰트 공급 목록은 같은 Studio의 생성된 `FONT_RULE_CANVAS2D_WEBFONT_RULES` 중 로컬 항목만 사용합니다. 브라우저 컨텍스트의 외부 네트워크는 차단하며 사용자 SVG는 DOM으로 파싱하고 실행 요소를 제거합니다.
 
-Stage 3.1에서 별도 PDF.js 열람 화면과 직접 의존성·배포 자산을 제거했습니다. PDF 열람은 후속 Slack 연동의 PDF 첨부 미리보기로 제공하며 서버 변환 구현은 유지합니다. 변환 runtime은 개발 의존성인 Playwright/tsx도 필요합니다. Linux 배포 이미지 의존성 분류는 Stage 6에서 확정합니다.
+Stage 3.1에서 별도 PDF.js 열람 화면과 직접 의존성·배포 자산을 제거했습니다. Stage 5의 PDF 열람 adapter는 Slack PDF 첨부 permalink로 연결하며 서버 변환 구현을 유지합니다. 실제 클라이언트 기본 미리보기 동작은 별도 확인이 필요합니다. 변환 runtime은 개발 의존성인 Playwright/tsx도 필요합니다. Linux 배포 이미지 의존성 분류는 Stage 6에서 확정합니다.
 
 Chromium PDF의 생성 시각은 달라질 수 있어 산출물 byte 재현성을 주장하지 않습니다. 원본 font가 로컬 공급 목록에 없으면 대체 font를 사용하므로 한컴 출력과의 동일성은 별도 검증 대상입니다.
 
 ## Slack 서버
 
 `@slack/bolt@5.1.0`을 정확한 버전으로 고정하고 전이 의존성은 앱 lockfile로 관리합니다. 공식 ExpressReceiver의 서명 검증을 활성화합니다. 원본·토큰을 담을 수 있는 SDK 로그는 출력하지 않습니다. 업무 API 호출은 고정 Slack HTTP 주소와 제한된 읽기 재시도 정책을 사용하는 `src/server/slack-api.ts`로 모읍니다. 실제 workspace API 응답 수용 여부는 합성 계약 테스트와 구분합니다.
+
+Stage 5 overlay는 Studio 내부에서 documentEpoch·changeSeq·documentSha256를 동기 비교한 직후 clean 처리하는 `notifySavedIfUnchanged`를 추가합니다. 일반 SDK notifySaved의 무조건 clean 처리를 저장 경쟁 조건에 직접 사용하지 않습니다. 저장 입력은 별도 Node 프로세스에서 core로 파싱하고 200페이지 상한을 확인합니다. 추가 npm 의존성은 없습니다.

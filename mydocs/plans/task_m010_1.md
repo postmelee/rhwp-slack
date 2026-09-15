@@ -6,7 +6,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 작성일: 2026-09-15 (Asia/Seoul)
 
-상태: Stage 1·2 완료. 사용자의 PDF 기본 열람·Studio 편집 분리 변경 승인으로 Stage 3을 구현한다.
+상태: Stage 1·2·3·3.1·4·5 구현·검증 완료. 실제 Slack 수용은 미검증이며 Stage 6 Linux 실행·통합 인계가 남아 있다.
 
 ## 목적
 

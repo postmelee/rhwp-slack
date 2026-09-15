@@ -2,14 +2,14 @@
 
 Slack에서 HWP/HWPX를 편집하고 `/rhwp` 명령으로 PDF와 PNG를 만들기 위한 비공개 프로젝트입니다.
 
-## 현재 구현 — Stage 4
+## 현재 구현 — Stage 5
 
 - **문서 열기**: PDF 중간 화면 없이 자체 호스팅 rhwp-studio 편집기로 바로 진입합니다. 기존 `/viewer/` 주소도 `/editor/`로 이동합니다.
 - 편집기는 화면 전체를 사용합니다. 별도 상단 메뉴·보기/편집 전환·PDF.js 화면을 제거했고 Studio 메뉴·툴바는 유지합니다. 파일명과 미저장 표시(`*`)는 브라우저 탭 제목, 변경 상태는 접근성 안내로 제공합니다. 로딩·오류 안내는 필요할 때만 표시합니다.
 - **서버 PDF 변환**: HWP/HWPX를 실제 PDF로 만드는 기능을 유지합니다. 원본 PDF는 미저장 편집에 따라 바뀌지 않습니다.
 - 이전 문서 복구·자동 저장·최근 문서·영속 이력을 비활성화합니다. 테스트 파일 선택은 개발 빌드의 `?devtools=1`에서만 표시하며 문서를 열면 닫힙니다.
 
-### Slack 연결 규칙 (연동 예정)
+### Slack 연결 규칙
 
 | 버튼 | 동작 |
 | --- | --- |
@@ -19,9 +19,11 @@ Slack에서 HWP/HWPX를 편집하고 `/rhwp` 명령으로 PDF와 PNG를 만들�
 
 `/rhwp open`과 `/rhwp edit`는 Studio, `/rhwp pdf`는 Slack PDF 미리보기로 연결합니다. PDF 준비 중이나 실패 시에는 상태를 안내하고, 완료 후에만 PDF 링크를 제공합니다. PDF 준비 여부가 편집 진입을 막지 않도록 합니다. 썸네일 도입 시 PDF도 함께 미리 준비합니다. Slack 기본 미리보기가 링크 클릭으로 열리는 동작은 실제 웹·데스크톱에서 검증해야 합니다.
 
-**Stage 4의 Slack 수신 서버를 구현했습니다.** `/rhwp open`·`edit`·`pdf`·`help`, 메시지의 다중 파일 선택, 서명·채널 참여·공유 권한 검사, 인증 다운로드와 임시 보관을 처리합니다. 설치 설정은 [Slack 개발 서버 문서](docs/development.md)를 따릅니다.
+**Slack 수신 서버와 Work Objects·편집본 저장 adapter를 구현했습니다.** `/rhwp open`·`edit`·`pdf`·`help`, 메시지의 다중 파일 선택, 서명·채널 참여·공유 권한 검사, 인증 다운로드와 임시 보관을 처리합니다. 설치 설정은 [Slack 개발 서버 문서](docs/development.md)를 따릅니다.
 
-현재 명령은 원본 준비까지 처리하며 Slack 내부 편집·PDF 미리보기 링크는 아직 제공하지 않습니다. Work Objects·PDF 공유·편집본 새 파일 저장은 **Stage 5**입니다. 실제 workspace 설치와 웹·데스크톱 동작은 미검증이며 썸네일·전체/지정 PNG·ZIP은 후속 task입니다.
+카드 클릭에서 일회용 ticket을 발급하고 인증된 원본을 Studio로 전달합니다. 실제 세션에는 **편집본을 Slack에 저장** 버튼을 표시하며, 원래 대화에 새 HWP/HWPX를 공유한 뒤 그 편집본의 PDF를 생성합니다. 저장 중 추가 변경은 미저장 상태로 남깁니다. [인증·저장 구조](docs/architecture.md)를 참고하세요.
+
+실제 workspace 설치와 Slack 웹·데스크톱 동작은 미검증입니다. Linux 실행·실제 Slack 수용은 Stage 6, 썸네일·전체/지정 PNG·ZIP은 후속 task입니다.
 
 ## 로컬 실행
 
@@ -63,7 +65,7 @@ Linux 브라우저 의존성은 `npm exec playwright install --with-deps chromiu
 ## 알려진 한계
 
 - 실제 Slack 웹·데스크톱 embeds와 클립보드, OS 인쇄·다운로드는 미검증입니다. SDK는 opaque origin을 거절하므로 Slack의 `allow-same-origin` 설정이 필요합니다.
-- 편집 내용은 이 창의 메모리에만 존재합니다. 새로고침하거나 창을 닫으면 없어집니다. Slack 저장은 아직 연결하지 않았으며 export만으로 저장 완료 상태를 만들지 않습니다.
+- 편집 내용은 이 창의 메모리에만 존재합니다. 새로고침하거나 창을 닫으면 없어집니다. Slack 저장 버튼이 성공한 편집본만 서버에 공유합니다. export만으로 저장 완료 상태를 만들지 않으며, 저장 결과가 불확실하면 같은 요청으로 재확인합니다.
 - 입력은 20 MiB, 파싱 후 200페이지로 제한합니다. 편집 SDK 요청 시간 제한 60초는 WASM의 강제 종료나 메모리 상한을 보장하지 않습니다. 서버 PDF 변환은 별도 파서와 Chromium 프로세스에 60초 deadline을 적용하고 종료합니다. 출력은 50 MiB, 동시 변환은 1개, 문서 보관 총량은 200 MiB입니다. Studio는 이전 Stage 1의 전용 worker와 실행 구조가 다릅니다.
 - Studio 0.8.6에서 혼합 서식을 전체 선택해 굵게를 변경한 뒤 취소하면 이전 굵기·문단/표 배치가 달라지는 사례가 있습니다. 해당 기대값을 유지하는 known-failure 테스트로 추적합니다.
 - 모든 Studio 기능과 원본 한컴 출력 일치를 보장하지 않습니다. HWP3·암호화 파일은 지원 범위 밖입니다.
@@ -74,7 +76,7 @@ Linux 브라우저 의존성은 `npm exec playwright install --with-deps chromiu
 
 - `src/editor/`: 전체 화면의 공식 Studio SDK 호스트, 로딩·오류·접근성 상태.
 - `src/conversion/`: 고정 print SVG → Chromium PDF, 부모 프로세스의 수명 제어.
-- `src/server/`: Slack 명령 수신·권한·다운로드·비동기 준비. `dev-documents.mjs`는 독립된 로컬 개발 API.
+- `src/server/`: Slack 명령·Work Objects·권한·세션·다운로드·새 파일 저장·PDF 공유. `dev-documents.mjs`는 독립된 로컬 개발 API.
 - `studio/`: upstream 고정 정보, Slack 전용 빌드 정책, 비영속 저장소 adapter.
 - `src/shared/`: 입력·페이지 계약.
 - `scripts/`: 고정 소스 준비·빌드, fixture 생성, 로컬 서버.

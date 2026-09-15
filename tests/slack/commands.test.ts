@@ -8,7 +8,7 @@ test('command aliases preserve direct Studio and PDF intent; Korean Slack file l
   const link='https://rhwp-test.slack.com/files/UTEST/FTEST/'+encodeURIComponent('업무보고.hwp');
   for(const cmd of ['open','edit','pdf'])assert.deepEqual(parseCommand(`${cmd} <${link}|업무 보고.hwp>`,config.workspaceHost),{kind:'prepare',mode:cmd==='pdf'?'pdf':'open',fileId:'FTEST'});
   assert.deepEqual(parseCommand('',config.workspaceHost),{kind:'help'});
-  assert.match(HELP,/아직 사용할 수 없습니다/);
+  assert.match(HELP,/편집본은 새 파일로 저장/);
   for(const text of ['png x --page 3','thumbnail x','open','unknown x','help extra'])assert.throws(()=>parseCommand(text,config.workspaceHost));
 });
 test('file links reject foreign hosts, messages, credentials, ports and ambiguous paths',()=>{
@@ -29,7 +29,7 @@ test('file links reject foreign hosts, messages, credentials, ports and ambiguou
 test('configuration rejects missing/invalid settings without printing secret values',()=>{
   assert.throws(()=>loadConfig({}),/SLACK_CHANNEL_IDS/);
   assert.throws(()=>loadConfig({SLACK_CHANNEL_IDS:'CTEST',SLACK_SIGNING_SECRET:'private-value'}),e=>e instanceof Error&&!e.message.includes('private-value'));
-  const result=loadConfig({SLACK_CHANNEL_IDS:'CTEST, CPRIVATE',SLACK_SIGNING_SECRET:'a'.repeat(32),SLACK_BOT_TOKEN:'xoxb-test',SLACK_TEAM_ID:'TTEST',SLACK_APP_ID:'ATEST',SLACK_WORKSPACE_HOST:'rhwp-test.slack.com'});
+  const result=loadConfig({APP_ORIGIN:'https://editor.example.com',SLACK_CHANNEL_IDS:'CTEST, CPRIVATE',SLACK_SIGNING_SECRET:'a'.repeat(32),SLACK_BOT_TOKEN:'xoxb-test',SLACK_TEAM_ID:'TTEST',SLACK_APP_ID:'ATEST',SLACK_WORKSPACE_HOST:'rhwp-test.slack.com'});
   assert.equal(result.channelIds.size,2);assert.equal(result.port,3000);
 });
 test('selection binds user, workspace and exact candidates, then expires',()=>{

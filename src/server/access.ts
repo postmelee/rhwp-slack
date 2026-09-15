@@ -3,7 +3,7 @@ import {ID} from './config';
 import type {SlackApi} from './slack-api';
 import {denied, object} from './errors';
 import {MAX_FILE_BYTES} from '../shared/errors';
-export interface Actor {teamId:string; userId:string; channelId:string;}
+export interface Actor {teamId:string; userId:string; channelId:string; threadTs?:string;}
 export interface SourceFile {id:string; name:string; size:number; downloadUrl:string;}
 export function assertActor(config: Config, actor: Actor): void {
   if (actor.teamId!==config.teamId || !ID.user.test(actor.userId) || !config.channelIds.has(actor.channelId)) denied();

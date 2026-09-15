@@ -1,5 +1,6 @@
 import { createStudio, type RhwpEditor } from '@rhwp/editor';
 import { validateInput, MAX_PAGES, MAX_FILE_BYTES } from '../shared/errors';
+import {attachSave} from './save';
 import './style.css';
 
 const status = document.querySelector<HTMLElement>('#status')!;
@@ -7,8 +8,15 @@ const input = document.querySelector<HTMLInputElement>('#file')!;
 const local = document.querySelector<HTMLElement>('#local')!;
 const devtools = __LOCAL_FILES__ && new URLSearchParams(location.search).get('devtools') === '1';
 const ticket = __LOCAL_FILES__ ? new URLSearchParams(location.hash.slice(1)).get('document') : null;
-// Consume the development ticket before loading the Studio iframe.
-if (__LOCAL_FILES__) history.replaceState(null, '', location.pathname + location.search);
+const editorTicket = new URLSearchParams(location.hash.slice(1)).get('ticket');
+// Remove credentials from the URL before any child frame is created.
+history.replaceState(null, '', location.pathname + location.search);
+let bearer: string | undefined;
+async function api(path: string, init: RequestInit = {}): Promise<Response> {
+  const response = await fetch('/api/editor/' + path, {...init, credentials:'omit', cache:'no-store', referrerPolicy:'no-referrer', signal:AbortSignal.timeout(90_000), headers:{...init.headers, ...(bearer?{Authorization:'Bearer '+bearer}:{})}});
+  if (!response.ok) throw new Error((await response.json().catch(()=>({}))).error || 'Slack 연결을 확인해 주세요.');
+  return response;
+}
 let studio: RhwpEditor;
 let busy = false;
 let documentName = '';
@@ -47,6 +55,7 @@ async function load(bytes: Uint8Array, name: string): Promise<void> {
   }
 }
 try {
+  if (editorTicket) bearer = (await (await api('exchange', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ticket:editorTicket})})).json()).token;
   studio = await createStudio('#editor', {
     studioUrl: new URL('/studio/?chrome=embed', location.origin).href,
     plugins: ['hwpctrl'], requestTimeoutMs: 60_000, handshakeTimeoutMs: 10_000,
@@ -59,6 +68,13 @@ try {
         busy || !documentName || document.body.dataset.state !== 'ready') return;
     setDirty(event.data.dirty);
   });
+  if (bearer) {
+    setStatus('문서를 여는 중입니다.', 'loading');
+    const meta = await (await api('document')).json();
+    const bytes = await (await api('source')).arrayBuffer();
+    await load(new Uint8Array(bytes), meta.name);
+    attachSave(studio, api);
+  }
   if (__LOCAL_FILES__) {
     input.addEventListener('change', () => {
       const file = input.files?.[0];

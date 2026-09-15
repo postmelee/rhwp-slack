@@ -30,6 +30,14 @@ export default defineConfig({
           eventBus.on('document-dirty-changed', (change) => {
             if (window.parent !== window) window.parent.postMessage({ type: 'rhwp-slack:dirty', dirty: (change as {dirty:boolean}).dirty }, window.location.origin);
           });`);
+        code = replaceOnce(code, 'notifySaved: (fileName?: string) => completeHostSave(fileName),', `notifySaved: (fileName?: string) => completeHostSave(fileName),
+          notifySavedIfUnchanged: async (expected: {documentEpoch:number;changeSeq:number;documentSha256:string}) => {
+            const current = documentAgent?.getDocumentState();
+            if (!current || current.documentEpoch !== expected.documentEpoch || current.changeSeq !== expected.changeSeq || current.documentSha256 !== expected.documentSha256) return false;
+            // No await between the revision check and markClean in completeHostSave.
+            await completeHostSave();
+            return true;
+          },`);
         code = replaceOnce(code, 'await loadFromUrlParam();', '// Slack host owns document loading; ignore URL document sources.');
       }
       if (path === resolve(root,'src/ui/chrome-mode.ts')) {
