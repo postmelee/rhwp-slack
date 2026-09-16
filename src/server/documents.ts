@@ -40,7 +40,7 @@ export class Documents {
   }
   private metadata(card:Card,previewUrl?:string):Record<string,unknown> {
     return {url:this.url(card.id),external_ref:{id:card.id,type:'document'},entity_type:'slack#/entities/file',entity_payload:{
-      attributes:{title:{text:'문서 편집 · '+card.name},product_name:'rhwp',full_size_preview:{is_supported:true,mime_type:'application/vnd.slack-embed',...(previewUrl?{preview_url:previewUrl}:{})}},
+      attributes:{title:{text:card.name},display_type:'rhwp에서 편집 · 이 카드를 클릭하세요',product_name:'rhwp',full_size_preview:{is_supported:true,mime_type:'application/vnd.slack-embed',...(previewUrl?{preview_url:previewUrl}:{})}},
       slack_file:{id:card.fileId,type:/\.hwpx$/i.test(card.name)?'hwpx':'hwp'},fields:{},
       custom_fields:previewUrl?[]:[
         ...(card.pdfFileId?[{key:'pdf_file',label:'PDF 파일',type:'slack#/types/file',slack_file:{id:card.pdfFileId}}]:[]),
@@ -60,10 +60,9 @@ export class Documents {
     const blocks:Record<string,unknown>[]=[{type:'section',text:{type:'mrkdwn',text:'*'+this.text(card)+'* · '+detail+pdf}}];
     if(card.imageState==='pending')blocks.push({type:'context',elements:[{type:'plain_text',text:'페이지 이미지를 준비하고 있습니다.'}]});
     else if(card.pageCount&&(images.length<Math.min(10,card.pageCount)||card.imageState==='failed')){
-      blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_more_pages',value:card.id,text:{type:'plain_text',text:card.imageState==='failed'?'이미지 다시 준비':'추가 페이지 보기 (최대 10페이지)'}}]});
+      blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_more_pages',value:card.id,text:{type:'plain_text',text:card.imageState==='failed'?'이미지 다시 준비':'추가 페이지 이미지 보기 (최대 10페이지)'}}]});
     }
     if(card.pageCount&&card.pageCount>10&&images.length===10)blocks.push({type:'context',elements:[{type:'plain_text',text:'앞 10페이지를 표시했습니다. 전체 문서는 PDF로 볼 수 있습니다.'}]});
-    blocks.push({type:'context',elements:[{type:'mrkdwn',text:'*문서 편집* · 아래 문서 카드를 누르세요.'}]});
     return {channel:card.actor.channelId,text:this.text(card)+' · '+detail,blocks,parse:'none',unfurl_links:false,unfurl_media:false,metadata:{entities:[this.metadata(card)]}};
   }
   private update(card:Card,actor=card.actor):Promise<void>{

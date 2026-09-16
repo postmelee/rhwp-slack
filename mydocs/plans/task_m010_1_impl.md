@@ -368,9 +368,9 @@ Stage 6.1 결과: [수정본 카드·미리보기 통합 보고서](../working/t
 
 사용자의 로고 지정·추천 카드 구성 적용·별도 안내 제거·추가 페이지 버튼 문구 변경 지시를 구현과 실제 Slack 확인 승인으로 적용한다. 기존 issue #1/M010, local/task1을 유지한다.
 
-- 제공된 rhwp-logo.png를 변경 없이 앱 정적 자산으로 포함하고 봇 아이콘과 Work Object product_icon에 적용한다. Slack 업로드 도구의 아이콘 표시 범위는 실제 화면에서 확인한다.
-- 카드 안에 rhwp에서 편집 및 클릭 안내를 표시하고 별도 문서 편집 context는 제거한다. Slack 파일명이 제목보다 우선하는 제약을 유지하며 실제 카드 렌더를 검증한다.
+- 사용자가 승인한 투명 여백 추가만 적용해 원본 픽셀을 보존한 정사각형 slack/rhwp-logo.png를 보관한다. Slack 앱 아이콘에 등록하고 카드도 기본 앱 아이콘을 상속한다. 별도 product_icon의 중복 배지는 사용하지 않는다.
+- 카드의 display_type에 rhwp에서 편집 · 이 카드를 클릭하세요를 표시하고 별도 문서 편집 context는 제거한다. 실제 파일 카드에서 custom_fields 설명 줄은 표시되지 않아 보조 문구로 합친다. Slack 파일명이 제목보다 우선하는 제약을 유지하며 실제 카드 렌더를 검증한다.
 - 버튼은 추가 페이지 이미지 보기 (최대 10페이지)로 변경한다. PDF 내부 열람 링크·파일 공유·접근 권한·편집/저장 로직은 그대로 유지한다.
 - 문서 위치: 본 계획서, mydocs/orders/20260916.md, mydocs/working/task_m010_1_stage6.4.md 및 기존 README.md. 새 제품 문서 루트는 만들지 않는다.
-- 검증: typecheck, 기존 Slack/security 검사, production host build와 공개 로고 응답, 실제 Slack 아이콘·카드 설명·PDF/Studio 진입 확인. 표시 변경이므로 엔진/변환 전체 및 Linux 전체 smoke는 반복하지 않는다.
+- 검증: typecheck, 기존 Slack/security 검사, production host build와 원본 픽셀 보존, 실제 Slack 아이콘·카드 설명·PDF/Studio 진입 확인. 표시 변경이므로 엔진/변환 전체 및 Linux 전체 smoke는 반복하지 않는다.
 - 원격 push·PR·이슈 종료는 포함하지 않는다.
