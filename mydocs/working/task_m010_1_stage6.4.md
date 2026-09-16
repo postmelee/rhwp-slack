@@ -79,3 +79,25 @@ git diff --check
 - 초기 디버거 연결이 서버 응답을 지연시켜 종료하고 임시 요청 추적 실행기로 재시작했다. 이후 로컬 및 공개 HTTPS healthz 정상, 실제 사용자 요청 수신을 확인했다. 재시작으로 기존 메모리 카드/세션은 소실됐다. 현재 재현은 복구 후 새로 만든 카드로 수행했다.
 
 수정 방향은 카드 주소/참조 불일치와 실제 권한 거절을 구분하는 것이다. 주소 검사나 파일 접근 검사를 제거하지 않는다. 이번 조사는 제품 동작 수정·원격 push·PR을 포함하지 않는다.
+
+
+### 추가 분석 — 실패 요청은 9월 15일의 이전 테스트 카드
+
+테스트 채널의 파일 목록 중 HWP/HWPX 19개의 `files.info.entity_id`만 대조했다. 실패한 `086406b6-d333-42de-9c6e-79f00d89e812`는 파일 `F0C2S8ALU00`, `rhwp-slack-합성테스트_편집본_2.hwp`, 생성 시각 2026-09-15 18:57:16 KST와 정확히 일치했다. 새 재현 업로드 `F0C2668CD9T`의 entity ID는 정상 요청의 `4189d65f-dda2-4e1c-a289-2d2f11f87fbd`였다. 두 요청은 서로 다른 실제 파일을 참조한다.
+
+과거 카드의 실제 Slack 화면을 읽어 다음 등록 링크를 확인했다:
+
+`https://dave-hansen-event-night.trycloudflare.com/documents/086406b6-d333-42de-9c6e-79f00d89e812`
+
+현재 앱의 canonical origin은 `https://builds-beneath-scheduled-apartment.trycloudflare.com`이다. 따라서 과거 카드 URL과 현재 `documents.url(ref.id)`는 도메인이 다르다. 실제 요청 원문 URL을 보존하지는 않았으나, 실패한 ID의 등록 URL·이전 origin·수신 시 urlMatches=false가 일치해 이전 서버 주소의 카드 요청을 현재 서버가 거절한 것으로 판단한다. 신규 문서의 카드 ID가 섞였다고 단정할 근거는 없으며, 서로 다른 새 카드 정상 요청과 예전 카드 실패 요청이 연달아 들어왔다.
+
+Slack 공식 문서는 flexpane 재열기/새로고침에서 entity_details_requested가 발생하고, 이미 열었던 flexpane에는 10분 refresh TTL이 있다고 설명한다. 따라서 열려 있던 이전 화면/탭의 갱신이 가능한 설명이다. 어느 Slack 클라이언트·탭이 예전 요청을 생성했는지는 관측하지 못했다.
+
+확인된 문제는 이전 임시 origin의 카드가 Slack에 남아 있는데, 수신 서버는 현재 origin과의 문자열 동일성만 검사하고 이를 일반 권한 오류로 안내한다는 것이다. 추가로 카드 매핑은 메모리에만 있고 Work Object ID가 준비 작업 UUID여서, origin을 통과시키는 것만으로 재시작 이전 카드를 복원할 수 없다. ID 안정성과 매핑 영속화는 별도 내구성 문제이며 이번 이전 주소 요청의 유일한 생성 원인으로 단정하지 않는다.
+
+권장 수정: 승인된 이전 origin의 만료 카드와 실제 접근 거절을 구분하고, 유효한 요청에는 상태 안내를 해당 카드/편집 화면에 표시한다. 고정 origin·안정적인 문서 ID·파일/원본/스레드 매핑 보존과 재조회 시 접근 검증을 마련한다. 알 수 없는 도메인/ID 조합의 검사를 제거하거나 예전 문서를 새 문서로 연결하지 않는다. 이번 분석은 기존 카드 삭제·메타데이터 일괄 변경·제품 소스 수정을 수행하지 않았다.
+
+참고:
+- https://docs.slack.dev/messaging/work-objects-implementation/#flexpane-content-refresh
+- https://docs.slack.dev/messaging/work-objects-overview/#slack-marketplace-submission-and-launch-considerations
+- 이전 카드: https://rhwphq.slack.com/archives/C0C1X3ENGD8/p1789466240257979?thread_ts=1789466064.356859
