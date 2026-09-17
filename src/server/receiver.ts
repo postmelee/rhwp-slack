@@ -10,6 +10,7 @@ import {Replays} from './replays';
 import {Selections, candidatesFrom, selectionView} from './shortcuts';
 import {Documents} from './documents';
 import {Saves} from './saves';
+import {State} from './state';
 import {editorRoutes} from './editor-routes';
 import {denied, userMessage, object, UserError} from './errors';
 // Bolt logs may contain request bodies or SDK response metadata. Do not forward their arguments.
@@ -31,19 +32,20 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
     if(teamId!==config.teamId)denied();
     return {teamId:config.teamId,botToken:config.botToken,...botIdentity};
   }});
+  const state=config.statePath?new State(config.statePath,config.teamId):undefined;
   const selections=new Selections(options.now);
   const replays=new Replays(options.now);
   const notice=async(actor:Actor,text:string)=>{await api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text});};
   const notify=async(job:Readonly<Job>)=>{
-    if(job.state==='ready'&&documents){try{await documents.publish(job);}catch(error){await notice(job.actor,userMessage(error));}return;}
+    if(job.state==='ready'&&documents){if(documents.has(job.id))return;try{await documents.publish(job);}catch(error){await notice(job.actor,userMessage(error));}return;}
     const text=job.state==='ready'
       ? `문서 접근 확인을 마쳤습니다. ${job.mode==='pdf'?'PDF 미리보기':'Slack 편집기'} 연결은 아직 사용할 수 없습니다.`
       : job.error??'문서 준비에 실패했습니다.';
     await notice(job.actor,text);
   };
-  const preparations=new Preparations(config,api,{download:options.download,now:options.now,notify});
-  const documents=config.publicOrigin?new Documents(config,api,preparations,options):undefined;
-  const saves=documents?new Saves(documents,options.now):undefined;
+  const preparations=new Preparations(config,api,{download:options.download,now:options.now,notify,state});
+  const documents=config.publicOrigin?new Documents(config,api,preparations,{...options,state}):undefined;
+  const saves=documents?new Saves(documents,options.now,state):undefined;
   if(documents&&saves)receiver.router.use(editorRoutes(config.publicOrigin!,documents,saves));
   const actor=(team:unknown,user:unknown,channel:unknown):Actor=>{
     if(typeof team!=='string'||typeof user!=='string'||typeof channel!=='string')denied();
@@ -96,23 +98,23 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
     } catch(error){await ack({response_action:'errors',errors:{document:userMessage(error)}});}
   });
   // Keep file/share identifiers only; app_mention never fetches channel message history.
-  const observed=new Map<string,{team:string;channel:string;parent:string;file:string;expires:number}>();
-  const threadRequests=new Map<string,string>();
+  const observed=new Map<string,{team:string;channel:string;parent:string;file:string;expires:number}>(state?.all('observed'));
+  const threadRequests=new Map<string,string>(state?.all('threads'));
   const clock=options.now??Date.now;
   const remember=(who:Actor,fileId:string)=>{
     for(const [key,item] of observed)if(item.expires<=clock())observed.delete(key);
     const key=JSON.stringify([who.teamId,who.channelId,who.threadTs,fileId]);
     if(observed.size>=1000&&!observed.has(key))observed.delete(observed.keys().next().value!);
-    observed.set(key,{team:who.teamId,channel:who.channelId,parent:who.threadTs!,file:fileId,expires:clock()+24*60*60_000});
+    observed.set(key,{team:who.teamId,channel:who.channelId,parent:who.threadTs!,file:fileId,expires:clock()+24*60*60_000});state?.put('observed',key,observed.get(key));
   };
   const requestThread=(who:Actor,fileId:string)=>{
     const key=JSON.stringify([who.teamId,who.channelId,who.threadTs,fileId]);
     const previous=threadRequests.get(key),job=previous?preparations.get(previous):undefined;
-    if(job&&['queued','downloading','ready'].includes(job.state))return;
+    if(previous&&documents?.has(previous)||job&&['queued','downloading','ready'].includes(job.state))return;
     if(threadRequests.size>=1000)threadRequests.delete(threadRequests.keys().next().value!);
     // Automatic file events and mentions from different members share one request.
     const result=preparations.submit(who,fileId,'open','thread:'+key+':'+clock());
-    threadRequests.set(key,result.id);remember(who,fileId);
+    threadRequests.set(key,result.id);state?.put('threads',key,result.id);remember(who,fileId);
   };
   app.event('file_shared',async({body,event})=>{
     if(!documents)return;const e=object(event);
@@ -173,7 +175,9 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
     if(!documents)return;let who:Actor|undefined;
     try {
       const e=object(event);who=actor(body.team_id,e.user,e.channel);
-      const ref=object(e.external_ref);if(ref.type!=='document'||typeof ref.id!=='string'||e.entity_url!==documents.url(ref.id))denied();
+      const ref=object(e.external_ref);if(ref.type!=='document'||typeof ref.id!=='string')denied();
+      // Obsolete Work Objects may refresh alongside the active document. Never report these as permission failures.
+      if(!documents.matchesUrl(ref.id,e.entity_url))return;
       if(typeof body.event_id!=='string'||!replays.claim(`entity:${body.team_id}:${body.event_id}`))return;
       await documents.present(ref.id,who,trigger(e.trigger_id));
     }catch(error){if(who)await notice(who,userMessage(error)).catch(()=>{});}
@@ -195,10 +199,11 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
   for(const type of ['file_deleted','file_unshared'] as const) app.event(type,async({body,event})=>{
     if(body.team_id!==config.teamId || typeof body.event_id!=='string' || !body.event_id || !replays.claim(`event:${body.team_id}:${body.event_id}`))return;
     const e=object(event);const fileId=e.file_id;
-    if(typeof fileId==='string'&&ID.file.test(fileId)){for(const [key,item] of observed)if(item.team===body.team_id&&item.file===fileId)observed.delete(key);preparations.invalidate(body.team_id,fileId);documents?.invalidate(body.team_id,fileId);}
+    if(typeof fileId==='string'&&ID.file.test(fileId)){for(const [key,item] of observed)if(item.team===body.team_id&&item.file===fileId)observed.delete(key);for(const [key,value] of state?.all<{file:string}>('observed')??[])if(value.file===fileId)state?.delete('observed',key);preparations.invalidate(body.team_id,fileId);documents?.invalidate(body.team_id,fileId);}
   });
   app.error(async()=>{}); // No raw payload/token logging; callers receive safe errors above.
   receiver.router.get('/healthz',(_req,res)=>{res.json({ok:true});});
   const sweep=setInterval(()=>{preparations.sweep();selections.sweep();replays.sweep();documents?.sweep();saves?.sweep();},60_000);sweep.unref();
-  return {receiver,app,preparations,selections,documents,saves,async close(){clearInterval(sweep);await preparations.close();await documents?.close();await saves?.close();}};
+  const ready=documents?.recover().catch(()=>{}).then(()=>preparations.start())??Promise.resolve().then(()=>preparations.start());
+  return {ready,state,receiver,app,preparations,selections,documents,saves,async close(){clearInterval(sweep);await ready;await preparations.close();await saves?.close();await documents?.close();state?.close();}};
 }

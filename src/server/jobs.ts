@@ -5,16 +5,18 @@ import type {Mode} from './commands';
 import type {SlackApi} from './slack-api';
 import {downloadFile} from './download';
 import {UserError, userMessage} from './errors';
+import type {State} from './state';
 import {MAX_FILE_BYTES} from '../shared/errors';
 export interface Job {
   id:string; actor:Actor; fileId:string; mode:Mode;
   state:'queued'|'downloading'|'ready'|'failed'|'expired'; createdAt:number;
+  restore?:boolean;
   source?:SourceFile; bytes?:Buffer; contentHash?:string; expiresAt?:number; error?:string;
 }
 export type Notify = (job: Readonly<Job>) => Promise<void>;
 interface Options {
   now?:()=>number; concurrency?:number; queueLimit?:number; timeoutMs?:number; ttlMs?:number; maxBytes?:number;
-  download?:typeof downloadFile; notify?:Notify;
+  download?:typeof downloadFile; notify?:Notify; state?:State; started?:Notify;
 }
 export class Preparations {
   private jobs=new Map<string,Job>();
@@ -24,7 +26,38 @@ export class Preparations {
   private tasks=new Set<Promise<void>>();
   private reserved=0; private closed=false;
   private now:()=>number;
-  constructor(private config:Config, private api:SlackApi, private options:Options={}) {this.now=options.now??Date.now;}
+  constructor(private config:Config, private api:SlackApi, private options:Options={}) {
+    this.now=options.now??Date.now;
+    for(const [id,j] of options.state?.all<Job>('jobs')??[]){
+      if(j.actor.teamId!==config.teamId)continue;
+      if(j.state==='queued'||j.state==='downloading'){
+        j.state=j.restore?'expired':'queued';if(j.state==='queued')this.queue.push(j);
+      }else if(j.state==='ready')j.state='expired';
+      this.jobs.set(id,j);
+    }
+    for(const [key,value] of options.state?.all<{id:string;expiresAt:number}>('requests')??[])this.requests.set(key,value);
+    this.sweep();
+  }
+  private persist(job:Job):void {
+    const {bytes:_,source:__,...record}=job;this.options.state?.put('jobs',job.id,record);
+  }
+  start():void{this.pump();}
+  async restore(id:string,actor:Actor,fileId:string):Promise<Buffer>{
+    assertActor(this.config,actor);
+    const existing=this.get(id);
+    if(existing?.state==='ready'&&existing.bytes)return existing.bytes;
+    if(!existing||!['queued','downloading'].includes(existing.state)){
+      if(this.closed||this.queue.length>=(this.options.queueLimit??20))throw new UserError('queue_full','문서 준비 요청이 많습니다. 잠시 후 다시 시도하세요.');
+      const job:Job={id,actor:{...actor},fileId,mode:'open',state:'queued',createdAt:this.now(),restore:true};
+      this.jobs.set(id,job);this.persist(job);this.queue.push(job);this.pump();
+    }
+    while(['queued','downloading'].includes(this.jobs.get(id)?.state??'')){
+      if(this.closed)throw new UserError('stopping','서버가 재시작 중입니다. 다시 열어 주세요.');
+      await new Promise(resolve=>setTimeout(resolve,25));
+    }
+    const result=this.get(id);if(result?.state!=='ready'||!result.bytes)throw new UserError('source_unavailable',result?.error??'문서를 다시 준비하지 못했습니다. 공유 상태를 확인해 주세요.');
+    return result.bytes;
+  }
   submit(actor:Actor, fileId:string, mode:Mode, requestId:string): {id:string; duplicate:boolean} {
     assertActor(this.config,actor); this.sweep();
     if (this.closed) throw new UserError('stopping','서버가 재시작 중입니다. 잠시 후 다시 시도하세요.');
@@ -33,6 +66,7 @@ export class Preparations {
     if (this.queue.length >= (this.options.queueLimit??20) || this.jobs.size>=1000 || this.requests.size>=10_000) throw new UserError('queue_full','요청이 많습니다. 잠시 후 다시 시도하세요.');
     const job:Job={id:randomUUID(),actor:{...actor},fileId,mode,state:'queued',createdAt:this.now()};
     this.jobs.set(job.id,job); this.requests.set(key,{id:job.id,expiresAt:this.now()+24*60*60_000});
+    this.persist(job);this.options.state?.put('requests',key,this.requests.get(key));
     this.queue.push(job); queueMicrotask(()=>this.pump());
     return {id:job.id,duplicate:false};
   }
@@ -43,7 +77,7 @@ export class Preparations {
     const total=[...this.jobs.values()].reduce((sum,item)=>sum+(item.bytes?.length??0),0);
     if(this.closed||bytes.length>MAX_FILE_BYTES||(!existing&&this.jobs.size>=1000)||total+this.reserved+bytes.length>(this.options.maxBytes??200*1024*1024))throw new UserError('storage_full','임시 문서 보관 공간이 부족합니다. 잠시 후 다시 시도하세요.');
     const job:Job={id,actor:{...actor},fileId,mode:'open',state:'ready',createdAt:this.now(),source:{id:fileId,name,size:bytes.length,downloadUrl:''},bytes:Buffer.from(bytes),contentHash:createHash('sha256').update(bytes).digest('hex'),expiresAt:this.now()+(this.options.ttlMs??15*60_000)};
-    this.jobs.set(id,job);return job;
+    this.jobs.set(id,job);this.persist(job);return job;
   }
   // Server-internal only. Stage 5 must reauthorize every client-facing exchange/read.
   get(id:string):Readonly<Job>|undefined {this.sweep();return this.jobs.get(id);}
@@ -51,13 +85,13 @@ export class Preparations {
     const now=this.now();
     for (const job of this.jobs.values()) {
       if (job.state==='ready' && (job.expiresAt??0)<=now) {job.bytes=undefined;job.state='expired';}
-      if (!this.running.has(job.id) && job.state!=='queued' && now-job.createdAt>=24*60*60_000) this.jobs.delete(job.id);
+      if (!this.running.has(job.id) && job.state!=='queued' && now-job.createdAt>=24*60*60_000) {this.jobs.delete(job.id);this.options.state?.delete('jobs',job.id);}
     }
-    for (const [key,item] of this.requests) if (item.expiresAt<=now) this.requests.delete(key);
+    for (const [key,item] of this.requests) if (item.expiresAt<=now) {this.requests.delete(key);this.options.state?.delete('requests',key);}
   }
   invalidate(teamId:string,fileId:string):void {
     for (const job of this.jobs.values()) if (job.actor.teamId===teamId && job.fileId===fileId) {
-      this.running.get(job.id)?.abort(); job.bytes=undefined; job.state='expired';
+      this.running.get(job.id)?.abort(); job.bytes=undefined; job.state='expired';this.persist(job);
     }
   }
   private pump():void {
@@ -75,9 +109,10 @@ export class Preparations {
       this.sweep();
       const total=[...this.jobs.values()].reduce((sum,item)=>sum+(item.bytes?.length??0),0);
       if (total+this.reserved+MAX_FILE_BYTES>(this.options.maxBytes??200*1024*1024)) throw new UserError('storage_full','임시 문서 보관 공간이 부족합니다. 잠시 후 다시 시도하세요.');
-      this.reserved+=MAX_FILE_BYTES; reservation=true; job.state='downloading';
+      this.reserved+=MAX_FILE_BYTES; reservation=true; job.state='downloading';this.persist(job);
       const source=await authorizeFile(this.api,this.config,job.actor,job.fileId,signal);
       signal.throwIfAborted();
+      if(!job.restore)await this.options.started?.(job).catch(()=>{});
       const bytes=await (this.options.download??downloadFile)(source,job.actor,this.config.botToken,signal);
       signal.throwIfAborted();
       // Recheck revocation/sharing changes after downloading; never deliver on stale authorization.
@@ -90,10 +125,10 @@ export class Preparations {
       job.bytes=undefined;
       if (job.state!=='expired') {job.state='failed';job.error=signal.aborted?'문서 준비 시간이 초과되었거나 취소되었습니다. 다시 요청하세요.':userMessage(error);}
     } finally {
-      clearTimeout(timeout); if (reservation) this.reserved-=MAX_FILE_BYTES;
+      this.persist(job);clearTimeout(timeout); if (reservation) this.reserved-=MAX_FILE_BYTES;
     }
     // Notification failure must not repeat a completed download or expose raw API errors.
-    if (!this.closed && job.state!=='expired') await this.options.notify?.(job).catch(()=>{});
+    if (!this.closed && !job.restore && job.state!=='expired') await this.options.notify?.(job).catch(()=>{});
   }
   async idle():Promise<void> {this.pump();while(this.tasks.size) await Promise.all([...this.tasks]);}
   async close():Promise<void> {
