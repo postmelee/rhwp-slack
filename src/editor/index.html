@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>문서 편집 · rhwp</title></head>
+<body data-state="loading">
+  <main id="editor" aria-label="문서 편집기"></main>
+  <section id="notice" aria-label="문서 상태">
+    <p id="status" role="status">편집기 준비 중</p>
+    <div id="local" hidden>
+      <label>테스트 문서 열기 <input id="file" type="file" accept=".hwp,.hwpx"></label>
+      <p>개발용 문서는 Slack에 저장되지 않습니다.</p>
+    </div>
+  </section>
+  <script type="module" src="/main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+[
+  {
+    "file": "viewer-two-pages.hwp",
+    "sha256": "176179dea7ddccc397b0497a980e8a2ea1dd2dfe576f5fbee8b8cdf3f995325c",
+    "pages": 2,
+    "expected": [
+      [
+        "한글 문서 미리보기",
+        "첫 번째 페이지: 표와 한글을 확인합니다.",
+        "항목",
+        "내용",
+        "상태",
+        "정상"
+      ],
+      [
+        "두 번째 페이지",
+        "마지막 페이지: 초록색 그림과 English 123."
+      ]
+    ],
+    "imagePage": 2,
+    "source": "scripts/create-fixtures.mjs, original text/table/PNG authored for this project; blank structure from MIT @rhwp/core 0.8.6",
+    "license": "MIT",
+    "fidelity": "Synthetic integration fixture; no independent Hancom output."
+  },
+  {
+    "file": "viewer-two-pages.hwpx",
+    "sha256": "4dc519ebd92336f65336618f5a58399d94c8f76e70404339ee0ef4dc3cff70c0",
+    "pages": 2,
+    "expected": [
+      [
+        "한글 문서 미리보기",
+        "첫 번째 페이지: 표와 한글을 확인합니다.",
+        "항목",
+        "내용",
+        "상태",
+        "정상"
+      ],
+      [
+        "두 번째 페이지",
+        "마지막 페이지: 초록색 그림과 English 123."
+      ]
+    ],
+    "imagePage": 2,
+    "source": "scripts/create-fixtures.mjs, original text/table/PNG authored for this project; blank structure from MIT @rhwp/core 0.8.6",
+    "license": "MIT",
+    "fidelity": "Synthetic integration fixture; no independent Hancom output."
+  }
+]

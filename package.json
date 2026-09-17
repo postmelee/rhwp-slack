@@ -1,0 +1,41 @@
+{
+  "name": "rhwp-slack",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.21.0",
+    "npm": "11.19.0"
+  },
+  "packageManager": "npm@11.19.0",
+  "scripts": {
+    "dev": "npm run build:dev && node scripts/serve-viewer.mjs --dev",
+    "build": "npm run prepare:studio && node scripts/build-studio.mjs && node scripts/build-host.mjs",
+    "build:dev": "npm run prepare:studio && node scripts/build-studio.mjs && node scripts/build-host.mjs --dev",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.tests.json",
+    "test": "node scripts/run-tests.mjs",
+    "test:viewer": "npm run build && npm run build:dev && playwright test",
+    "prepare:studio": "node scripts/prepare-studio.mjs",
+    "start:slack": "node --env-file=.env --import tsx src/server/main.ts",
+    "test:slack": "node scripts/run-tests.mjs slack",
+    "test:security": "node scripts/run-tests.mjs security",
+    "check": "node scripts/check.mjs",
+    "preflight:slack": "node --env-file=.env --import tsx scripts/slack-preflight.ts"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "9.1.0",
+    "@google-cloud/tasks": "7.1.1",
+    "@playwright/test": "1.63.0",
+    "@rhwp/core": "0.8.6",
+    "@rhwp/editor": "0.8.6",
+    "@slack/bolt": "5.1.0",
+    "google-auth-library": "11.1.0",
+    "tsx": "4.23.13"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.4",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.0"
+  }
+}
