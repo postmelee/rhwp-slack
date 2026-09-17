@@ -23,7 +23,7 @@ export class GoogleTaskPublisher implements TaskPublisher {
 }
 export class TaskBusy extends Error {}
 export class LeaseLost extends Error {}
-export interface TaskContext {signal:AbortSignal;checkpoint():Promise<void>;}
+export interface TaskContext {signal:AbortSignal;checkpoint():Promise<void>;id?:string;attempt?:number;}
 /** Queue messages contain an opaque ID only. No file contents, Slack tokens or file URLs. */
 export class DurableTasks {
   constructor(private store:MetadataStore,private publisher:TaskPublisher,private now=Date.now,private leaseMs=60_000){}
@@ -62,7 +62,7 @@ export class DurableTasks {
     let renewal:Promise<void>=Promise.resolve();
     const timer=setInterval(()=>{renewal=renewal.then(checkpoint).catch(()=>{controller.abort(new LeaseLost('Worker lease unavailable'));});},Math.max(10,Math.floor(this.leaseMs/3)));timer.unref();
     try{
-      await run(work.spec,{signal:controller.signal,checkpoint});
+      await run(work.spec,{signal:controller.signal,checkpoint,id,attempt:work.generation});
       clearInterval(timer);await renewal;await checkpoint();
       await this.store.atomic<Work,void>('tasks',id,current=>{
         if(!current||current.owner!==owner||current.generation!==work.generation||current.state!=='running'||(current.leaseUntil??0)<=this.now())throw new LeaseLost('Worker lease expired');

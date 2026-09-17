@@ -1,4 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {measured,conversionMetric,milestone} from './telemetry';
 import {setTimeout as delay} from 'node:timers/promises';
 import type {MetadataStore} from './metadata';
 import {SharedSessions} from './sessions';
@@ -37,7 +38,8 @@ export class CloudApplication {
     if(actor.teamId!==this.config.teamId||!ID.user.test(actor.userId)||!ID.channel.test(actor.channelId)||await this.mode(actor.channelId)==='off')denied();
     return {...this.config,channelIds:new Set([actor.channelId])};
   }
-  async authorize(id:string,actor:Actor):Promise<CloudCard>{
+  async authorize(id:string,actor:Actor):Promise<CloudCard>{return measured('authorize',()=>this.authorizeUnmeasured(id,actor));}
+  private async authorizeUnmeasured(id:string,actor:Actor):Promise<CloudCard>{
     const config=await this.accessConfig(actor),card=await this.store.get<CloudCard>('cards',id);
     if(!card||card.removed||card.actor.teamId!==actor.teamId||card.actor.channelId!==actor.channelId)denied();
     const source=await authorizeFile(this.api,config,actor,card.fileId);
@@ -47,7 +49,7 @@ export class CloudApplication {
   async ensureSource(id:string,actor:Actor):Promise<Buffer>{
     const card=await this.authorize(id,actor),config=await this.accessConfig(actor);
     const source=await authorizeFile(this.api,config,actor,card.fileId),signal=AbortSignal.timeout(30_000);
-    const bytes=await (this.options.download??downloadFile)(source,actor,this.config.botToken,signal);
+    const bytes=await measured('download',()=>(this.options.download??downloadFile)(source,actor,this.config.botToken,signal));
     const fresh=await this.authorize(id,actor);
     if(fresh.contentHash&&hash(bytes)!==fresh.contentHash)throw new UserError('source_changed','원본 내용이 변경되었습니다. 다시 요청하세요.');
     return bytes; // No cross-request document cache.
@@ -102,7 +104,8 @@ export class CloudApplication {
       await context.checkpoint();return (this.options.fetcher??fetch)(url,{...init,signal:AbortSignal.any([context.signal,...(init?.signal?[init.signal]:[])])});
     },async()=>{await this.write(card,context);});
   }
-  private async post(card:CloudCard,context:LeaseContext):Promise<void>{
+  private async post(card:CloudCard,context:LeaseContext):Promise<void>{return measured('card_post',()=>this.postUnmeasured(card,context));}
+  private async postUnmeasured(card:CloudCard,context:LeaseContext):Promise<void>{
     const api=this.guarded(context),uploads=this.uploads(card,context);
     if(card.messageTs)return;
     if(card.posting){
@@ -113,13 +116,15 @@ export class CloudApplication {
     card.posting=true;await this.write(card,context);await this.authorize(card.id,card.actor);
     const posted=await api.call('chat.postMessage',{...documentMessage(card,this.config.publicOrigin!),client_msg_id:card.id,...(card.parentTs?{thread_ts:card.parentTs}:{})});
     if(typeof posted.ts!=='string'||!/^\d+\.\d+$/.test(posted.ts))throw new Error('Missing message receipt');
-    card.messageTs=posted.ts;card.actor.threadTs??=posted.ts;await this.write(card,context);
+    card.messageTs=posted.ts;card.actor.threadTs??=posted.ts;await this.write(card,context);milestone('first_card');
   }
-  private async update(card:CloudCard,actor:Actor,context:LeaseContext):Promise<void>{
+  private async update(card:CloudCard,actor:Actor,context:LeaseContext):Promise<void>{return measured('card_update',()=>this.updateUnmeasured(card,actor,context));}
+  private async updateUnmeasured(card:CloudCard,actor:Actor,context:LeaseContext):Promise<void>{
     await this.write(card,context);await this.authorize(card.id,actor);
     await this.guarded(context).call('chat.update',{...documentMessage(card,this.config.publicOrigin!),ts:card.messageTs,...(documentGallery(card).length?{file_ids:documentGallery(card).map(p=>p.fileId)}:{})});
   }
-  private async confirm(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext):Promise<void>{
+  private async confirm(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext):Promise<void>{return measured('share_confirm',()=>this.confirmUnmeasured(card,fileId,actor,context));}
+  private async confirmUnmeasured(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext):Promise<void>{
     const uploads=this.uploads(card,context);
     for(let i=0;i<6;i++){
       await this.authorize(card.id,actor);
@@ -148,7 +153,7 @@ export class CloudApplication {
       const request=await this.store.get<Request>('preparations',spec.cardId);if(!request)throw new Error('Missing request');
       const config=await this.accessConfig(request.actor),source=await authorizeFile(this.api,config,request.actor,request.fileId,task.signal);
       await this.reaction(spec.cardId,request.actor,'pending',true);
-      await task.checkpoint();const bytes=await (this.options.download??downloadFile)(source,request.actor,this.config.botToken,task.signal);
+      await task.checkpoint();const bytes=await measured('download',()=>(this.options.download??downloadFile)(source,request.actor,this.config.botToken,task.signal));
       const fresh=await authorizeFile(this.api,config,request.actor,request.fileId,task.signal);if(fresh.name!==source.name||fresh.size!==source.size||fresh.downloadUrl!==source.downloadUrl)denied();
       await this.store.atomic<CloudCard,void>('cards',spec.cardId,current=>({value:current??{id:spec.cardId,actor:{...request.actor},fileId:source.id,rootFileId:source.id,name:source.name,size:source.size,contentHash:hash(bytes),origin:this.config.publicOrigin,createdAt:Date.now(),revision:0,parentTs:request.actor.threadTs,pdf:'pending',imageState:'pending'},result:undefined}));
       await this.locked(spec.cardId,async(card,context)=>{await task.checkpoint();await this.post(card,context);});
@@ -160,13 +165,13 @@ export class CloudApplication {
       if(spec.kind==='preview'&&card.pdf==='ready'&&card.imageState==='ready')return;
       await this.reaction(card.id,card.actor,'pending',true);
       const bytes=await this.ensureSource(card.id,actor);
-      const result=spec.kind==='preview'?await (this.options.convert??convertPreview)(bytes):await (this.options.images??convertPageImages)(bytes,{start:1,end:Math.min(10,card.pageCount??10)});
+      const result=await measured('conversion',()=>spec.kind==='preview'?(this.options.convert??convertPreview)(bytes,{onMetric:conversionMetric}):(this.options.images??convertPageImages)(bytes,{start:1,end:Math.min(10,card.pageCount??10),onMetric:conversionMetric}));
       await context.checkpoint();card.pageCount=result.pageCount;card.imageTarget=Math.min(spec.kind==='preview'?3:10,result.pageCount);card.imageState='pending';
       const uploads=this.uploads(card,context),check=async()=>{await this.authorize(card.id,actor);};
       try{
         if(spec.kind==='preview'&&!card.pdfFileId){
           const pdf=(result as Preview).pdf;card.pdfAttempt??={};
-          const f=await uploads.store(card.pdfAttempt,pdf,card.name.replace(/\.(hwp|hwpx)$/i,'.pdf'),actor,check);
+          const f=await measured('upload_pdf',()=>uploads.store(card.pdfAttempt!,pdf,card.name.replace(/\.(hwp|hwpx)$/i,'.pdf'),actor,check));
           if(!f.url)throw new Error('PDF permalink missing');card.pdfFileId=f.id;card.pdfUrl=f.url;await this.write(card,context);
         }
         card.images??=[];card.attempts??={};
@@ -176,13 +181,13 @@ export class CloudApplication {
           const pageUploads=new Uploads(this.guarded(context),this.config,async(url,init)=>{await context.checkpoint();return (this.options.fetcher??fetch)(url,{...init,signal:AbortSignal.any([context.signal,...(init?.signal?[init.signal]:[])])});},async()=>{
             await this.write(card,context);
           });
-          const f=await pageUploads.store(attempt,page.png,`${card.name.replace(/\.(hwp|hwpx)$/i,'')}_${String(page.page).padStart(3,'0')}.png`,actor,check);
+          const f=await measured('upload_png',()=>pageUploads.store(attempt,page.png,`${card.name.replace(/\.(hwp|hwpx)$/i,'')}_${String(page.page).padStart(3,'0')}.png`,actor,check));
           card.images.push({page:page.page,fileId:f.id});await this.write(card,context);
         }
         await this.update(card,actor,context);
-        if(card.pdfFileId){await this.confirm(card,card.pdfFileId,actor,context);card.pdf='ready';}
-        for(const page of card.images){await this.confirm(card,page.fileId,actor,context);page.shared=true;}
-        card.imageState='ready';await this.update(card,actor,context);await this.reaction(card.id,card.actor,'ready',true);
+        if(card.pdfFileId){await this.confirm(card,card.pdfFileId,actor,context);card.pdf='ready';milestone('pdf_ready');}
+        for(const page of card.images){await this.confirm(card,page.fileId,actor,context);page.shared=true;if(page.page===1)milestone('first_image');}
+        card.imageState='ready';await this.update(card,actor,context);milestone('all_ready');await this.reaction(card.id,card.actor,'ready',true);
       }catch(error){card.imageState='failed';if(card.pdf!=='ready')card.pdf='failed';await this.update(card,actor,context).catch(()=>{});await this.reaction(card.id,card.actor,'failed',true).catch(()=>{});throw error;}
     });
   }
