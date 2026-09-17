@@ -1,7 +1,7 @@
 # Task #1 통합 결과 — Studio 임베드와 Slack PDF 연결
 
 GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
-마일스톤: M010 / 상태: 내부 워크스페이스 배포·수용 완료, PR 통합 검증 중
+마일스톤: M010 / 상태: 내부 워크스페이스 배포·수용 및 PR 통합 완료
 
 ## 작업 요약
 
@@ -119,4 +119,4 @@ Marketplace 콘솔은 공개 배포 미설정으로 Get Started가 비활성화�
 - 로컬 Node24.15.0에서 실행했다. 고정 Node24.21.0/Linux·읽기 전용 컨테이너의 재검증은 PR CI에서 수행한다. 이전 Linux 검증은 각 Stage 기록이며 최종 PR CI와 구분한다.
 - `git diff --check` 통과. Git 추적 파일에 실제 문서/토큰/캐시가 없음을 확인했다. 추적 HWP/HWPX는 합성 fixture 두 개뿐이다.
 - 접근·다운로드·업로드·편집 라우트·Cloud Tasks/Firestore 경계를 자체 코드 검토했다. 워크스페이스/채널/사용자 확인, Slack 다운로드 호스트 제한, 세션 재사용 차단, 작업 lease·영수증 보존을 확인했다. 발견된 공유 해제 과잉 무효화와 재시도 UI/편집 진입 복구는 #5/#2에서 추적한다. 독립 외부 보안 감사로 보고하지 않는다.
-- 원격 PR CI는 게시 후 결과를 기록한다. 문서 정리만 추가하므로 현재 운영 이미지와 동작은 바뀌지 않는다.
+- [PR #7](https://github.com/postmelee/rhwp-slack/pull/7)은 head `0b18002`의 [PR CI](https://github.com/postmelee/rhwp-slack/actions/runs/35230542681)와 [push CI](https://github.com/postmelee/rhwp-slack/actions/runs/35230422261)에서 viewer/container 모두 통과했다. 2026-09-17 23:03 KST `789972761719138f0274999ca0735d6e9aed7220`으로 merge하고 #1 종료를 확인했다. 운영 이미지와 사양은 변경하지 않았다.
