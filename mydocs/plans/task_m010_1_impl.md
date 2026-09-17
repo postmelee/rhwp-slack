@@ -401,3 +401,36 @@ Stage 6.1 결과: [수정본 카드·미리보기 통합 보고서](../working/t
 - README, docs/architecture.md, docs/development.md는 기존 공식 문서 위치를 유지한다. 계획/단계 증적/오늘할일은 기존 mydocs 경로를 사용한다.
 - 검증: typecheck, test:slack, test:security, 전체 단위 테스트, production build, 필요 브라우저 회귀, 재시작 후 기존 카드 열기, 실제 Slack 다중 채널.
 - 외부 환경이 준비되지 않은 항목은 구현 완료와 구분해 보고한다.
+
+
+## Stage 10~12 — Google Cloud Run 전환 (2026-09-17 사용자 승인)
+
+사용자가 “AI Pro의 실제 $10 혜택 연결 확인 → 기존 동작을 유지하며 저장·작업 처리 구조 변경 → 별도 Cloud Run 환경에서 비용과 동작 검증 → Slack 연결 전환을 진행해줘”라고 전체 순서의 진행을 명시했다. 같은 승인 범위의 로컬 구현·검증을 계속하고, 크레딧 적용·클라우드 인증·비용 조건이 확인되기 전 실제 유료 리소스나 운영 연결은 전환하지 않는다.
+
+### Stage 10 — 저장·세션·작업 경계
+
+- 기존 e17f86d 운영 checkout과 .env, DB, 터널을 유지한다. `codex/task1-cloud-run` 분리 worktree에서 후속 작업한다. 기존 Issue #1의 내부 운영·호스팅 후속 범위를 잇는다.
+- 원본 HWP/HWPX, 수정본, PDF, PNG의 영구 보관처는 Slack으로 유지한다. Firestore와 Cloud Tasks에 문서 bytes·Slack bearer·인증 전송 URL을 저장하지 않는다.
+- 비동기 메타데이터 저장 계약, SQLite 호환 adapter, Firestore adapter, 원자적 일회용 ticket 및 만료 세션, lease/CAS 경계를 먼저 독립 테스트한다.
+- 작업 큐는 식별자만 영속화하고 다운로드·변환·업로드 전체를 작업 요청 수명 안에서 처리한다. 이벤트 접수와 긴 변환을 분리한다. 중복 요청과 응답 유실을 성공으로 추정하지 않는다.
+- cloud backend 활성화 전 legacy 메모리 Map·checkpoint 전체 쓰기·detached promise·프로세스 시작 복구 경로를 정리한다. 저장소 adapter만 생긴 상태를 배포 가능으로 표시하지 않는다.
+
+### Stage 11 — 별도 환경 검증
+
+- 실제 AI Pro 계정의 월 $10 Cloud 혜택과 적용 결제 계정, 프로젝트, 지역을 확인한다.
+- 최소 인스턴스 0, 변환 동시성 1, 인스턴스 상한, 요청/변환 시간·파일/페이지 제한을 명시한다. 콜드 스타트의 Slack 3초 응답과 실제 메모리·전송 비용을 검증한다.
+- 운영과 분리된 서비스·Firestore namespace·task queue에서 합성 문서로 재시작/다중 인스턴스/ticket 1회 교환/중복 업로드 방지/권한 회수/문서 비영속 검증을 실행한다.
+- 로컬 fake/emulator 결과를 실제 Google Cloud IAM·과금·콜드 스타트 검증과 구별한다.
+
+### Stage 12 — 이전과 전환
+
+- 기존 SQLite의 메타데이터만 검증 후 가져온다. 원래 카드 ID와 origin alias, 파일/스레드 연결·설정을 보존한다. 세션은 사용자가 카드에서 다시 열도록 한다.
+- 원본 서버를 정지·재시작하거나 Slack 주소를 변경하기 전 별도 환경의 검증 근거와 복구 경로를 확보한다. 검증 완료 시 승인된 범위에서 Slack 주소·embed 도메인을 전환하고 업로드→카드→PDF/이미지→편집→같은 스레드 저장을 확인한다.
+- Cloud 서비스/계정 인증이나 크레딧 확인이 막히면 기존 연결을 유지하고 완료/미완료를 구별한다.
+
+### 문서 위치·검증·커밋
+
+- 공식 배포/아키텍처 문서는 기존 `docs/development.md`, `docs/architecture.md`를 갱신한다. 신규 배포 안내가 필요하면 같은 공식 루트 `docs/cloud-run.md`를 사용한다. 대상 독자는 운영자, 대안 `mydocs/manual`은 제품 운영 문서 위치가 아니므로 사용하지 않는다.
+- 단계 증적은 `mydocs/working/task_m010_1_stage10.md` 등, 일별 상태는 `mydocs/orders/20260917.md`에 남긴다.
+- 자동 검증: typecheck, 기존 Slack/security regression, 저장·세션·작업 경계 테스트, 실제 변환 회귀. 클라우드 연결 이후 IAM·Firestore·Cloud Tasks 및 Slack 실제 수용 별도 검증.
+- 단계별 소스와 보고서를 `Task #1 Stage 10: ...` 등으로 커밋한다. 최종 전환 전에는 완료 보고서·PR을 완료 상태로 만들지 않는다.
