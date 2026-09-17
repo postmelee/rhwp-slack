@@ -374,3 +374,30 @@ Stage 6.1 결과: [수정본 카드·미리보기 통합 보고서](../working/t
 - 문서 위치: 본 계획서, mydocs/orders/20260916.md, mydocs/working/task_m010_1_stage6.4.md 및 기존 README.md. 새 제품 문서 루트는 만들지 않는다.
 - 검증: typecheck, 기존 Slack/security 검사, production host build와 원본 픽셀 보존, 실제 Slack 아이콘·카드 설명·PDF/Studio 진입 확인. 표시 변경이므로 엔진/변환 전체 및 Linux 전체 smoke는 반복하지 않는다.
 - 원격 push·PR·이슈 종료는 포함하지 않는다.
+
+## Stage 7~9 — 워크스페이스 내 다중 채널 운영 (2026-09-17 승인)
+
+사용자 지시: 현재 UX를 유지하며 같은 워크스페이스의 다른 채널·다른 사용자도 사용할 수 있을 때까지 진행. 열린 #1 / M010의 내부 워크스페이스 MVP 범위이므로 기존 local/task1에서 이어간다. 기존 소스·편집기·실행 중 서버는 검증 완료 전 교체하지 않는다. 추가 비용·외부 계정 생성은 별도 결정이며 Marketplace/OAuth 외부 배포는 이번 범위가 아니다.
+
+### Stage 7 — 문서 연결 영속화
+
+- Node 24 내장 SQLite로 team 별 카드·수정본·업로드 영수증·채널 정책·처리 상태를 보관한다. 원본 bytes, 세션 토큰, 다운로드/업로드 인증 URL은 DB에 저장하지 않는다.
+- 재시작/원본 캐시 만료 후 Slack 권한을 재검사하고 원본을 다시 내려받아 기존 카드에서 편집/이미지 추가를 지원한다. URL을 저장해 운영 origin 이전 후에도 이미 알려진 카드만 인정한다.
+- 성공한 게시·업로드를 재실행하지 않고 중단 지점의 Slack 파일 공유를 확인한다. 불확실한 게시를 임의로 재게시하지 않는다.
+- 예전 알 수 없는 카드/주소 요청을 실제 권한 거절과 구분하며 자동 갱신이 현재 문서에 오해를 주는 권한 메시지를 만들지 않게 한다.
+- 검증: DB 재열기, 권한 철회, team/channel 격리, TTL 후 재다운로드, 중복 요청, 기존 Slack/security 테스트.
+
+### Stage 8 — 채널 설정과 상태 반응
+
+- App Home 및 /rhwp settings에서 지정 관리자만 채널별 auto/mention/off 정책을 설정한다. 기존 env 채널은 최초 DB 초기화 때 auto로 옮기며 신규 채널은 명시 활성화한다. 일반 사용자는 현재 채널에서 명시 요청을 실행한다.
+- 관리자가 설정한 채널도 bot/user 참여·일반 공개/비공개·파일 공유 검증은 그대로 유지한다. 일반 대화 이력 scope를 추가하지 않는다.
+- 원본 메시지에 hourglass_flowing_sand → white_check_mark 또는 warning. 메시지별 여러 파일 상태를 합산하고 재시작·중복 반응을 복구한다.
+- 검증: 관리자 위조/비멤버/다른 team 거절, 모드 전환·재시작 보존, 자동+멘션 중복, 여러 파일/실패 상태.
+
+### Stage 9 — 운영 연결과 실제 수용
+
+- 운영 DB volume·restart 정책·고정 HTTPS 설정을 준비하고 도메인/호스팅 가용성을 확인한다. 미확정 비용을 임의 결제하지 않는다.
+- Slack App Home/events/reactions scope 설정 후 재인증. 현재 채널 재현 및 사용자 지정 추가 채널에서 파일 처리·편집·스레드 저장 확인. 실제 다른 사용자 검증은 합성 actor 단위 테스트와 구분한다.
+- README, docs/architecture.md, docs/development.md는 기존 공식 문서 위치를 유지한다. 계획/단계 증적/오늘할일은 기존 mydocs 경로를 사용한다.
+- 검증: typecheck, test:slack, test:security, 전체 단위 테스트, production build, 필요 브라우저 회귀, 재시작 후 기존 카드 열기, 실제 Slack 다중 채널.
+- 외부 환경이 준비되지 않은 항목은 구현 완료와 구분해 보고한다.
