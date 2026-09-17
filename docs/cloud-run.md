@@ -54,3 +54,17 @@ Cloud Run 명령은 `node dist/cloud/main.cjs`로 지정한다. Docker 기본 CM
 무료 할당량과 프로모션 크레딧은 영구적인 무과금 보장이 아니다. 최소 인스턴스 0과 최대 인스턴스·큐 상한으로 제한하고, 크레딧 차감 전 사용량을 기준으로 예산 알림을 설정한다. Cloud Run 서비스 지출 한도를 사용할 수 있지만 차단 지연이 있고 다른 서비스·저장 비용까지 차단하지 않는다. [지출 한도 범위](https://docs.cloud.google.com/billing/docs/how-to/budgets-spend-caps).
 
 기존 SQLite는 실행 중 본체만 복사하지 않는다. 일관된 읽기 스냅샷을 만들고 문서 bytes 없는 메타데이터만 검증해 이전한다. 카드 ID·기록된 origin·원본/수정본 연결·채널 정책을 보존하고 진행 중 작업을 먼저 정리한다. 새 환경 수용 전에는 Slack의 요청 URL을 변경하지 않는다. 전환 시 최종 스냅샷과 기존 서버 설정을 보관해 복구할 수 있게 한다.
+
+### SQLite 메타데이터 이전
+
+Google Application Default Credentials가 설정된 운영자 환경에서 먼저 dry-run한다. 기본 동작은 읽기·충돌 검사뿐이다.
+
+```sh
+node --import tsx scripts/migrate-cloud-state.ts \
+  --source /absolute/path/state.sqlite --project PROJECT \
+  --environment workspace --team TWORKSPACE
+```
+
+진행 중 변환·저장이 없음을 확인하고 기존 서버를 멈춘 뒤 같은 명령에 `--apply`를 붙인다. 원본 DB는 읽기 전용 transaction으로 열어 WAL에 commit된 변경도 포함한다. 카드·채널 설정·기존 스레드 요청 ID와 완료된 저장 영수증만 옮긴다. 진행 중 작업이나 다른 workspace, 대상의 서로 다른 기록을 발견하면 쓰기 전에 거절한다. 중단된 이전은 같은 입력으로 재실행할 수 있다. 출력 digest·건수와 원본 스냅샷은 접근 제한된 운영 증적으로 보관한다.
+
+오래된 카드의 origin은 별칭으로 보존한다. Slack의 Work Objects 허용 도메인에도 이전 origin을 유지하고, 새 편집 세션의 URL은 현재 `APP_ORIGIN`으로 제공한다. 기존 열린 편집 세션은 이전하지 않으며 카드를 다시 열면 새 티켓이 발급된다. 검증 namespace는 운영 namespace와 구분한다.

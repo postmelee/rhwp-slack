@@ -62,6 +62,11 @@ export class CloudApplication {
   }
   async submit(actor:Actor,fileId:string,key:string):Promise<string>{
     await this.accessConfig(actor);if(!ID.file.test(fileId))denied();
+    // Preserve request identities imported from the single-server deployment.
+    if(key.startsWith('thread:')){
+      const oldId=await this.store.get<string>('threads',key.slice(7));
+      if(oldId){const old=await this.authorize(oldId,actor);if(old.fileId!==fileId)throw new Error('Imported thread conflict');return oldId;}
+    }
     const id=stableId(JSON.stringify([actor.teamId,actor.channelId,key]));
     await this.store.atomic<Request,void>('preparations',id,current=>{
       if(current&&(current.fileId!==fileId||current.actor.teamId!==actor.teamId||current.actor.channelId!==actor.channelId))throw new Error('Request conflict');
