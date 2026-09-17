@@ -17,7 +17,7 @@
 - 사용자 승인한 `records.expiresAt` TTL은 실제 ACTIVE 확인. 활성 문서의 만료 필드는 null이다.
 - Slack 매니페스트의 변경 전 URL·도메인·scope 구성을 읽어 보관했다. 요청 URL 3개와 새 embed 도메인만 전환 대상이며 권한 추가는 없다.
 
-## 미완료 수용 조건
+## 전환 전 수용 조건 (아래 Stage 12.2에서 상태 갱신)
 
 - 초기 지연에 대한 운영 선택: 사용자가 상시 1개·약 $10 한 달 시험 운영을 제안했고 축소 메모리 검증을 승인했다. 512MiB 실패로 비용/한도 조정 결정을 남긴다.
 - 원본 서버를 멈춘 시점의 최종 스냅샷, 운영 namespace/큐 적용 및 서버 이미지 배포.
@@ -56,3 +56,33 @@
 - 512MiB 축소만으로 상시 대기와 할인 전 월 $10 한도를 동시에 달성할 수 없다. 1GiB·730시간 유휴 비용 $13.14, 무료 할당량이 전부 유효하면 약 $7.92(프로모션 크레딧 전). 실제 변환·요청·다른 서비스 비용은 더해진다.
 - 비용 한도와 상시 대기 수는 이번 검증에서 올리지 않았다. 운영 namespace 이전과 Slack 연결 전환은 미완료다.
 - 증적은 ignored `.cache/validation/memory-*.log`, `memory-errors.json`, `memory-*-receipts.json`, `memory-*-metrics.jsonl`, `ingress-before-memory.json`, `ingress-after-memory.json`에 보관한다. 비밀값과 합성 파일 bytes는 Git에 포함하지 않는다.
+
+
+## Stage 12.2 — 현재 워크스페이스 전환 (2026-09-17)
+
+- 사용자 승인: 월 $15 안팎 gross Cloud Run 차단, net $10 안팎 프로젝트 알림, ingress 상시 1개. 공개 `allUsers` Invoker는 자동 승인 검토 거절 후 대상·보호 범위를 제시하고 사용자의 명시 승인을 받아 적용했다.
+- 실제 금액: Cloud Run `rhwp-cloud-run-cap` 20,749원, 프로젝트 `rhwp-slack-trial-net` 13,833원. 후자는 `INCLUDE_ALL_CREDITS`를 공식 API 정의와 대조하고 읽어 검증했다. 알림 50/80/100%. UI에서 사용 가능 크레딧 6개 합계 82,998원을 확인했으나 당일 사용량 집계 지연이 있다.
+- 기존 로컬 프로세스를 종료하고 SQLite backup을 만든 뒤 23개 메타데이터를 이전했다: cards16/channels2/observed2/settings1/threads2. digest `ded1e9c3fdf8cd956d2c778cd972d68d554b9797528bd3daa92325c1531b40d4`. 문서 bytes와 열린 세션은 이전하지 않았다.
+- 동일 runtime digest `70cd59bef220f5fb69081e65288ac57bd0811566b2387d893919cc5b523dcd1d`로 worker `rhwp-worker-00006-m9v`, ingress `rhwp-ingress-00009-btj`. namespace workspace, queue rhwp-workspace. ingress1CPU/1GiB/min1/max1, worker2CPU/4GiB/min0/max1.
+- Slack manifest 요청 URL 3곳과 새 embed domain을 저장하고 재조회했다. 실제 Slack URL verification이 성공했고 `/rhwp help`가 20:28 KST에 응답했다. 기존 scope는 유지했다.
+- 공개 문서 source 무인증403, Slack 무서명401. worker `/internal/tasks` 익명403 및 IAM task-caller 단독 Invoker 확인. 서명된 검증 이벤트200, 실제 OIDC 큐 처리 완료. `/healthz`는 플랫폼404여서 health 성공 증거로 사용하지 않았다.
+- 운영 namespace에서 티켓 교환·재사용403, 합성 원본 bytes 일치, 동일 UUID 저장의 파일 ID 일치, 수정본 PDF/PNG ready 및 같은 원본 스레드가 확인됐다. `.cache/validation/trial-editor.log`.
+- 이 작업의 후속 점검 `rhwp-slack`을 등록했다. 9/20·9/24·10/17 평가, 평상시 변화 없으면 조용히 유지, 비용/권한/설정 변경은 추가 승인 없이 수행하지 않는다.
+- 실제 브라우저 업로드·내부 편집 수용 결과는 아래에 기록한다. 다른 동료 계정 수용과 Marketplace 제출은 미완료이며, 최소10활성 workspace·OAuth 다중설치·embeds pilot 승인 조건을 `docs/cloud-run.md`에 명시했다.
+
+
+### 전환 후 실제 Slack 수용
+
+- `rhwp-slack-test`: 사용자 계정에서 합성 HWP를 실제 첨부해 전송했다. 원본 `1789644900.935749`(20:35:00 KST), 미리보기 댓글 `1789644904.832709`(20:35:04), 원본에 완료 체크. 두 PNG의 기본 갤러리와 PDF 링크를 확인했다.
+- 카드 아이콘으로 Slack 내부 Studio를 열고 `trial ` 글자를 직접 입력했다. 저장된 수정본 댓글 `1789645206.352139`가 같은 원본 스레드에 추가됐고, PDF·PNG ready로 갱신됐다. 실제 화면에서 입력 글자·표·두 페이지 상태·저장 완료 안내를 확인했다.
+- PDF 링크는 새 웹 페이지가 아니라 Slack 미디어 뷰어 안에서 두 페이지와 문서 텍스트를 표시했다.
+- `rhwp-전체`: 사용자 계정의 실제 합성 HWPX 첨부 `1789645463.258519`(20:44:23)에서 약4초 후 댓글 `1789645467.908519`가 생성됐다. 모래시계→체크 변화, PDF와 두 PNG·편집 카드를 확인했다.
+- 이 검증은 관리자 자신의 Slack 계정으로 수행했다. 다른 동료 계정 직접 수용·모바일·장기간 안정성은 남아 있다.
+- Marketplace 실제 콘솔의 `Prepare & Submit`은 공개 배포 미설정 경고와 비활성 `Get Started`를 표시한다. 외부 배포 조건을 충족하지 않은 채 설정을 강제로 켜거나 제출하지 않았다.
+
+### 최종 점검과 남은 한계
+
+- 초기 카드 댓글은 약4초 후 게시됐다. 전체 PDF/PNG 변환과 업로드 작업은 조회한 로그에서 약35~43초였으며, 초기 댓글 지연과 구분한다.
+- 이전 Cloudflare 주소의 카드에서는 Slack 내부 미리보기 실패가 재현됐다. 후속 확인 시 이전 카드4개 모두 `removed=true`였고 접근 검사가 거절됐다. 원본 부모 메시지도 삭제된 상태였다. 현재의 거절은 무효화된 문서 연결에 대한 정책과 일치하지만 최초 미리보기 실패의 원인까지 입증한 것은 아니다.
+- 기존 댓글 주소를 갱신하려던 작업은 첫 카드의 권한 검사에서 중단되어 실제 `chat.update`를 호출하지 않았다. 삭제·공유 해제된 자료의 접근을 복원하지 않는다. 이전 origin 별칭의 코드 검증을 기존 카드의 실제 Slack 내부 열기 성공으로 보고하지 않는다.
+- 22:07 KST 최종 조회: 활성 카드16개 모두 권한 검사 통과·PDF/PNG ready, 조회한 작업33개 모두 done. 무효화된 카드4개의 파일은 Slack files.info 조회 자체는 가능하므로 파일 bytes가 완전히 삭제됐다고 단정하지 않는다. 활성 문서와 무효화된 연결을 구분한 최종 조회 증적은 `.cache/validation/trial-final-audit.json`에 기록한다. 한 달 시험 운영, 동료 계정·모바일 수용은 후속 항목이다.

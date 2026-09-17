@@ -48,7 +48,8 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 | PDF 링크로 Slack 내부 열람 | OK — URL action 제거. 실제 웹·macOS 데스크톱에서 PDF 링크 클릭으로 기본 뷰어 두 페이지 확인 |
 | PNG·썸네일·ZIP | 같은 스레드의 기본 3페이지/추가 10페이지 native 갤러리 완료; 단독/전체/지정 PNG·ZIP 명령은 후속 |
 | 자동 업로드·멘션 | file_shared·app_mention으로 같은 원본 스레드에 댓글; 일반 채널 history 권한 없음 |
-| 원격 CI/PR/운영 배포 | 미실행 |
+| 원격 CI/PR | 미실행 |
+| Cloud Run 내부 워크스페이스 시험 운영 | 2026-09-17 고정 주소 전환, 상세 Stage 12 보고서 |
 
 ### 단계별 검증 결과
 
@@ -66,14 +67,23 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 ### 잔여 위험
 
-임시 HTTPS·메모리 세션·Chromium 내부 sandbox·최대 입력 자원, 엔진 B-003/B-004를 Stage 6 보고서와 제품 문서에 명시했다. 실제 Slack 권한 회수·장애·모바일·배포형 앱 이용 조건의 전체 수용이 남았다.
+임시 HTTPS·메모리 전용 세션은 Stage 10~12에서 고정 Cloud Run·Firestore로 보완했다. Chromium 내부 sandbox·최대 입력 자원과 엔진 B-003/B-004는 기존 제약으로 유지한다. 실제 Slack 권한 회수·장애·모바일·배포형 앱 이용 조건의 전체 수용이 남았다.
 
 ### 후속 작업 후보
 
 1. 남은 실제 Slack 권한 회수·장애·모바일 수용 확인.
-2. 정식 HTTPS 운영 환경과 별도 변환 worker 경계.
+2. Cloud Run 한 달 비용·안정성 관찰과 다른 동료 계정 수용.
 3. B-002 `/rhwp` 첫 페이지 이미지 단독 명령·전체/지정 PNG·ZIP.
 
 ## 작업지시자 승인 요청
 
 실제 수용 잔여 항목을 보완하고 이 결과를 검토한 뒤 PR 게시 절차로 진행한다. 현재 이슈는 진행중으로 유지한다.
+
+
+## Stage 10~12 운영 전환 추가 보고 (2026-09-17)
+
+문서 bytes는 Slack에 두고 Cloud Run ingress/worker와 Firestore 메타데이터·Cloud Tasks를 적용했다. 워크스페이스 설정·카드16개를 포함한 기록23개를 이전했다. 공개 ingress에도 서명·문서 권한을 확인하고 worker는 비공개다. 1GiB/min1 ingress와 4GiB/min0 worker를 운영하며 할인 전 Cloud Run 월20,749원 차단, 크레딧 적용 후 전체 프로젝트13,833원 알림을 구분한다. 정확한 차단 시점·총 결제액 상한을 보장하지 않는다.
+
+실제 비공개 테스트 채널에서 사용자 파일 첨부→자동 스레드 미리보기→완료 체크→Slack 내부 PDF 두 페이지→내부 Studio 글자 입력→원본 스레드 새 편집본과 PDF/PNG를 확인했다. 티켓 재사용 거절·무서명 및 익명 문서 차단·중복 저장 방지는 실제 Cloud 환경에서 확인했다. 공개 rhwp-전체 채널의 HWPX 자동 변환도 확인했다. 과거 임시 주소 카드4개는 내부 열기 실패 후 무효화 상태가 확인되어 열기 성공으로 판정하지 않았다. 다른 동료 계정의 직접 검증은 남았다. 상세 설정·증거·한계는 [Stage 12](../working/task_m010_1_stage12.md)와 [운영 문서](../../docs/cloud-run.md)를 따른다.
+
+Marketplace 콘솔은 공개 배포 미설정으로 Get Started가 비활성화되어 있다. OAuth 다중설치, 최소10활성 workspace 설치, 외부 배포용 embeds pilot, 개인정보·지원·심사 자료를 준비하기 전에는 제출 완료로 표시하지 않는다. 원격 PR·merge·이슈 종료는 시행하지 않았다.

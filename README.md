@@ -100,3 +100,8 @@ Dockerfile/Compose는 고정 Node 이미지, 일반 사용자·읽기 전용 파
 - [구현계획서](mydocs/plans/task_m010_1_impl.md)
 
 문서 준비 명령: `/rhwp open`, `/rhwp edit`, `/rhwp help`, `/rhwp pdf`. 후속 명령: `/rhwp thumbnail`, `/rhwp png`, `/rhwp png --page N`. 사용자 페이지 번호는 1부터 시작합니다.
+
+
+## 현재 워크스페이스 시험 운영
+
+2026-09-17부터 고정 Cloud Run 주소로 시험 운영한다. `rhwp-slack-test`와 `rhwp-전체`는 자동 감지 모드다. 다른 채널은 앱을 초대하고 관리자가 `/rhwp settings`에서 활성화한다. 예산·비용 한도·복구와 Marketplace 후속 조건은 [Cloud Run 운영](docs/cloud-run.md)을 따른다. 다른 워크스페이스에 설치하는 공개 배포는 아직 지원하지 않는다.

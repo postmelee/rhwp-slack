@@ -14,11 +14,11 @@
 
 ## 리소스와 설정
 
-검증 환경은 같은 지역의 Cloud Run 서비스 2개, Firestore Native, Cloud Tasks 큐, Artifact Registry, Secret Manager를 사용한다.
+현재 시험 운영 환경은 같은 지역의 Cloud Run 서비스 2개, Firestore Native, Cloud Tasks 큐, Artifact Registry, Secret Manager를 사용한다.
 
 | 항목 | 설정 |
 | --- | --- |
-| ingress | 요청 기반 CPU, 최소 0, 최대 1, 1 vCPU·1GiB, 동시 요청 4 |
+| ingress | 요청 기반 CPU, 최소 1, 최대 1, 1 vCPU·1GiB, 동시 요청 4 |
 | worker | 요청 기반 CPU, 최소 0, 최대 1, 2 vCPU·4GiB, 동시 요청 1, 요청 제한 900초 |
 | 작업 큐 | 동시 작업 1, 초당 1, 최대 5회, 재시도 10~300초, 총 1시간 |
 | Firestore | Native Standard, 단일 지역, 환경·workspace별 namespace |
@@ -51,7 +51,7 @@ Cloud Run 명령은 `node dist/cloud/main.cjs`로 지정한다. Docker 기본 CM
 
 ## 비용과 이전
 
-무료 할당량과 프로모션 크레딧은 영구적인 무과금 보장이 아니다. 최소 인스턴스 0과 최대 인스턴스·큐 상한으로 제한하고, 크레딧 차감 전 사용량을 기준으로 예산 알림을 설정한다. Cloud Run 서비스 지출 한도를 사용할 수 있지만 차단 지연이 있고 다른 서비스·저장 비용까지 차단하지 않는다. [지출 한도 범위](https://docs.cloud.google.com/billing/docs/how-to/budgets-spend-caps).
+무료 할당량과 프로모션 크레딧은 영구적인 무과금 보장이 아니다. 시험 운영은 ingress 최소 1, worker 최소 0과 최대 인스턴스·큐 상한을 적용한다. 할인 전 Cloud Run 차단 한도와 크레딧 적용 후 프로젝트 전체 예산 알림을 별도로 설정한다. Cloud Run 서비스 지출 한도를 사용할 수 있지만 차단 지연이 있고 다른 서비스·저장 비용까지 차단하지 않는다. [지출 한도 범위](https://docs.cloud.google.com/billing/docs/how-to/budgets-spend-caps).
 
 기존 SQLite는 실행 중 본체만 복사하지 않는다. 일관된 읽기 스냅샷을 만들고 문서 bytes 없는 메타데이터만 검증해 이전한다. 카드 ID·기록된 origin·원본/수정본 연결·채널 정책을 보존하고 진행 중 작업을 먼저 정리한다. 새 환경 수용 전에는 Slack의 요청 URL을 변경하지 않는다. 전환 시 최종 스냅샷과 기존 서버 설정을 보관해 복구할 수 있게 한다.
 
@@ -75,4 +75,25 @@ node --import tsx scripts/migrate-cloud-state.ts \
 
 진행 중 변환·저장이 없음을 확인하고 기존 서버를 멈춘 뒤 같은 명령에 `--apply`를 붙인다. 원본 DB는 읽기 전용 transaction으로 열어 WAL에 commit된 변경도 포함한다. 카드·채널 설정·기존 스레드 요청 ID와 완료된 저장 영수증만 옮긴다. 진행 중 작업이나 다른 workspace, 대상의 서로 다른 기록을 발견하면 쓰기 전에 거절한다. 중단된 이전은 같은 입력으로 재실행할 수 있다. 출력 digest·건수와 원본 스냅샷은 접근 제한된 운영 증적으로 보관한다.
 
-오래된 카드의 origin은 별칭으로 보존한다. Slack의 Work Objects 허용 도메인에도 이전 origin을 유지하고, 새 편집 세션의 URL은 현재 `APP_ORIGIN`으로 제공한다. 기존 열린 편집 세션은 이전하지 않으며 카드를 다시 열면 새 티켓이 발급된다. 검증 namespace는 운영 namespace와 구분한다.
+오래된 카드의 origin은 별칭으로 보존한다. Slack의 Work Objects 허용 도메인에도 이전 origin을 유지하고, 새 편집 세션의 URL은 현재 `APP_ORIGIN`으로 제공한다. 기존 열린 편집 세션은 이전하지 않으며 권한이 유효한 카드에 새 티켓을 발급한다. 이전 카드의 Slack 내부 열기는 별도 실제 수용이 필요하다. 이번 전환에서 과거 카드4개는 후속 확인 시 삭제·공유 해제로 무효화되어 있었으므로 실제 열기 성공으로 판정하지 않았다. 검증 namespace는 운영 namespace와 구분한다.
+
+
+## 현재 워크스페이스 시험 운영 (2026-09-17 시작)
+
+- 프로젝트 `rhwp-slack-postmelee`, `us-central1`, namespace `workspace-T0BQ8NK3KTM`, 큐 `rhwp-workspace`.
+- 고정 진입 주소: https://rhwp-ingress-aaj47f2u5q-uc.a.run.app . Slack 명령·이벤트·상호작용은 `/slack/events`를 사용한다.
+- ingress는 승인된 공개 호출을 허용하지만 Slack 서명과 문서 권한·티켓 검사를 유지한다. worker는 task caller 서비스 계정만 호출한다.
+- Cloud Run 월 지출 한도: **20,749원**, 할인 전 사용량 기준. 프로젝트 전체 월 예산 알림: **13,833원**, 모든 크레딧 적용 후 기준. 50/80/100% 알림을 설정했다. 결제 통화는 KRW이며 $15/$10의 고정 환율 보장이 아니다.
+- 지출 집계·차단 지연 및 Cloud Run 외 서비스 비용 때문에 총 결제액의 절대 상한을 보장하지 않는다. 달력 월 단위이므로 한 달 시험 기간은 두 결제 월에 걸친다.
+- 현재 `rhwp-slack-test`, `rhwp-전체` 채널 정책을 이전했다. 채널에 앱을 초대한 뒤 관리자가 `/rhwp settings`에서 자동 감지·멘션 전용·중지를 설정한다. 활성 채널의 일반 구성원도 문서 사용이 가능하지만 별도 동료 계정으로 직접 수용한 것은 아니다.
+- 초기(9/20), 7일(9/24), 30일(10/17) 점검을 예약했다. 로컬 Codex 후속 작업의 실행 환경·인증이 필요하며 클라우드 장애 차단 장치를 대신하지 않는다.
+
+### 복구 주의
+
+원본 SQLite의 일관된 스냅샷과 전환 전 Slack manifest를 접근 제한된 운영 경로에 보관했다. 전환 뒤 만들어진 카드·편집본 연결은 Firestore에 있으므로 옛 SQLite 서버만 다시 켜면 최신 연결을 잃는다. 우선 동일 이미지/운영 namespace를 사용하는 Cloud Run 리비전으로 복구한다. 전환 전 DB로 되돌리는 경우 새 기록을 비교·이전하고 중복 worker를 정지한 뒤 Slack 주소를 변경해야 한다. 이전 임시 HTTPS 주소가 다시 동작한다고 가정하지 않는다.
+
+### Marketplace 후속 조건
+
+현재 배포는 한 워크스페이스용이다. 공개 제출 전 OAuth 설치·워크스페이스별 토큰/설정 분리, 제거/권한 철회, 개인정보 처리·보존/삭제·지원 안내, 타 워크스페이스 수용을 준비한다. 공식 2026-09-01 공지에 따르면 2026년 7월부터 최소 **10개 활성 워크스페이스 설치**를 유지해야 한다. [설치 수 요건](https://docs.slack.dev/changelog/2026/09/01/slack-marketplace-install-requirement/).
+
+Slack 내부 Studio에 사용하는 Work Objects embeds는 외부 배포 앱에 대해 초대형 pilot이다. Marketplace 외부 배포에서 같은 편집 UX를 유지하려면 참여 승인을 별도 확보해야 한다. 현재 워크스페이스의 동작 검증을 외부 배포 허가로 간주하지 않는다. [Embeds 조건](https://docs.slack.dev/messaging/work-objects-embeds/), [심사 안내](https://docs.slack.dev/slack-marketplace/slack-marketplace-review-guide/).

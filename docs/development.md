@@ -260,6 +260,6 @@ Slack 클라이언트는 이미지·PDF·편집 카드를 같은 댓글 안의 �
 
 이번 범위는 단일 workspace입니다. 다른 workspace 설치용 OAuth·테넌트별 자격 증명 관리·Marketplace 심사 및 배포형 embeds 이용 승인은 별도입니다.
 
-### Cloud Run 검증 환경
+### Cloud Run 검증·시험 운영 환경
 
-로컬 운영을 유지한 채 별도 Cloud Run 환경에서 검증할 수 있다. Firestore 메타데이터, Cloud Tasks, Secret Manager 설정과 이전 조건은 [Cloud Run 운영](cloud-run.md)을 따른다. Slack URL 전환은 실제 클라우드 수용 후 수행한다.
+로컬 운영을 유지한 채 별도 Cloud Run 환경에서 검증할 수 있다. Firestore 메타데이터, Cloud Tasks, Secret Manager 설정과 이전 조건은 [Cloud Run 운영](cloud-run.md)을 따른다. 현재 워크스페이스는 2026-09-17 고정 Cloud Run 주소로 전환했다. 검증 namespace와 운영 namespace/큐를 구분하고, 상세 수용 결과·잔여 항목은 [Stage 12](../mydocs/working/task_m010_1_stage12.md)를 따른다.
