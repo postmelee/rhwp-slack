@@ -29,4 +29,5 @@ async function main(){try{
  process.once('SIGTERM',()=>{void stop();});process.once('SIGINT',()=>{void stop();});
 }catch{console.error('Cloud runtime configuration or installation check failed.');process.exitCode=1;}
 }
-void main();
+// Build-time warmup loads code only; it never reads secrets or contacts services.
+if(process.argv[2]!=='--warm-code')void main();

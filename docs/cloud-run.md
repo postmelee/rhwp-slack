@@ -43,7 +43,7 @@ docker build --platform linux/amd64 --target release -t rhwp-slack:cloud .
 docker build --platform linux/amd64 --target smoke -t rhwp-slack:smoke .
 ```
 
-Cloud Run 명령은 `node dist/cloud/main.cjs`로 지정한다. Docker 기본 CMD는 로컬 단일 서버를 위해 유지한다. 빌드에서 서버를 번들링하므로 시작할 때 TypeScript를 변환하지 않는다. Playwright는 변환이 시작될 때 로딩한다.
+Cloud Run 명령은 `node dist/cloud/main.cjs`로 지정한다. Docker 기본 CMD는 로컬 단일 서버를 위해 유지한다. 빌드에서 서버를 번들링하므로 시작할 때 TypeScript를 변환하지 않는다. Playwright는 변환이 시작될 때 로딩한다. 이미지 빌드에서는 같은 Node 버전·경로·사용자로 `--warm-code`를 실행해 모듈 컴파일 캐시만 미리 생성한다. 이 모드는 비밀값을 읽거나 외부 서비스에 연결하지 않는다. 운영 명령에는 이 옵션을 넣지 않는다.
 
 배포는 이미지 digest를 고정하고 먼저 비공개 환경에서 검증한다. 합성 문서로 서명 거절·실제 OIDC 작업·PDF/PNG·Studio 편집·동일 스레드 저장·티켓 재사용 거절을 확인한다. `smoke` 이미지의 `node scripts/container-smoke.mjs --server-only`는 비밀값 없이 단위/Slack/security 회귀와 HWP/HWPX PDF 변환을 실행한다.
 

@@ -21,7 +21,7 @@ RUN npm run build && npm run build:dev \
     && node_modules/.bin/esbuild src/server/cloud/main.ts --bundle --platform=node --format=cjs '--external:@google-cloud/*' --external:google-auth-library --external:@playwright/test '--external:@rhwp/*' --outfile=dist/cloud/main.cjs
 
 FROM dependencies AS runtime
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 HOME=/tmp
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 HOME=/tmp NODE_COMPILE_CACHE=/app/.node-compile-cache NODE_COMPILE_CACHE_PORTABLE=1
 COPY --from=build /app/dist/cloud ./dist/cloud
 COPY --from=build /app/dist/editor ./dist/editor
 COPY --from=build /app/dist/studio ./dist/studio
@@ -31,8 +31,9 @@ COPY --from=build /app/.cache/studio-source/rhwp-studio/src/core/generated/font-
 COPY --from=build /app/.cache/studio-source/assets/fonts ./.cache/studio-source/assets/fonts
 COPY --from=build /app/src ./src
 COPY scripts/healthcheck.mjs scripts/slack-preflight.ts ./scripts/
-RUN mkdir -p /app/data && chown node:node /app/data && chmod 700 /app/data
+RUN mkdir -p /app/data /app/.node-compile-cache && chown node:node /app/data /app/.node-compile-cache && chmod 700 /app/data /app/.node-compile-cache
 USER node
+RUN node dist/cloud/main.cjs --warm-code
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["node", "scripts/healthcheck.mjs"]
 CMD ["node", "--import", "tsx", "src/server/main.ts"]
