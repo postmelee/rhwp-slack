@@ -1,7 +1,7 @@
 # Task #2 Stage 1 — 계측과 기준 측정
 
 계획: [수행계획서](../plans/task_m010_2.md), [구현계획서](../plans/task_m010_2_impl.md)
-상태: 계측 구현·로컬 계약 검사 완료, Cloud Run 기준 측정 진행 중. 최적화 미적용.
+상태: 계측·기준 버전 고정과 최초 Cloud 표본 확보 완료. 고정 baseline 이미지의 반복 표본은 Stage2 이후와 독립적으로 수집하며 Stage7에서 최종 집계한다. 최적화 미적용.
 
 ## Stage 1.1 계측
 
@@ -29,3 +29,12 @@
 - 계측 후 첫 표본은 로컬 Docker build가 일부 겹쳐 성능 개선 비교에는 사용하지 않는다. 최종 세분화 계측은 부하가 없는 상태에서 다시 측정한다.
 - linux/amd64 이미지는 빌드됐다. aarch64 Colima에서 AMD64 에뮬레이션 실행 중 esbuild Go heap의 bad pointer 오류로 Slack test 모듈 로딩이 실패했다. 메모리 한도 위반으로 판정하지 않으며 native Linux CI에서 재검증한다. 통과로 표시하거나 검사 기준을 낮추지 않는다.
 - 현재 운영 리비전/이미지/사양/큐는 변경하지 않았다. Cloud Run baseline과 명확한 timeout 원인 확인이 끝날 때까지 Stage1 전체 완료로 처리하지 않는다.
+
+## 기준 버전 고정과 초기 Cloud 표본
+
+- 계측 source `7bf0ce92d514e3f20b981446522e63c44017ac78`, native Linux CI [35232425870](https://github.com/postmelee/rhwp-slack/actions/runs/35232425870) viewer/container 모두 통과.
+- baseline image `sha256:f5356a3b36d7fa5abb86dcd87ddf9be2dbe72e0d8d8609640ad70e1aab7b4a9a`, private `rhwp-performance-worker`, 2CPU/4GiB/min0/max1/concurrency1. 운영 큐·서버는 변경하지 않았다.
+- 업로드된 같은 파일로 submit~최종 ready 관찰: 2페이지 HWP cold 첫 표본71,544ms, warm 첫 표본65,430ms, 각1시도 성공. 3초 polling 오차를 포함한다. 상세 milestone은 Cloud 로그로 최종 계산한다. cold 최초 runtime 시작 로그를 확인했다. 전체 반복 표본 수집은 계속된다.
+- local 계측69페이지3회 중앙값13,595ms. parse175ms, SVG342ms, fonts32ms, DOM5ms, page_attach10,163ms, fonts_ready487ms, PDF821ms, PNG1,000ms(각 단계 중앙값). 초반 소형 문서 일부에 typecheck/단위 검사 부하가 겹쳤으므로 미세한 오버헤드 차이는 판정하지 않는다.
+- 브라우저로 모든 base64 글꼴을 전달하는 구간이 크다. Stage3에서는 동일 고정 글꼴을 사전 준비하되 **허용 목록의 로컬 리소스 응답으로 필요한 글꼴을 전달**하는 방법을 비교한다. 외부 네트워크와 문서 제공 URL은 허용하지 않고 글꼴과 출력은 유지한다.
+- 기준 실행 도구의 source도 ignored `.cache/task2-baseline-src`에 고정했다. 이후 source 수정이 baseline submit/작업 처리에 섞이지 않는다. 최종 비교 표의 반복 수·실패와 조건은 Stage7에서 확정한다.

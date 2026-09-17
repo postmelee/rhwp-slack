@@ -23,7 +23,7 @@
 ## Stage 3 — 변환 코드·정적 글꼴 사전 준비
 
 - 산출물: `scripts/build-conversion.mjs, package.json, Dockerfile, src/conversion/pdf-child.mjs` 및 `mydocs/working/task_m010_2_stage3.md`.
-- 변경: 동일 pinned 코드/글꼴 빌드. 런타임 TS 변환·글꼴별 base64 반복 제거. 새 파서/브라우저 격리 유지.
+- 변경: 동일 pinned 코드/글꼴 빌드. 런타임 TS 변환·글꼴별 base64 반복 제거. Stage1의 page_attach 병목에 따라 허용 목록의 로컬 리소스 응답으로 고정 글꼴 전달량을 줄여 비교한다. 새 파서/브라우저 격리 유지.
 - 검증: 고정 빌드·엔진/폰트 동일·원본/비밀값 부재·PNG/PDF 시각 대조. 영향 코드의 typecheck/단위·Slack·보안 검사를 수행하고 `git diff --check`를 통과한다.
 - 커밋: `Task #2 Stage 3: 변환 코드·정적 글꼴 사전 준비`.
 
