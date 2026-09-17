@@ -6,7 +6,7 @@ GitHub Issue: [#1](https://github.com/postmelee/rhwp-slack/issues/1)
 
 작성일: 2026-09-15 (Asia/Seoul)
 
-상태: Stage 1·2·3·3.1·4·5 구현·검증 완료. 실제 Slack 수용은 미검증이며 Stage 6 Linux 실행·통합 인계가 남아 있다.
+상태: Stage 1~12와 내부 워크스페이스 배포·수용 완료, 최종 PR 검증 중. 이후 승인된 추가 범위는 구현계획서·최종 보고서를 따른다. 아래 초기 계획은 역사적 맥락으로 보존한다.
 
 ## 목적
 
