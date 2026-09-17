@@ -35,6 +35,7 @@ export class Documents {
       this.options.state?.put('cards',id,{...record,attempts:imageAttempts?[...imageAttempts].map(([page,attempt])=>[page,savedAttempt(attempt)]):undefined,pdfAttempt:pdfAttempt?savedAttempt(pdfAttempt):undefined});
     }
   }
+  pendingIds():string[]{return [...this.cards.values()].filter(c=>c.pdf==='pending'||c.imageState==='pending').map(c=>c.id);}
   has(id:string):boolean{return this.cards.has(id);}
   matchesUrl(id:string,url:unknown):boolean {
     const card=this.cards.get(id);return typeof url==='string'&&(url===this.url(id)||(!!card?.origin&&url===`${card.origin}/documents/${id}`));
@@ -223,5 +224,5 @@ export class Documents {
     for(const [id,c] of this.cards)if(c.actor.teamId===team&&(c.fileId===file||c.rootFileId===file)){this.cards.delete(id);this.options.state?.delete('cards',id);this.sessions.invalidate(id);}
   }
   sweep():void {for(const [id,c] of this.cards)if(!this.options.state&&this.now()-c.createdAt>=24*60*60_000){this.cards.delete(id);this.sessions.invalidate(id);}this.sessions.sweep();}
-  async close():Promise<void>{await this.pdf.close();this.checkpoint();this.closed=true;this.cards.clear();this.sessions.clear();}
+  async close():Promise<void>{await Promise.allSettled([...this.cards.values()].map(c=>c.imageWork));await this.pdf.close();this.checkpoint();this.closed=true;this.cards.clear();this.sessions.clear();}
 }

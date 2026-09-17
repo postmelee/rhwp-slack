@@ -16,7 +16,7 @@ export interface Job {
 export type Notify = (job: Readonly<Job>) => Promise<void>;
 interface Options {
   now?:()=>number; concurrency?:number; queueLimit?:number; timeoutMs?:number; ttlMs?:number; maxBytes?:number;
-  download?:typeof downloadFile; notify?:Notify; state?:State; started?:Notify;
+  download?:typeof downloadFile; notify?:Notify; state?:State; started?:Notify; registered?:(job:Job)=>void;
 }
 export class Preparations {
   private jobs=new Map<string,Job>();
@@ -32,7 +32,7 @@ export class Preparations {
       if(j.actor.teamId!==config.teamId)continue;
       if(j.state==='queued'||j.state==='downloading'){
         j.state=j.restore?'expired':'queued';if(j.state==='queued')this.queue.push(j);
-      }else if(j.state==='ready')j.state='expired';
+      }else if(j.state==='ready'){j.state=!j.restore&&!options.state?.get('cards',id)?'queued':'expired';if(j.state==='queued')this.queue.push(j);}
       this.jobs.set(id,j);
     }
     for(const [key,value] of options.state?.all<{id:string;expiresAt:number}>('requests')??[])this.requests.set(key,value);
@@ -42,6 +42,7 @@ export class Preparations {
     const {bytes:_,source:__,...record}=job;this.options.state?.put('jobs',job.id,record);
   }
   start():void{this.pump();}
+  activeIds():string[]{return [...this.jobs.values()].filter(j=>['queued','downloading'].includes(j.state)).map(j=>j.id);}
   async restore(id:string,actor:Actor,fileId:string):Promise<Buffer>{
     assertActor(this.config,actor);
     const existing=this.get(id);
@@ -66,7 +67,7 @@ export class Preparations {
     if (this.queue.length >= (this.options.queueLimit??20) || this.jobs.size>=1000 || this.requests.size>=10_000) throw new UserError('queue_full','요청이 많습니다. 잠시 후 다시 시도하세요.');
     const job:Job={id:randomUUID(),actor:{...actor},fileId,mode,state:'queued',createdAt:this.now()};
     this.jobs.set(job.id,job); this.requests.set(key,{id:job.id,expiresAt:this.now()+24*60*60_000});
-    this.persist(job);this.options.state?.put('requests',key,this.requests.get(key));
+    this.persist(job);this.options.state?.put('requests',key,this.requests.get(key));this.options.registered?.(job);
     this.queue.push(job); queueMicrotask(()=>this.pump());
     return {id:job.id,duplicate:false};
   }

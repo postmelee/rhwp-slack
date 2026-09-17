@@ -3,13 +3,14 @@ import {ID} from './config';
 import type {SlackApi} from './slack-api';
 import {denied, object} from './errors';
 import {MAX_FILE_BYTES} from '../shared/errors';
-export interface Actor {teamId:string; userId:string; channelId:string; threadTs?:string;}
+export interface Actor {teamId:string; userId:string; channelId:string; threadTs?:string; reactionTs?:string;}
 export interface SourceFile {id:string; name:string; size:number; downloadUrl:string;}
 export function assertActor(config: Config, actor: Actor): void {
   if (actor.teamId!==config.teamId || !ID.user.test(actor.userId) || !config.channelIds.has(actor.channelId)) denied();
 }
-export async function authorizeFile(api: SlackApi, config: Config, actor: Actor, fileId: string, signal?: AbortSignal): Promise<SourceFile> {
-  assertActor(config,actor); if (!ID.file.test(fileId)) denied();
+export async function authorizeChannel(api:SlackApi,config:Config,actor:Actor,signal?:AbortSignal,enabled=true):Promise<Record<string,unknown>>{
+  if(actor.teamId!==config.teamId||!ID.user.test(actor.userId)||!ID.channel.test(actor.channelId))denied();
+  if(enabled)assertActor(config,actor);
   const c=object((await api.call('conversations.info',{channel:actor.channelId},signal)).channel);
   if (c.id!==actor.channelId || (c.is_channel!==true && c.is_group!==true) ||
       typeof c.is_private!=='boolean' || c.is_im!==false || c.is_mpim!==false || c.is_member!==true || c.is_archived!==false ||
@@ -27,6 +28,11 @@ export async function authorizeFile(api: SlackApi, config: Config, actor: Actor,
     seen.add(next); cursor=next;
   }
   if (!found) denied();
+  return c;
+}
+export async function authorizeFile(api: SlackApi, config: Config, actor: Actor, fileId: string, signal?: AbortSignal): Promise<SourceFile> {
+  assertActor(config,actor);if(!ID.file.test(fileId))denied();
+  const c=await authorizeChannel(api,config,actor,signal);
   const f=object((await api.call('files.info',{file:fileId},signal)).file);
   if (f.id!==fileId || f.mode!=='hosted' || f.is_external!==false || (f.is_restricted_sharing_enabled!==undefined && f.is_restricted_sharing_enabled!==false) ||
       (f.file_access!==undefined && f.file_access!=='visible') || f.is_tombstoned===true || f.has_more_shares===true || f.skipped_shares===true ||

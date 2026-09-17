@@ -36,9 +36,9 @@ export class EditorApi extends FakeApi {
     return super.response(method,args);
   }
 }
-export async function editorServer(options:{api?:EditorApi;convert?:NonNullable<Parameters<typeof createSlackReceiver>[3]>['convert'];convertImages?:NonNullable<Parameters<typeof createSlackReceiver>[3]>['convertImages'];fetcher?:typeof fetch;now?:()=>number;origin?:string;statePath?:string}={}){
+export async function editorServer(options:{api?:EditorApi;convert?:NonNullable<Parameters<typeof createSlackReceiver>[3]>['convert'];convertImages?:NonNullable<Parameters<typeof createSlackReceiver>[3]>['convertImages'];fetcher?:typeof fetch;now?:()=>number;origin?:string;statePath?:string;adminIds?:ReadonlySet<string>;reactions?:boolean}={}){
   const api=options.api??new EditorApi();const publicOrigin=options.origin??'https://editor.example.com';
-  const runtime=createSlackReceiver({...config,publicOrigin,statePath:options.statePath},api,{botId:'BBOT',botUserId:'UBOT'},
+  const runtime=createSlackReceiver({...config,publicOrigin,statePath:options.statePath,adminIds:options.adminIds,reactions:options.reactions},api,{botId:'BBOT',botUserId:'UBOT'},
     {download:async()=>bytes,convertImages:options.convertImages,convert:options.convert??(async()=>Buffer.from('%PDF-synthetic')),fetcher:options.fetcher??(async()=>new Response('ok')),now:options.now});
   const server=await runtime.receiver.start({host:'127.0.0.1',port:0});const address=server.address();if(!address||typeof address==='string')throw new Error('listen');
   const origin=`http://127.0.0.1:${address.port}`;

@@ -14,7 +14,7 @@
         "command": "/rhwp",
         "url": "https://example.invalid/slack/events",
         "description": "한글 문서 열기 및 PDF 보기",
-        "usage_hint": "open|edit|pdf <Slack 파일 링크> 또는 help",
+        "usage_hint": "open|edit|pdf <Slack 파일 링크> 또는 help|settings",
         "should_escape": true
       }
     ],
@@ -25,7 +25,11 @@
         "callback_id": "rhwp_open_document",
         "description": "메시지의 HWP/HWPX 문서 선택"
       }
-    ]
+    ],
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": false
+    }
   },
   "oauth_config": {
     "scopes": {
@@ -36,7 +40,8 @@
         "channels:read",
         "groups:read",
         "files:write",
-        "app_mentions:read"
+        "app_mentions:read",
+        "reactions:write"
       ]
     }
   },
@@ -48,7 +53,8 @@
         "file_unshared",
         "entity_details_requested",
         "file_shared",
-        "app_mention"
+        "app_mention",
+        "app_home_opened"
       ]
     },
     "interactivity": {

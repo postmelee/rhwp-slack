@@ -1,6 +1,6 @@
 import {setTimeout as delay} from 'node:timers/promises';
 import {UserError, object} from './errors';
-export type Method = 'auth.test' | 'conversations.info' | 'conversations.members' | 'files.info' | 'chat.postEphemeral' | 'views.open' | 'chat.postMessage' | 'chat.update' | 'entity.presentDetails' | 'files.getUploadURLExternal' | 'files.completeUploadExternal';
+export type Method = 'views.publish' | 'reactions.add' | 'reactions.remove' | 'auth.test' | 'conversations.info' | 'conversations.members' | 'files.info' | 'chat.postEphemeral' | 'views.open' | 'chat.postMessage' | 'chat.update' | 'entity.presentDetails' | 'files.getUploadURLExternal' | 'files.completeUploadExternal';
 export interface SlackApi {call(method: Method, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>>;}
 const queryMethods = new Set<Method>(['conversations.info','conversations.members','files.info']);
 const reads = new Set<Method>(['auth.test','conversations.info','conversations.members','files.info']);
@@ -45,7 +45,7 @@ export class HttpSlackApi implements SlackApi {
       }
       if (!response.ok) {await response.body?.cancel(); throw new UserError('slack_unavailable','Slack 요청을 완료하지 못했습니다. 잠시 후 다시 시도하세요.');}
       const data=object(JSON.parse((await readBounded(response,1024*1024)).toString()));
-      if (data.ok!==true) throw new UserError('slack_rejected','Slack에서 요청을 허용하지 않았습니다. 앱 권한과 파일 공유 상태를 확인하세요.');
+      if (data.ok!==true) throw new UserError(data.error==='already_reacted'?'already_reacted':data.error==='no_reaction'?'no_reaction':'slack_rejected','Slack에서 요청을 허용하지 않았습니다. 앱 권한과 파일 공유 상태를 확인하세요.');
       return data;
     }
   }

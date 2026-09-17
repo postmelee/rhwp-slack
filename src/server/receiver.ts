@@ -11,6 +11,8 @@ import {Selections, candidatesFrom, selectionView} from './shortcuts';
 import {Documents} from './documents';
 import {Saves} from './saves';
 import {State} from './state';
+import {Settings} from './settings';
+import {Reactions} from './reactions';
 import {editorRoutes} from './editor-routes';
 import {denied, userMessage, object, UserError} from './errors';
 // Bolt logs may contain request bodies or SDK response metadata. Do not forward their arguments.
@@ -26,25 +28,27 @@ function trigger(value:unknown):string {
   return value;
 }
 export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotIdentity,options:{download?:typeof import('./download').downloadFile;now?:()=>number;fetcher?:typeof fetch;convert?:ConstructorParameters<typeof import('./pdf-jobs').PdfJobs>[0];convertImages?:ConstructorParameters<typeof import('./pdf-jobs').PdfJobs>[1]}={}) {
+  const state=config.statePath?new State(config.statePath,config.teamId):undefined;
+  const settings=new Settings(config,api,state);config={...config,channelIds:settings.enabled};
+  const reactions=new Reactions(api,config.reactions===true,state);
   const receiver=new ExpressReceiver({signingSecret:config.signingSecret,endpoints:'/slack/events',signatureVerification:true,
     processBeforeResponse:false,logger:quietLogger,bodyLimit:'256kb'});
   const app=new App({receiver,logger:quietLogger,ignoreSelf:false,authorize:async({teamId})=>{
     if(teamId!==config.teamId)denied();
     return {teamId:config.teamId,botToken:config.botToken,...botIdentity};
   }});
-  const state=config.statePath?new State(config.statePath,config.teamId):undefined;
   const selections=new Selections(options.now);
   const replays=new Replays(options.now);
   const notice=async(actor:Actor,text:string)=>{await api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text});};
   const notify=async(job:Readonly<Job>)=>{
-    if(job.state==='ready'&&documents){if(documents.has(job.id))return;try{await documents.publish(job);}catch(error){await notice(job.actor,userMessage(error));}return;}
+    if(job.state==='ready'&&documents){if(documents.has(job.id))return;try{await documents.publish(job);}catch(error){await reactions.finish(job.id,false);await notice(job.actor,userMessage(error));}return;}
     const text=job.state==='ready'
       ? `문서 접근 확인을 마쳤습니다. ${job.mode==='pdf'?'PDF 미리보기':'Slack 편집기'} 연결은 아직 사용할 수 없습니다.`
       : job.error??'문서 준비에 실패했습니다.';
-    await notice(job.actor,text);
+    await reactions.finish(job.id,false);await notice(job.actor,text);
   };
-  const preparations=new Preparations(config,api,{download:options.download,now:options.now,notify,state});
-  const documents=config.publicOrigin?new Documents(config,api,preparations,{...options,state}):undefined;
+  const preparations=new Preparations(config,api,{download:options.download,now:options.now,notify,state,registered:job=>reactions.register(job.id,job.actor),started:job=>reactions.start(job.id)});
+  const documents=config.publicOrigin?new Documents(config,api,preparations,{...options,state,complete:card=>reactions.finish(card.id,card.pdf==='ready'&&card.imageState==='ready')}):undefined;
   const saves=documents?new Saves(documents,options.now,state):undefined;
   if(documents&&saves)receiver.router.use(editorRoutes(config.publicOrigin!,documents,saves));
   const actor=(team:unknown,user:unknown,channel:unknown):Actor=>{
@@ -63,6 +67,10 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
   app.command('/rhwp',async({command,ack})=>{
     try {
       if(command.api_app_id!==config.appId)denied();
+      if(command.text.trim()==='settings'){
+        if(!settings.isAdmin(command.team_id,command.user_id)){await ack({response_type:'ephemeral',text:'채널 설정은 rhwp 앱 관리자가 변경할 수 있습니다.'});return;}
+        await ack();await settings.open(command.team_id,command.user_id,trigger(command.trigger_id),command.channel_id);return;
+      }
       const who=actor(command.team_id,command.user_id,command.channel_id);
       const parsed=parseCommand(command.text,config.workspaceHost);
       if(parsed.kind==='help'){await ack({response_type:'ephemeral',text:HELP});return;}
@@ -77,7 +85,7 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
       who=actor(shortcut.team?.id,shortcut.user.id,shortcut.channel.id);
       const threadTs=shortcut.message.thread_ts??shortcut.message_ts;
       if(typeof threadTs!=='string'||!/^\d+\.\d+$/.test(threadTs))denied();
-      who.threadTs=threadTs;
+      who.threadTs=threadTs;who.reactionTs=shortcut.message_ts;
       const files=candidatesFrom(shortcut.message.files);
       const requestId=trigger(shortcut.trigger_id);
       const replayKey=JSON.stringify([who.teamId,who.userId,who.channelId,requestId]);
@@ -128,10 +136,11 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
       const candidates=[object(shares.public??{})[who.channelId],object(shares.private??{})[who.channelId]].filter(Array.isArray).flat().map(object);
       const valid=candidates.filter(s=>s.share_user_id!==botIdentity.botUserId&&s.team_id===who.teamId&&typeof s.ts==='string'&&/^\d+\.\d+$/.test(s.ts));
       // File events omit a message ts. Never guess which of several shares owns the new reply.
-      if(valid.length!==1){await notice(who,'미리보기를 달 메시지를 특정하지 못했습니다. 해당 메시지 메뉴에서 한글 문서 열기를 선택해 주세요.');return;}
+      if(valid.length!==1){if(settings.mode(who.channelId)==='auto')await notice(who,'미리보기를 달 메시지를 특정하지 못했습니다. 해당 메시지 메뉴에서 한글 문서 열기를 선택해 주세요.');return;}
       const share=valid[0],parent=share.thread_ts??share.ts;
       if(typeof parent!=='string'||!/^\d+\.\d+$/.test(parent))return;
-      who.threadTs=parent;
+      who.threadTs=parent;who.reactionTs=String(share.ts);remember(who,e.file_id);
+      if(settings.mode(who.channelId)!=='auto')return;
       requestThread(who,e.file_id);
     }catch{/* No automatic public fallback or raw Slack error output. */}
   });
@@ -141,7 +150,7 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
       if(e.user===botIdentity.botUserId||e.bot_id||typeof body.event_id!=='string'||!body.event_id)return;
       who=actor(body.team_id,e.user,e.channel);
       const parent=e.thread_ts??e.ts;if(typeof parent!=='string'||!/^\d+\.\d+$/.test(parent))denied();
-      who.threadTs=parent;
+      who.threadTs=parent;who.reactionTs=String(e.ts);
       if(!replays.claim('mention:'+who.teamId+':'+body.event_id))return;
       let files:string[]=[];
       if(Array.isArray(e.files))files=candidatesFrom(e.files).map(f=>f.id);
@@ -160,6 +169,21 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
         requestThread(who,fileId);
       }
     }catch(error){if(who)await notice(who,userMessage(error)).catch(()=>{});}
+  });
+  app.event('app_home_opened',async({body,event})=>{
+    if(event.tab!=='home')return;await settings.home(body.team_id??'',event.user).catch(()=>{});
+  });
+  app.action('rhwp_settings',async({body,ack})=>{
+    await ack();const b=object(body);try{await settings.open(String(object(b.team).id),String(object(b.user).id),trigger(b.trigger_id));}catch{/* A forged non-admin action cannot change settings. */}
+  });
+  app.view('rhwp_channel_settings',async({body,view,ack})=>{
+    try{
+      const channel=view.state.values.channel?.value?.selected_conversation;
+      const mode=view.state.values.mode?.value?.selected_option?.value;
+      if(typeof channel!=='string'||typeof mode!=='string')denied();
+      await settings.set({teamId:body.team?.id??'',userId:body.user.id,channelId:channel},mode);
+      await ack();void settings.home(body.team?.id??'',body.user.id).catch(()=>{});
+    }catch(error){await ack({response_action:'errors',errors:{channel:userMessage(error)}});}
   });
   app.action('rhwp_more_pages',async({body,action,ack})=>{
     await ack();if(!documents)return;let who:Actor|undefined;
@@ -203,7 +227,8 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
   });
   app.error(async()=>{}); // No raw payload/token logging; callers receive safe errors above.
   receiver.router.get('/healthz',(_req,res)=>{res.json({ok:true});});
-  const sweep=setInterval(()=>{preparations.sweep();selections.sweep();replays.sweep();documents?.sweep();saves?.sweep();},60_000);sweep.unref();
+  const sweep=setInterval(()=>{preparations.sweep();selections.sweep();replays.sweep();documents?.sweep();saves?.sweep();reactions.sweep();},60_000);sweep.unref();
+  const reactionRecovery=reactions.recover(new Set([...preparations.activeIds(),...(documents?.pendingIds()??[])]));
   const ready=documents?.recover().catch(()=>{}).then(()=>preparations.start())??Promise.resolve().then(()=>preparations.start());
-  return {ready,state,receiver,app,preparations,selections,documents,saves,async close(){clearInterval(sweep);await ready;await preparations.close();await saves?.close();await documents?.close();state?.close();}};
+  return {ready,state,settings,reactions,receiver,app,preparations,selections,documents,saves,async close(){clearInterval(sweep);await ready;await preparations.close();await saves?.close();await documents?.close();await reactionRecovery;await reactions.idle();state?.close();}};
 }
