@@ -27,7 +27,7 @@ function trigger(value:unknown):string {
   if (typeof value!=='string' || value.length<1 || value.length>256) throw new UserError('bad_trigger','요청 식별자가 올바르지 않습니다. 다시 요청하세요.');
   return value;
 }
-export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotIdentity,options:{download?:typeof import('./download').downloadFile;now?:()=>number;fetcher?:typeof fetch;convert?:ConstructorParameters<typeof import('./pdf-jobs').PdfJobs>[0];convertImages?:ConstructorParameters<typeof import('./pdf-jobs').PdfJobs>[1]}={}) {
+export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotIdentity,options:{sessionStore?:import('./cloud/metadata').MetadataStore;download?:typeof import('./download').downloadFile;now?:()=>number;fetcher?:typeof fetch;convert?:ConstructorParameters<typeof import('./pdf-jobs').PdfJobs>[0];convertImages?:ConstructorParameters<typeof import('./pdf-jobs').PdfJobs>[1]}={}) {
   const state=config.statePath?new State(config.statePath,config.teamId):undefined;
   const settings=new Settings(config,api,state);config={...config,channelIds:settings.enabled};
   const reactions=new Reactions(api,config.reactions===true,state);
@@ -223,7 +223,7 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
   for(const type of ['file_deleted','file_unshared'] as const) app.event(type,async({body,event})=>{
     if(body.team_id!==config.teamId || typeof body.event_id!=='string' || !body.event_id || !replays.claim(`event:${body.team_id}:${body.event_id}`))return;
     const e=object(event);const fileId=e.file_id;
-    if(typeof fileId==='string'&&ID.file.test(fileId)){for(const [key,item] of observed)if(item.team===body.team_id&&item.file===fileId)observed.delete(key);for(const [key,value] of state?.all<{file:string}>('observed')??[])if(value.file===fileId)state?.delete('observed',key);preparations.invalidate(body.team_id,fileId);documents?.invalidate(body.team_id,fileId);}
+    if(typeof fileId==='string'&&ID.file.test(fileId)){for(const [key,item] of observed)if(item.team===body.team_id&&item.file===fileId)observed.delete(key);for(const [key,value] of state?.all<{file:string}>('observed')??[])if(value.file===fileId)state?.delete('observed',key);preparations.invalidate(body.team_id,fileId);await documents?.invalidate(body.team_id,fileId);}
   });
   app.error(async()=>{}); // No raw payload/token logging; callers receive safe errors above.
   receiver.router.get('/healthz',(_req,res)=>{res.json({ok:true});});

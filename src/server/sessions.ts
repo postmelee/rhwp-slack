@@ -2,6 +2,14 @@ import {randomBytes,createHash} from 'node:crypto';
 import type {Actor} from './access';
 import {UserError} from './errors';
 export interface Session {id:string; actor:Actor; cardId:string; createdAt:number; lastUsed:number;}
+export interface SessionAccess {
+  issue(cardId:string,actor:Actor):string|Promise<string>;
+  exchange(value:string|Promise<string>):Promise<string>;
+  require(bearer:string):Promise<Session>;
+  invalidate(cardId:string):void|Promise<void>;
+  sweep():void;
+  clear():void;
+}
 interface Ticket {actor:Actor;cardId:string;until:number;}
 const key=(value:string)=>createHash('sha256').update(value).digest('hex');
 const token=()=>randomBytes(32).toString('base64url');
@@ -18,7 +26,8 @@ export class Sessions {
     this.sweep();if(this.tickets.size>=1000)throw new UserError('busy','편집 요청이 많습니다. 잠시 후 다시 시도하세요.');
     const value=token();this.tickets.set(key(value),{cardId,actor:{...actor},until:this.now()+60_000});return value;
   }
-  async exchange(value:string):Promise<string> {
+  async exchange(input:string|Promise<string>):Promise<string> {
+    const value=typeof input==='string'?input:await input;
     this.sweep();const ticket=this.tickets.get(key(value));this.tickets.delete(key(value));
     if(!ticket)throw new UserError('session_expired','문서 열기 링크가 만료되었습니다. Slack에서 다시 열어 주세요.');
     const generation=this.generation;

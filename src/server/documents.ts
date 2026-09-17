@@ -1,10 +1,13 @@
+import {documentMetadata,documentGallery,documentMessage} from './document-message';
 import {createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {authorizeFile, type Actor} from './access';
 import type {Config} from './config';
 import type {SlackApi} from './slack-api';
 import type {Preparations,Job} from './jobs';
-import {Sessions} from './sessions';
+import {Sessions,type SessionAccess} from './sessions';
+import {SharedSessions} from './cloud/sessions';
+import type {MetadataStore} from './cloud/metadata';
 import {Uploads,savedAttempt,type UploadAttempt} from './uploads';
 import type {PageImages,PageImage} from '../conversion/convert.mjs';
 import {PdfJobs} from './pdf-jobs';
@@ -19,10 +22,12 @@ export interface Card {
   imageAttempts?:Map<number,UploadAttempt>;pdfAttempt?:UploadAttempt;imageWork?:Promise<void>;updates?:Promise<void>;
 }
 export class Documents {
-  readonly sessions:Sessions; readonly uploads:Uploads; readonly pdf:PdfJobs;
+  readonly sessions:SessionAccess; readonly uploads:Uploads; readonly pdf:PdfJobs;
   private cards=new Map<string,Card>(); private closed=false;
-  constructor(private config:Config,private api:SlackApi,private preparations:Preparations,private options:{state?:State;complete?:(card:Card)=>Promise<void>;now?:()=>number;fetcher?:typeof fetch;convert?:ConstructorParameters<typeof PdfJobs>[0];convertImages?:ConstructorParameters<typeof PdfJobs>[1]}={}) {
-    this.now=options.now??Date.now;this.sessions=new Sessions(this.now,async(id,actor)=>{await this.authorize(id,actor);});
+  constructor(private config:Config,private api:SlackApi,private preparations:Preparations,private options:{state?:State;sessionStore?:MetadataStore;complete?:(card:Card)=>Promise<void>;now?:()=>number;fetcher?:typeof fetch;convert?:ConstructorParameters<typeof PdfJobs>[0];convertImages?:ConstructorParameters<typeof PdfJobs>[1]}={}) {
+    this.now=options.now??Date.now;
+    const checkSession=async(id:string,actor:Actor)=>{await this.authorize(id,actor);};
+    this.sessions=options.sessionStore?new SharedSessions(options.sessionStore,checkSession,this.now):new Sessions(this.now,checkSession);
     this.uploads=new Uploads(api,config,options.fetcher,()=>this.checkpoint());this.pdf=new PdfJobs(options.convert,options.convertImages);
     for(const [id,record] of options.state?.all<Card & {attempts?:[number,UploadAttempt][]}>('cards')??[]){
       const {attempts,...card}=record;if(card.actor.teamId!==config.teamId)continue;
@@ -81,33 +86,9 @@ export class Documents {
     if(!job?.bytes||job.state!=='ready')throw new UserError('source_expired','문서 준비가 만료되었습니다. /rhwp open으로 다시 요청하세요.');
     return job.bytes;
   }
-  private metadata(card:Card,previewUrl?:string):Record<string,unknown> {
-    return {url:this.url(card.id),external_ref:{id:card.id,type:'document'},entity_type:'slack#/entities/file',entity_payload:{
-      attributes:{title:{text:card.name},display_type:'rhwp에서 편집 · 이 카드를 클릭하세요',product_name:'rhwp',full_size_preview:{is_supported:true,mime_type:'application/vnd.slack-embed',...(previewUrl?{preview_url:previewUrl}:{})}},
-      slack_file:{id:card.fileId,type:/\.hwpx$/i.test(card.name)?'hwpx':'hwp'},fields:{},
-      custom_fields:previewUrl?[]:[
-        ...(card.pdfFileId?[{key:'pdf_file',label:'PDF 파일',type:'slack#/types/file',slack_file:{id:card.pdfFileId}}]:[]),
-      ],display_order:[]}};
-  }
-  private text(card:Card):string{return card.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-  private gallery(card:Card){
-    // Slack appends file_ids; keep a contiguous prefix so a failed upload cannot reorder pages.
-    const sorted=[...(card.images??[])].sort((a,b)=>a.page-b.page);
-    const gap=sorted.findIndex((image,index)=>image.page!==index+1);
-    return gap<0?sorted:sorted.slice(0,gap);
-  }
-  private message(card:Card):Record<string,unknown>{
-    const images=this.gallery(card);
-    const detail=card.pageCount?card.pageCount+'페이지':'페이지 확인 중';
-    const pdf=card.pdfUrl?' · <'+card.pdfUrl+'|PDF로 보기>':card.pdf==='failed'?' · PDF 준비 실패':' · PDF 준비 중';
-    const blocks:Record<string,unknown>[]=[{type:'section',text:{type:'mrkdwn',text:'*'+this.text(card)+'* · '+detail+pdf}}];
-    if(card.imageState==='pending')blocks.push({type:'context',elements:[{type:'plain_text',text:'페이지 이미지를 준비하고 있습니다.'}]});
-    else if(card.pageCount&&(images.length<Math.min(10,card.pageCount)||card.imageState==='failed')){
-      blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_more_pages',value:card.id,text:{type:'plain_text',text:card.imageState==='failed'?'이미지 다시 준비':'추가 페이지 이미지 보기 (최대 10페이지)'}}]});
-    }
-    if(card.pageCount&&card.pageCount>10&&images.length===10)blocks.push({type:'context',elements:[{type:'plain_text',text:'앞 10페이지를 표시했습니다. 전체 문서는 PDF로 볼 수 있습니다.'}]});
-    return {channel:card.actor.channelId,text:this.text(card)+' · '+detail,blocks,parse:'none',unfurl_links:false,unfurl_media:false,metadata:{entities:[this.metadata(card)]}};
-  }
+  private metadata(card:Card,previewUrl?:string){return documentMetadata(card,this.config.publicOrigin!,previewUrl);}
+  private gallery(card:Card){return documentGallery(card);}
+  private message(card:Card){return documentMessage(card,this.config.publicOrigin!);}
   private update(card:Card,actor=card.actor):Promise<void>{
     const next=(card.updates??Promise.resolve()).catch(()=>{}).then(async()=>{
       this.checkpoint();await this.authorize(card.id,actor);await this.api.call('chat.update',{...this.message(card),ts:card.messageTs,...(this.gallery(card).length?{file_ids:this.gallery(card).map(image=>image.fileId)}:{})});
@@ -220,12 +201,12 @@ export class Documents {
   }
   async present(id:string,actor:Actor,triggerId:string):Promise<void> {
     const card=await this.authorize(id,actor);if(!card.messageTs)throw new UserError('card_pending','카드 게시 결과를 확인 중입니다. 잠시 후 다시 열어 주세요.');await this.ensureSource(id,actor);
-    const ticket=this.sessions.issue(id,{...actor,threadTs:card.actor.threadTs});
+    const ticket=await this.sessions.issue(id,{...actor,threadTs:card.actor.threadTs});
     await this.api.call('entity.presentDetails',{trigger_id:triggerId,metadata:this.metadata(card,`${this.config.publicOrigin}/editor/#ticket=${ticket}`)});
   }
-  invalidate(team:string,file:string):void {
-    for(const [id,c] of this.cards)if(c.actor.teamId===team&&(c.fileId===file||c.rootFileId===file)){this.cards.delete(id);this.options.state?.delete('cards',id);this.sessions.invalidate(id);}
+  async invalidate(team:string,file:string):Promise<void> {
+    for(const [id,c] of this.cards)if(c.actor.teamId===team&&(c.fileId===file||c.rootFileId===file)){this.cards.delete(id);this.options.state?.delete('cards',id);await this.sessions.invalidate(id);}
   }
-  sweep():void {for(const [id,c] of this.cards)if(!this.options.state&&this.now()-c.createdAt>=24*60*60_000){this.cards.delete(id);this.sessions.invalidate(id);}this.sessions.sweep();}
+  sweep():void {for(const [id,c] of this.cards)if(!this.options.state&&this.now()-c.createdAt>=24*60*60_000){this.cards.delete(id);void Promise.resolve(this.sessions.invalidate(id)).catch(()=>{});}this.sessions.sweep();}
   async close():Promise<void>{await Promise.allSettled([...this.cards.values()].map(c=>c.imageWork));await this.pdf.close();this.checkpoint();this.closed=true;this.cards.clear();this.sessions.clear();}
 }

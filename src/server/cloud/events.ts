@@ -1,0 +1,51 @@
+import {createHash} from 'node:crypto';
+import {setTimeout as delay} from 'node:timers/promises';
+import type {Actor} from '../access';
+import {authorizeFile} from '../access';
+import {ID} from '../config';
+import {object,UserError} from '../errors';
+import type {CloudApplication} from './application';
+import type {TaskContext,TaskSpec} from './tasks';
+import {Settings} from '../settings';
+/** A projection of a signed event. Never store the message text or the original payload. */
+export interface Input {kind:'file_shared'|'app_mention'|'file_deleted'|'file_unshared'|'home';actor?:Actor;fileId?:string;files?:string[];user?:string;}
+export class CloudEvents {
+ constructor(private application:CloudApplication,private botUserId:string){}
+ async enqueue(eventId:string,input:Input):Promise<void>{
+  const app=this.application,id=createHash('sha256').update(app.config.teamId+':'+eventId).digest('hex');
+  await app.store.atomic<Input,void>('inputs',id,current=>({value:current??input,expiresAt:Date.now()+7*86400_000,result:undefined}));
+  await app.tasks.enqueue('event:'+id,{teamId:app.config.teamId,cardId:id,kind:'event'});
+ }
+ private threadKey(actor:Actor,fileId:string){return JSON.stringify([actor.teamId,actor.channelId,actor.threadTs,fileId]);}
+ private async remember(actor:Actor,fileId:string){
+  const key=this.threadKey(actor,fileId);await this.application.store.atomic('observed',key,()=>({value:{team:actor.teamId,channel:actor.channelId,parent:actor.threadTs,file:fileId},expiresAt:Date.now()+86400_000,result:undefined}));
+ }
+ async execute(spec:TaskSpec,context:TaskContext):Promise<void>{
+  const app=this.application;if(spec.teamId!==app.config.teamId)throw new Error('Wrong workspace');
+  const input=await app.store.get<Input>('inputs',spec.cardId);if(!input)throw new Error('Missing event');
+  if(input.kind==='file_deleted'||input.kind==='file_unshared'){if(input.fileId)await app.invalidate(input.fileId);return;}
+  if(input.kind==='home'){await new Settings(app.config,app.api,undefined,app.store).home(app.config.teamId,input.user!);return;}
+  const actor=input.actor!;if(actor.userId===this.botUserId||await app.mode(actor.channelId)==='off')return;
+  await context.checkpoint();
+  if(input.kind==='file_shared'){
+   const f=object((await app.api.call('files.info',{file:input.fileId},context.signal)).file);
+   if(f.user===this.botUserId||f.id!==input.fileId||typeof f.name!=='string'||!/\.(hwp|hwpx)$/i.test(f.name))return;
+   const shares=object(f.shares),valid=[object(shares.public??{})[actor.channelId],object(shares.private??{})[actor.channelId]].filter(Array.isArray).flat().map(object).filter(s=>s.share_user_id!==this.botUserId&&s.team_id===actor.teamId&&typeof s.ts==='string'&&/^\d+\.\d+$/.test(s.ts));
+   if(valid.length!==1){if(await app.mode(actor.channelId)==='auto')await app.api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text:'미리보기를 달 메시지를 특정하지 못했습니다. 해당 메시지 메뉴에서 한글 문서 열기를 선택해 주세요.'},context.signal);return;}
+   const share=valid[0],parent=share.thread_ts??share.ts;if(typeof parent!=='string'||!/^\d+\.\d+$/.test(parent))return;
+   actor.threadTs=parent;actor.reactionTs=String(share.ts);await this.remember(actor,input.fileId!);
+   if(await app.mode(actor.channelId)==='auto'){await context.checkpoint();await app.submit(actor,input.fileId!,'thread:'+this.threadKey(actor,input.fileId!));}return;
+  }
+  let files=input.files??[];
+  for(let i=0;!files.length&&i<5;i++){
+   files=(await app.store.list<{team:string;channel:string;parent:string;file:string}>('observed')).map(([,r])=>r).filter(r=>r.team===actor.teamId&&r.channel===actor.channelId&&r.parent===actor.threadTs).map(r=>r.file);
+   if(!files.length)await delay(250,undefined,{signal:context.signal});
+  }
+  if(!files.length){await app.api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text:'HWP/HWPX 파일과 함께 @rhwp를 멘션해 주세요. 이전 파일은 해당 메시지 메뉴의 한글 문서 열기로 요청할 수 있습니다.'},context.signal);return;}
+  if(files.length>10)throw new UserError('too_many_files','한 번에 문서 10개까지 요청할 수 있습니다.');
+  for(const id of new Set(files))if(ID.file.test(id)){
+   await context.checkpoint();await authorizeFile(app.api,await app.accessConfig(actor),actor,id,context.signal);
+   await app.submit(actor,id,'thread:'+this.threadKey(actor,id));
+  }
+ }
+}

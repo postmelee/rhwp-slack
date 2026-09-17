@@ -26,5 +26,11 @@ export class State {
     this.db.prepare('INSERT INTO records(team,kind,key,value) VALUES(?,?,?,?) ON CONFLICT(team,kind,key) DO UPDATE SET value=excluded.value').run(this.team,kind,key,JSON.stringify(value));
   }
   delete(kind:string,key:string):void{this.db.prepare('DELETE FROM records WHERE team=? AND kind=? AND key=?').run(this.team,kind,key);}
+  /** Synchronous transactions only; never perform network work inside the callback. */
+  atomic<T>(work:()=>T):T {
+    this.db.exec("BEGIN IMMEDIATE");
+    try{const result=work();if(result instanceof Promise)throw new Error("Async SQLite transaction is not supported");this.db.exec("COMMIT");return result;}
+    catch(error){this.db.exec("ROLLBACK");throw error;}
+  }
   close():void{if(!this.closed){this.closed=true;this.db.close();}}
 }

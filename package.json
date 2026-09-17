@@ -23,10 +23,13 @@
     "preflight:slack": "node --env-file=.env --import tsx scripts/slack-preflight.ts"
   },
   "dependencies": {
+    "@google-cloud/firestore": "9.1.0",
+    "@google-cloud/tasks": "7.1.1",
+    "@playwright/test": "1.63.0",
     "@rhwp/core": "0.8.6",
     "@rhwp/editor": "0.8.6",
     "@slack/bolt": "5.1.0",
-    "@playwright/test": "1.63.0",
+    "google-auth-library": "11.1.0",
     "tsx": "4.23.13"
   },
   "devDependencies": {

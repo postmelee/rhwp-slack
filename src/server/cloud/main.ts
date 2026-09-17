@@ -1,0 +1,26 @@
+import {readFile} from 'node:fs/promises';
+import {Firestore} from '@google-cloud/firestore';
+import {CloudTasksClient} from '@google-cloud/tasks';
+import {loadConfig} from '../config';
+import {HttpSlackApi} from '../slack-api';
+import {verifyInstallation} from '../receiver';
+import {FirestoreMetadata} from './firestore-metadata';
+import {GoogleTaskPublisher,DurableTasks} from './tasks';
+import {CloudApplication} from './application';
+import {CloudEvents} from './events';
+import {createCloudReceiver} from './receiver';
+import {workerServer} from './worker';
+try{
+ const required=(name:string)=>{const value=process.env[name];if(!value)throw new Error('Missing cloud setting');return value;};
+ const config=loadConfig(),role=required('CLOUD_ROLE');if(!['ingress','worker'].includes(role))throw new Error('Invalid role');
+ const projectId=required('GOOGLE_CLOUD_PROJECT'),database=new Firestore({projectId}),store=new FirestoreMetadata(database,required('CLOUD_ENVIRONMENT'),config.teamId);
+ const client=new CloudTasksClient({projectId}),publisher=new GoogleTaskPublisher(client,required('TASK_QUEUE'),required('WORKER_ORIGIN'),required('TASK_SERVICE_ACCOUNT'));
+ const tasks=new DurableTasks(store,publisher),api=new HttpSlackApi(config.botToken),identity=await verifyInstallation(api,config),application=new CloudApplication(config,api,store,tasks);
+ const events=new CloudEvents(application,identity.botUserId);
+ const runtime=role==='ingress'?createCloudReceiver(config,application,identity):undefined;
+ const worker=role==='worker'?workerServer(tasks,async(spec,ctx)=>{const start=Date.now();let ok=false;try{if(spec.kind==='event')await events.execute(spec,ctx);else await application.execute(spec,ctx);ok=true;}finally{const peak=await readFile('/sys/fs/cgroup/memory.peak','utf8').catch(()=>'');console.log(JSON.stringify({event:'task_finished',kind:spec.kind,ok,durationMs:Date.now()-start,memoryPeakBytes:Number(peak)||undefined}));}},{audience:required('WORKER_ORIGIN'),serviceAccount:required('TASK_SERVICE_ACCOUNT')}):undefined;
+ if(runtime)await runtime.receiver.start({host:'0.0.0.0',port:config.port});else await new Promise<void>(resolve=>worker!.listen(config.port,'0.0.0.0',resolve));
+ console.log(JSON.stringify({event:'cloud_ready',role}));
+ let stopping=false;const stop=async()=>{if(stopping)return;stopping=true;if(runtime)await runtime.receiver.stop();if(worker)await new Promise<void>(r=>worker.close(()=>r()));await database.terminate();await client.close();};
+ process.once('SIGTERM',()=>{void stop();});process.once('SIGINT',()=>{void stop();});
+}catch{console.error('Cloud runtime configuration or installation check failed.');process.exitCode=1;}

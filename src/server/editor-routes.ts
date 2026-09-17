@@ -2,7 +2,10 @@ import type {IncomingMessage,ServerResponse} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname} from 'node:path';
 import type {Documents} from './documents';
-import type {Saves} from './saves';
+import type {SessionAccess,Session} from './sessions';
+import type {Receipt} from './saves';
+export interface EditorDocuments {sessions:SessionAccess;authorize:Documents['authorize'];ensureSource:Documents['ensureSource'];}
+export interface EditorSaves {save(s:Session,id:string,format:string,bytes:Buffer):Promise<Receipt>;status(s:Session,id:string):Promise<Receipt>;}
 import {UserError,userMessage,object,denied} from './errors';
 import {MAX_FILE_BYTES} from '../shared/errors';
 const mime:Record<string,string>={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.wasm':'application/wasm','.woff2':'font/woff2','.woff':'font/woff','.ttf':'font/ttf','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};
@@ -11,7 +14,7 @@ async function read(req:IncomingMessage,limit:number):Promise<Buffer>{
   const chunks:Buffer[]=[];let size=0;const timer=setTimeout(()=>req.destroy(),30_000);
   try{for await(const chunk of req){const b=Buffer.from(chunk);size+=b.length;if(size>limit)throw new UserError('size','파일이 너무 큽니다.');chunks.push(b);}return Buffer.concat(chunks);}finally{clearTimeout(timer);}
 }
-export function editorRoutes(origin:string,documents:Documents,saves:Saves) {
+export function editorRoutes(origin:string,documents:EditorDocuments,saves:EditorSaves) {
   let reading=0;
   return async(req:IncomingMessage,res:ServerResponse,next:()=>void):Promise<void>=>{
     const path=new URL(req.url??'/',origin).pathname;
