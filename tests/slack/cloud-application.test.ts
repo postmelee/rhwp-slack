@@ -12,7 +12,7 @@ import {EditorApi} from './editor-support';
 import {actor,config,bytes} from './support';
 function fixture(){
  const dir=mkdtempSync(join(tmpdir(),'rhwp-cloud-app-')),state=new State(join(dir,'metadata.sqlite'),'TTEST'),store=new SqliteMetadata(state),api=new EditorApi();
- const pending:string[]=[];let failPublish=false,failUpload=false;const tasks=new DurableTasks(store,{async publish(id){if(failPublish)throw new Error('queue unavailable');pending.push(id);}});
+ const pending:string[]=[];let failPublish=false,failUpload=false;const tasks=new DurableTasks(store,{async publish(id,notBefore){if(failPublish)throw new Error('queue unavailable');if(notBefore===undefined)pending.push(id);}});
  const make=()=>new CloudApplication({...config,publicOrigin:'https://cloud.example.com'},api,store,tasks,{download:async()=>bytes,fetcher:async(url)=>{assert.ok(String(url).startsWith('https://files.slack.com/upload/v1/'));if(failUpload)throw new Error('upload down');return new Response('ok');},convert:async()=>({pdf:Buffer.from('%PDF-synthetic'),pageCount:12,pages:[1,2,3].map(page=>({page,png:Buffer.from('png')}))}),images:async()=>({pageCount:12,pages:Array.from({length:10},(_,i)=>({page:i+1,png:Buffer.from('png')}))})});
  return {store,api,tasks,make,pending,setPublishFailure(v:boolean){failPublish=v;},setUploadFailure(v:boolean){failUpload=v;},async drain(){while(pending.length){const id=pending.shift()!;await tasks.execute(id,(spec,ctx)=>make().execute(spec,ctx));}},close(){state.close();rmSync(dir,{recursive:true,force:true});}};
 }
@@ -47,5 +47,25 @@ test('failed transfer retries on a new worker while keeping the original card an
   f.setUploadFailure(false);await f.tasks.execute(preview,(spec,ctx)=>f.make().execute(spec,ctx));assert.equal((await f.make().authorize(id,actor)).pdf,'ready');
   await f.make().invalidate('FTEST');await assert.rejects(f.make().ensureSource(id,actor));
   assert.equal(f.api.calls.filter(c=>c.method==='chat.postMessage').length,1);
+ }finally{f.close();}
+});
+
+test('retrying remains pending; final failure has a new manual generation and one original card',async()=>{
+ const f=fixture();try{
+  const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:exhaust');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>f.make().execute(s,c));const job=f.pending.shift()!;f.setUploadFailure(true);
+  await assert.rejects(f.tasks.execute(job,(s,c)=>f.make().execute(s,c)));
+  let card=await f.make().authorize(id,actor);assert.equal(card.pdf,'pending');assert.equal(card.recovery?.state,'retrying');
+  assert.match(JSON.stringify(f.api.messages.get(card.messageTs!)),/자동으로 다시 시도/);
+  await assert.rejects(f.tasks.execute(job,(s,c)=>f.make().execute(s,c)));await f.tasks.execute(job,(s,c)=>f.make().execute(s,c));
+  card=await f.make().authorize(id,actor);assert.equal(card.pdf,'failed');assert.equal(card.recovery?.state,'failed');
+  assert.match(JSON.stringify(f.api.messages.get(card.messageTs!)),/rhwp_retry_preview/);
+  await assert.rejects(f.make().retryPreview(id,{...actor,channelId:'COTHER'},card.messageTs!));
+  const retries=await Promise.allSettled([f.make().retryPreview(id,actor,card.messageTs!),f.make().retryPreview(id,actor,card.messageTs!)]);
+  assert.equal(retries.filter(r=>r.status==='fulfilled').length,1);assert.equal(f.pending.length,1);const next=f.pending.shift()!;assert.notEqual(next,job);
+  // A duplicate notification for the older task cannot replace the newly pending state.
+  await f.tasks.execute(job,(s,c)=>f.make().execute(s,c));assert.equal((await f.make().authorize(id,actor)).recovery?.taskId,next);
+  f.setUploadFailure(false);await f.tasks.execute(next,(s,c)=>f.make().execute(s,c));
+  assert.equal((await f.make().authorize(id,actor)).pdf,'ready');assert.equal(f.api.calls.filter(c=>c.method==='chat.postMessage').length,1);
  }finally{f.close();}
 });

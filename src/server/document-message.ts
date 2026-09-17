@@ -17,10 +17,12 @@ export function documentGallery(card:Card){
 export function documentMessage(card:Card,origin:string):Record<string,unknown>{
     const images=documentGallery(card);
     const detail=card.pageCount?card.pageCount+'페이지':'페이지 확인 중';
-    const pdf=card.pdfUrl?' · <'+card.pdfUrl+'|PDF로 보기>':card.pdf==='failed'?' · PDF 준비 실패':' · PDF 준비 중';
+    const pdf=card.pdf==='ready'&&card.pdfUrl?' · <'+card.pdfUrl+'|PDF로 보기>':card.pdf==='failed'?' · PDF 준비 실패':' · PDF 준비 중';
     const blocks:Record<string,unknown>[]=[{type:'section',text:{type:'mrkdwn',text:'*'+documentText(card)+'* · '+detail+pdf}}];
+    if(card.recovery?.state==='retrying')blocks.push({type:'context',elements:[{type:'plain_text',text:`준비가 지연되어 자동으로 다시 시도합니다. (${card.recovery.attempt}/${card.recovery.maxAttempts}회 시도)`}]});
+    if(card.pdf==='failed'&&card.recovery?.state==='failed')blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_retry_preview',value:card.id,text:{type:'plain_text',text:'문서 미리보기 다시 준비'}}]});
     if(card.imageState==='pending')blocks.push({type:'context',elements:[{type:'plain_text',text:'페이지 이미지를 준비하고 있습니다.'}]});
-    else if(card.pageCount&&(images.length<Math.min(10,card.pageCount)||card.imageState==='failed')){
+    else if(card.pdf==='ready'&&card.pageCount&&(images.length<Math.min(10,card.pageCount)||card.imageState==='failed')){
       blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_more_pages',value:card.id,text:{type:'plain_text',text:card.imageState==='failed'?'이미지 다시 준비':'추가 페이지 이미지 보기 (최대 10페이지)'}}]});
     }
     if(card.pageCount&&card.pageCount>10&&images.length===10)blocks.push({type:'context',elements:[{type:'plain_text',text:'앞 10페이지를 표시했습니다. 전체 문서는 PDF로 볼 수 있습니다.'}]});

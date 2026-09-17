@@ -60,10 +60,10 @@ test('current permissions are checked on every shared session use and absolute l
 });
 test('enqueue persistence survives delivery failure and concurrent deliveries execute only once',async()=>{
   const f=fixture();try{
-    let fail=true;const names:string[]=[];const publisher={async publish(id:string){names.push(id);if(fail)throw new Error('unavailable');}};
+    let fail=true;const names:string[]=[];const publisher={async publish(id:string,notBefore?:number){if(notBefore===undefined)names.push(id);if(fail)throw new Error('unavailable');}};
     const first=new DurableTasks(f.a,publisher,f.now),second=new DurableTasks(f.b,publisher,f.now);
     const spec={teamId:'TTEST',cardId:'card',kind:'preview' as const};await assert.rejects(first.enqueue('request',spec));fail=false;
-    const id=await second.enqueue('request',spec);assert.equal(names[0],names[1]);
+    const id=await second.enqueue('request',spec);assert.equal(names.length,1);
     let release!:()=>void,entered!:()=>void,calls=0;const gate=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r);
     const run=first.execute(id,async()=>{calls++;entered();await gate;});await started;
     await assert.rejects(second.execute(id,async()=>{calls++;}),TaskBusy);release();await run;
@@ -115,4 +115,27 @@ test('worker refuses unauthorized dispatch and acknowledges only after durable c
   const send=(token?:string)=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify({id})});
   try{assert.equal((await send()).status,403);assert.equal((await send('wrong')).status,403);assert.equal(executed,0);assert.equal((await send('valid')).status,204);assert.equal((await send('valid')).status,204);assert.equal(executed,1);}
   finally{await new Promise<void>(r=>server.close(()=>r()));f.close();}
+});
+
+test('conversion retries are finite; a redelivery repairs the final receipt without converting again',async()=>{
+ const f=fixture();try{
+  const tasks=new DurableTasks(f.a,{async publish(){}},f.now),id=await tasks.enqueue('bounded',{teamId:'TTEST',cardId:'card',kind:'preview'});let calls=0,notices=0;
+  const run=async(_spec:any,ctx:any)=>{if(ctx.terminalFailure){notices++;return;}calls++;assert.equal(ctx.finalAttempt,calls===3);throw Object.assign(new Error('secret document'),{code:'conversion_timeout'});};
+  await assert.rejects(tasks.execute(id,run));await assert.rejects(tasks.execute(id,run));await tasks.execute(id,run);
+  assert.equal((await f.a.get<any>('tasks',id)).state,'failed');await tasks.execute(id,run);
+  assert.equal(calls,3);assert.equal(notices,1);assert.doesNotMatch(JSON.stringify(await f.a.list('tasks')),/secret document/);
+ }finally{f.close();}
+});
+test('a durable deadline reconciles a killed last worker and fences stale checkpoints',async()=>{
+ const f=fixture();try{
+  const scheduled:{id:string;at?:number}[]=[];const tasks=new DurableTasks(f.a,{async publish(id,at){scheduled.push({id,at});}},f.now);
+  const id=await tasks.enqueue('killed',{teamId:'TTEST',cardId:'card',kind:'preview'}),watch=scheduled.find(x=>x.at!==undefined)!;
+  assert.equal(watch.at,15*60_000);await assert.rejects(tasks.execute(watch.id,async()=>{}),TaskBusy);
+  let checkpoint!:()=>Promise<void>,release!:()=>void,entered!:()=>void;
+  const gate=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r);
+  const active=tasks.execute(id,async(_s,ctx)=>{checkpoint=ctx.checkpoint;entered();await gate;await checkpoint();});await started;
+  f.advance(15*60_000);let terminal=false;
+  await tasks.execute(watch.id,async(_s,ctx)=>{terminal=!!ctx.terminalFailure;assert.equal(ctx.id,id);});
+  assert.equal(terminal,true);assert.equal((await f.a.get<any>('tasks',id)).state,'failed');release();await assert.rejects(active,LeaseLost);
+ }finally{f.close();}
 });

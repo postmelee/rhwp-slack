@@ -15,7 +15,7 @@ test('card opens Studio before PDF is ready; PDF link references a privately upl
     await server.documents!.present(id,{teamId:'TTEST',userId:'UTEST',channelId:'CTEST'},'trigger');
     assert.match(JSON.stringify(server.api.calls.find(c=>c.method==='entity.presentDetails')!.args),/\/editor\/#ticket=/);
     release();await server.documents!.pdf.idle();await until(()=>server.api.calls.some(c=>c.method==='chat.update'));
-    const updated=JSON.stringify(server.api.calls.find(c=>c.method==='chat.update')!.args);
+    const updated=JSON.stringify(server.api.calls.filter(c=>c.method==='chat.update').at(-1)!.args);
     assert.match(updated,/PDF로 보기/);assert.match(updated,/rhwp-test.slack.com\/files\/UBOT\/FUPLOAD/);assert.doesNotMatch(updated,/preview_url|ticket=/);
   }finally{release();await server.stop();}
 });

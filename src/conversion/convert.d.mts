@@ -1,5 +1,5 @@
 export interface ConversionMetric {stage:string;phase:'start'|'finish'|'failed';durationMs?:number;rssBytes?:number;}
-export interface ConversionOptions {timeoutMs?:number;onMetric?:(metric:ConversionMetric)=>void;}
+export interface ConversionOptions {timeoutMs?:number;signal?:AbortSignal;onMetric?:(metric:ConversionMetric)=>void;}
 export class ConversionError extends Error {code:string;stage:string;}
 export function validMetric(value:unknown):ConversionMetric|undefined;
 export const MAX_PDF_BYTES:number;

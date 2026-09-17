@@ -1,9 +1,9 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {measured,conversionMetric,milestone} from './telemetry';
+import {measured,conversionMetric,milestone,errorCode} from './telemetry';
 import {setTimeout as delay} from 'node:timers/promises';
 import type {MetadataStore} from './metadata';
 import {SharedSessions} from './sessions';
-import {DurableTasks,type TaskSpec,type TaskContext} from './tasks';
+import {DurableTasks,MAX_TASK_ATTEMPTS,type TaskSpec,type TaskContext} from './tasks';
 import {withLease,type LeaseContext} from './lease';
 import type {Config} from '../config';
 import {ID} from '../config';
@@ -46,9 +46,9 @@ export class CloudApplication {
     if(card.rootFileId!==card.fileId)await authorizeFile(this.api,config,actor,card.rootFileId);
     if(source.name!==card.name||source.size!==card.size)denied();return card;
   }
-  async ensureSource(id:string,actor:Actor):Promise<Buffer>{
+  async ensureSource(id:string,actor:Actor,outer?:AbortSignal):Promise<Buffer>{
     const card=await this.authorize(id,actor),config=await this.accessConfig(actor);
-    const source=await authorizeFile(this.api,config,actor,card.fileId),signal=AbortSignal.timeout(30_000);
+    const source=await authorizeFile(this.api,config,actor,card.fileId),signal=AbortSignal.any([AbortSignal.timeout(30_000),...(outer?[outer]:[])]);
     const bytes=await measured('download',()=>(this.options.download??downloadFile)(source,actor,this.config.botToken,signal));
     const fresh=await this.authorize(id,actor);
     if(fresh.contentHash&&hash(bytes)!==fresh.contentHash)throw new UserError('source_changed','원본 내용이 변경되었습니다. 다시 요청하세요.');
@@ -77,11 +77,29 @@ export class CloudApplication {
     if(!await this.store.get('cards',id))await this.reaction(id,actor,'pending',false);
     await this.tasks.enqueue('prepare:'+id,{teamId:actor.teamId,cardId:id,kind:'prepare'});return id;
   }
+  async retryPreview(id:string,actor:Actor,messageTs:string):Promise<void>{
+    await this.authorize(id,actor);
+    await this.locked(id,async(card,context)=>{
+      if(card.messageTs!==messageTs)denied();
+      if(card.pdf==='ready'&&card.imageState==='ready')return;
+      if(card.recovery&&card.recovery.state!=='failed')throw new UserError('pages_pending','자동 재시도 중입니다. 잠시 후 다시 확인하세요.');
+      const taskId=await this.tasks.enqueue('preview-retry:'+id+':'+(card.recovery?.taskId??'initial'),{teamId:actor.teamId,cardId:id,kind:'preview',actor});
+      card.recovery={taskId,state:'running',attempt:0,maxAttempts:MAX_TASK_ATTEMPTS};
+      if(card.pdf!=='ready')card.pdf='pending';if(card.imageState!=='ready')card.imageState='pending';
+      await this.update(card,actor,context);await this.reaction(id,card.actor,'pending',true);
+    });
+  }
   async morePages(id:string,actor:Actor,messageTs:string):Promise<void>{
-    const card=await this.authorize(id,actor);if(card.messageTs!==messageTs)denied();
-    if(!card.pageCount)throw new UserError('pages_pending','페이지 이미지를 준비 중입니다. 잠시 후 다시 시도하세요.');
-    if(card.imageState==='ready'&&(card.images?.length??0)>=Math.min(10,card.pageCount))return;
-    await this.tasks.enqueue('images:'+id+':'+actor.userId,{teamId:actor.teamId,cardId:id,kind:'images',actor});
+    await this.authorize(id,actor);
+    await this.locked(id,async(card,context)=>{
+      if(card.messageTs!==messageTs)denied();
+      if(!card.pageCount||card.pdf!=='ready')throw new UserError('pages_pending','PDF를 준비 중입니다. 잠시 후 다시 시도하세요.');
+      if(card.imageState==='ready'&&(card.images?.length??0)>=Math.min(10,card.pageCount))return;
+      if(card.recovery&&card.recovery.state!=='failed'&&card.imageState!=='ready')return;
+      const taskId=await this.tasks.enqueue('images:'+id+':'+(card.recovery?.taskId??'initial'),{teamId:actor.teamId,cardId:id,kind:'images',actor});
+      card.recovery={taskId,state:'running',attempt:0,maxAttempts:MAX_TASK_ATTEMPTS};card.imageState='pending';
+      await this.update(card,actor,context);await this.reaction(id,card.actor,'pending',true);
+    });
   }
   private guarded(context:TaskContext):SlackApi{return {call:async(method,args,signal)=>{await context.checkpoint();return this.api.call(method,args,AbortSignal.any([context.signal,...(signal?[signal]:[])]));}};}
   private async write(card:CloudCard,context:LeaseContext):Promise<void>{
@@ -134,18 +152,30 @@ export class CloudApplication {
     throw new Error('File share is not confirmed');
   }
   async execute(spec:TaskSpec,task:TaskContext):Promise<void>{
+    if(task.terminalFailure){await this.failed(spec,task,task.terminalFailure,true);return;}
     try{await this.executeWork(spec,task);}
-    catch(error){
-      const card=await this.store.get<CloudCard>('cards',spec.cardId).catch(()=>undefined);
-      if(card)await this.authorize(card.id,spec.actor??card.actor).then(async()=>{
-        await this.locked(card.id,async(current,context)=>{
-          if(spec.kind==='preview'&&current.pdf!=='ready')current.pdf='failed';
-          current.imageState='failed';if(current.messageTs)await this.update(current,spec.actor??current.actor,context);
-        });
-        await this.reaction(card.id,card.actor,'failed',true);
-      }).catch(()=>{});
-      throw error;
+    catch(error){await this.failed(spec,task,errorCode(error),!!task.finalAttempt).catch(()=>{});throw error;}
+  }
+  private async failed(spec:TaskSpec,task:TaskContext,code:string,final:boolean):Promise<void>{
+    const card=await this.store.get<CloudCard>('cards',spec.cardId);
+    if(!card){
+      if(spec.kind==='prepare'){
+        const request=await this.store.get<Request>('preparations',spec.cardId);
+        if(request){await authorizeFile(this.api,await this.accessConfig(request.actor),request.actor,request.fileId);await this.reaction(spec.cardId,request.actor,final?'failed':'pending',true);}
+      }
+      return;
     }
+    await this.authorize(card.id,spec.actor??card.actor);
+    await this.locked(card.id,async(current,context)=>{
+      // A deadline notification from an older generation cannot overwrite a manual retry.
+      if(current.recovery&&current.recovery.taskId!==task.id)return;
+      if(current.pdf==='ready'&&current.imageState==='ready')return;
+      current.recovery={taskId:task.id??'legacy',state:final?'failed':'retrying',attempt:task.attempt??1,maxAttempts:task.maxAttempts??MAX_TASK_ATTEMPTS,errorCode:code};
+      if(current.pdf!=='ready')current.pdf=final?'failed':'pending';
+      if(current.imageState!=='ready')current.imageState=final?'failed':'pending';
+      if(current.messageTs)await this.update(current,spec.actor??current.actor,context);else await this.write(current,context);
+      await this.reaction(current.id,current.actor,final?'failed':'pending',true);
+    });
   }
   private async executeWork(spec:TaskSpec,task:TaskContext):Promise<void>{
     if(spec.teamId!==this.config.teamId)denied();
@@ -164,8 +194,11 @@ export class CloudApplication {
       const actor=spec.actor??card.actor;await this.authorize(card.id,actor);
       if(spec.kind==='preview'&&card.pdf==='ready'&&card.imageState==='ready')return;
       await this.reaction(card.id,card.actor,'pending',true);
-      const bytes=await this.ensureSource(card.id,actor);
-      const result=await measured('conversion',()=>spec.kind==='preview'?(this.options.convert??convertPreview)(bytes,{onMetric:conversionMetric}):(this.options.images??convertPageImages)(bytes,{start:1,end:Math.min(10,card.pageCount??10),onMetric:conversionMetric}));
+      card.recovery={taskId:task.id??'legacy',state:'running',attempt:task.attempt??1,maxAttempts:task.maxAttempts??MAX_TASK_ATTEMPTS};
+      if(card.pdf!=='ready')card.pdf='pending';card.imageState='pending';
+      if((task.attempt??1)>1)await this.update(card,actor,context);else await this.write(card,context);
+      const bytes=await this.ensureSource(card.id,actor,context.signal);
+      const result=await measured('conversion',()=>spec.kind==='preview'?(this.options.convert??convertPreview)(bytes,{timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric}):(this.options.images??convertPageImages)(bytes,{start:1,end:Math.min(10,card.pageCount??10),timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric}));
       await context.checkpoint();card.pageCount=result.pageCount;card.imageTarget=Math.min(spec.kind==='preview'?3:10,result.pageCount);card.imageState='pending';
       const uploads=this.uploads(card,context),check=async()=>{await this.authorize(card.id,actor);};
       try{
@@ -187,8 +220,8 @@ export class CloudApplication {
         await this.update(card,actor,context);
         if(card.pdfFileId){await this.confirm(card,card.pdfFileId,actor,context);card.pdf='ready';milestone('pdf_ready');}
         for(const page of card.images){await this.confirm(card,page.fileId,actor,context);page.shared=true;if(page.page===1)milestone('first_image');}
-        card.imageState='ready';await this.update(card,actor,context);milestone('all_ready');await this.reaction(card.id,card.actor,'ready',true);
-      }catch(error){card.imageState='failed';if(card.pdf!=='ready')card.pdf='failed';await this.update(card,actor,context).catch(()=>{});await this.reaction(card.id,card.actor,'failed',true).catch(()=>{});throw error;}
+        card.imageState='ready';card.recovery=undefined;await this.update(card,actor,context);milestone('all_ready');await this.reaction(card.id,card.actor,'ready',true);
+      }catch(error){throw error;}
     });
   }
   private async reaction(id:string,actor:Actor,state:'pending'|'ready'|'failed',validated:boolean):Promise<void>{

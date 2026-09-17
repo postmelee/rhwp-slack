@@ -43,16 +43,18 @@ function decode(output,mode,start,end){
   if(offset!==output.length)throw new Error('trailing-output');
   return mode==='preview'?{pdf,pageCount:header.pageCount,pages}:{pageCount:header.pageCount,pages};
 }
-function convert(bytes,{timeoutMs=60_000,onMetric}={},mode,start,end){
+function convert(bytes,{timeoutMs=60_000,onMetric,signal}={},mode,start,end){
   return new Promise((resolveResult,reject)=>{
     let child,browserServer,size=0,done=false,stage='browser_start',pendingMetrics='',childStarted=false,spawnedAt=0;const chunks=[];
     const metric=value=>{const clean=validMetric(value);if(!clean)return;if(clean.phase==='start')stage=clean.stage;try{onMetric?.(clean);}catch{}};
     const started=performance.now();metric({stage,phase:'start'});
     const limit=MAX_PDF_BYTES+(mode==='pdf'?0:MAX_PNG_TOTAL_BYTES+4100);
     const killGroup=pid=>{if(!pid)return;try{process.kill(process.platform==='win32'?pid:-pid,'SIGKILL');}catch{}};
-    const cleanup=()=>{killGroup(child?.pid);killGroup(browserServer?.process().pid);void browserServer?.close().catch(()=>{});};
+    const cleanup=()=>{signal?.removeEventListener('abort',abort);killGroup(child?.pid);killGroup(browserServer?.process().pid);void browserServer?.close().catch(()=>{});};
     const fail=(message,code='conversion_start')=>{if(done)return;done=true;clearTimeout(timer);cleanup();reject(new ConversionError(code,message,stage));};
     const timer=setTimeout(()=>fail('문서 변환 시간이 초과되었습니다.','conversion_timeout'),timeoutMs);
+    const abort=()=>fail('문서 변환이 취소되었습니다.','conversion_aborted');
+    signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted){abort();return;}
     void import('@playwright/test').then(({chromium})=>chromium.launchServer({headless:true,env:workerEnvironment(),host:'127.0.0.1',timeout:Math.min(10_000,timeoutMs)})).then(server=>{
       browserServer=server;if(done){cleanup();return;}
       metric({stage:'browser_start',phase:'finish',durationMs:Math.round(performance.now()-started)});
