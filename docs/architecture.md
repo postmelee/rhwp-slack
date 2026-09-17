@@ -16,11 +16,11 @@ Studio는 자체 호스팅 SDK iframe입니다. 호스트가 인증 API에서 �
 
 ## 영속 상태와 채널 정책
 
-`STATE_DB_PATH`의 SQLite WAL DB는 workspace별 카드 ID·원본/수정본 파일 ID·메시지/스레드·업로드 단계·저장 영수증·관찰 기록·이벤트 중복 식별·반응 상태·채널 정책을 저장합니다. 원본/변환 bytes, 편집 ticket/token, 인증 다운로드·업로드 URL은 저장하지 않습니다. 운영 DB와 WAL 파일은 Git에 포함하지 않으며 접근 권한을 제한합니다. 카드 수는 최대 1,000개이고 무제한 보관 서비스가 아닙니다.
+로컬 단일 서버 모드의 `STATE_DB_PATH` SQLite WAL DB는 workspace별 카드 ID·원본/수정본 파일 ID·메시지/스레드·업로드 단계·저장 영수증·관찰 기록·이벤트 중복 식별·반응 상태·채널 정책을 저장합니다. 원본/변환 bytes, 편집 ticket/token, 인증 다운로드·업로드 URL은 저장하지 않습니다. 운영 DB와 WAL 파일은 Git에 포함하지 않으며 접근 권한을 제한합니다. 카드 수는 최대 1,000개이고 무제한 보관 서비스가 아닙니다.
 
 `SLACK_CHANNEL_IDS`는 최초 DB 생성 시 자동 감지 채널로 초기화합니다. 이후 DB 정책이 우선합니다. `SLACK_ADMIN_USER_IDS`의 관리자만 App Home 또는 `/rhwp settings`에서 자동 감지·멘션 요청·사용 안 함을 변경합니다. 설정 시에도 관리자와 bot의 채널 참여를 확인합니다. 일반 사용자는 관리자일 필요 없이 활성 채널에서 문서를 처리할 수 있습니다.
 
-재시작 시 진행 중 준비/변환을 복구하되 이미 게시한 메시지나 완료한 PDF를 새로 만들지 않습니다. 기존 DB 카드의 기록된 origin만 주소 변경 후에도 인정합니다. 과거 서버가 DB 없이 만든 카드는 자동 이전되지 않습니다. 편집 세션은 재시작 시 만료되므로 Slack 카드에서 다시 열어야 합니다.
+재시작 시 진행 중 준비/변환을 복구하되 이미 게시한 메시지나 완료한 PDF를 새로 만들지 않습니다. 기존 DB 카드의 기록된 origin만 주소 변경 후에도 인정합니다. 과거 서버가 DB 없이 만든 카드는 자동 이전되지 않습니다. 로컬 모드의 편집 세션은 재시작 시 만료되므로 Slack 카드에서 다시 열어야 합니다.
 
 ## HTTP API
 
@@ -59,3 +59,7 @@ POST는 정확한 Origin을 요구합니다. GET은 bearer로 인증하고 Origi
 준비 원본과 수정본 캐시는 합계 200 MiB, 다운로드 2개·대기 20개, PDF는 실행 포함 대기 4개·실행 1개, 저장은 동시 2개로 제한합니다. PDF 출력은 50 MiB, 페이지 PNG는 각각 5 MiB·800×1200, 한 요청 합계 25 MiB·최대 10페이지 이내입니다. PNG는 PDF와 같은 print DOM/폰트로 생성합니다. PDF/저장 큐에서 보유한 bytes와 파서·Chromium 메모리는 원본 보관량 외에 추가됩니다. Stage 6 Compose는 메모리 4 GiB·CPU 2개·PID 256개·read-only·non-root 제한을 적용합니다. PDF parser/Chromium 환경에서는 Slack 및 임의 호스트 비밀 환경변수를 제거합니다. Chromium 내부 sandbox·worker별 강한 격리·운영 egress 정책은 별도 잔여 항목입니다.
 
 검증은 실제 Bolt HTTP·production 서버·Studio·격리 파서·실제 PDF 변환을 실행하되 Slack API/파일 전송은 합성 응답으로 대체합니다. 따라서 앱 설정 수용, 실제 파일 권한 필드, Slack iframe, PDF 기본 보기, 토큰 권한은 실제 워크스페이스에서 별도 검증해야 합니다. 전체 C 방식 출시 완료로 간주하지 않습니다.
+
+## Cloud Run 모드
+
+Cloud Run은 ingress와 worker를 분리하고 Firestore에 연결 메타데이터·해시 티켓/세션을, Cloud Tasks에 작업 ID를 저장한다. 문서 bytes는 요청 간에 캐시하지 않고 처리할 때 Slack에서 다시 다운로드한다. 세션과 문서 연결은 인스턴스 교체 뒤에도 유효 기간 안에서 유지되며 접근 권한을 다시 검사한다. 로컬 모드의 SQLite·프로세스 내부 큐·15분 bytes 캐시와 구별한다. 상세한 IAM·자원 상한·이전·비용 검증은 [Cloud Run 운영](cloud-run.md)을 따른다.

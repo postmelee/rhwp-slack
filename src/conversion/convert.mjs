@@ -1,6 +1,5 @@
 import {spawn} from 'node:child_process';
 import {resolve} from 'node:path';
-import {chromium} from '@playwright/test';
 import {workerEnvironment} from './worker-env.mjs';
 export const MAX_PDF_BYTES=50*1024*1024;
 export const MAX_PNG_BYTES=5*1024*1024;
@@ -44,7 +43,7 @@ function convert(bytes,{timeoutMs=60_000}={},mode,start,end){
     const cleanup=()=>{killGroup(child?.pid);killGroup(browserServer?.process().pid);void browserServer?.close().catch(()=>{});};
     const fail=message=>{if(done)return;done=true;clearTimeout(timer);cleanup();reject(new Error(message));};
     const timer=setTimeout(()=>fail('문서 변환 시간이 초과되었습니다.'),timeoutMs);
-    void chromium.launchServer({headless:true,env:workerEnvironment(),host:'127.0.0.1',timeout:Math.min(10_000,timeoutMs)}).then(server=>{
+    void import('@playwright/test').then(({chromium})=>chromium.launchServer({headless:true,env:workerEnvironment(),host:'127.0.0.1',timeout:Math.min(10_000,timeoutMs)})).then(server=>{
       browserServer=server;if(done){cleanup();return;}
       child=spawn(process.execPath,['--import','tsx',resolve('src/conversion/pdf-child.mjs'),mode,String(start),String(end)],{
         detached:process.platform!=='win32',stdio:['pipe','pipe','pipe'],env:{...workerEnvironment(),RHWP_PDF_BROWSER_WS:server.wsEndpoint()},

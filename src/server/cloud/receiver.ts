@@ -7,7 +7,7 @@ import {HELP,parseCommand} from '../commands';
 import {candidatesFrom,selectionView,type Candidate} from '../shortcuts';
 import {Settings} from '../settings';
 import {editorRoutes} from '../editor-routes';
-import {denied,object,userMessage} from '../errors';
+import {denied,object,userMessage,UserError} from '../errors';
 import type {CloudApplication} from './application';
 import {CloudEvents} from './events';
 const quietLogger:Logger={debug(){},info(){},warn(){},error(){},setLevel(){},getLevel(){return LogLevel.ERROR;},setName(){}};
@@ -52,12 +52,12 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
  });
  app.event('file_shared',async({body,event})=>{
   const e=object(event);if(e.user_id===identity.botUserId||typeof e.file_id!=='string'||!ID.file.test(e.file_id)||typeof body.event_id!=='string')return;
-  let actor:Actor;try{actor=await who(body.team_id,e.user_id,e.channel_id);}catch{return;}
+  let actor:Actor;try{actor=await who(body.team_id,e.user_id,e.channel_id);}catch(error){if(error instanceof UserError&&error.code==='access_denied')return;throw error;}
   await events.enqueue(body.event_id,{kind:'file_shared',actor,fileId:e.file_id});
  });
  app.event('app_mention',async({body,event})=>{
   const e=object(event);if(e.user===identity.botUserId||e.bot_id||typeof body.event_id!=='string')return;
-  let actor:Actor;try{actor=await who(body.team_id,e.user,e.channel);actor.threadTs=ts(e.thread_ts??e.ts);actor.reactionTs=ts(e.ts);}catch{return;}
+  let actor:Actor;try{actor=await who(body.team_id,e.user,e.channel);actor.threadTs=ts(e.thread_ts??e.ts);actor.reactionTs=ts(e.ts);}catch(error){if(error instanceof UserError&&error.code==='access_denied')return;throw error;}
   const files=Array.isArray(e.files)?candidatesFrom(e.files).map(f=>f.id):undefined;
   await events.enqueue(body.event_id,{kind:'app_mention',actor,files});
  });
@@ -77,7 +77,9 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
  app.event('entity_details_requested',async({body,event})=>{
   let actor:Actor|undefined;try{const e=object(event);actor=await who(body.team_id,e.user,e.channel);const ref=object(e.external_ref);
    if(ref.type!=='document'||typeof ref.id!=='string')denied();if(!await documents.matchesUrl(ref.id,e.entity_url))return;
-   await documents.present(ref.id,actor,trigger(e.trigger_id));
+   if(typeof body.event_id!=='string')return;
+   const first=await store.atomic<boolean,boolean>('replays','entity:'+body.event_id,current=>({value:true,expiresAt:Date.now()+300_000,result:!current}));
+   if(first)await documents.present(ref.id,actor,trigger(e.trigger_id));
   }catch(error){if(actor)await notice(actor,error);}
  });
  for(const type of ['file_deleted','file_unshared'] as const)app.event(type,async({body,event})=>{

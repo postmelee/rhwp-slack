@@ -1,5 +1,4 @@
 import {createHash} from 'node:crypto';
-import {setTimeout as delay} from 'node:timers/promises';
 import type {Actor} from '../access';
 import {authorizeFile} from '../access';
 import {ID} from '../config';
@@ -8,12 +7,12 @@ import type {CloudApplication} from './application';
 import type {TaskContext,TaskSpec} from './tasks';
 import {Settings} from '../settings';
 /** A projection of a signed event. Never store the message text or the original payload. */
-export interface Input {kind:'file_shared'|'app_mention'|'file_deleted'|'file_unshared'|'home';actor?:Actor;fileId?:string;files?:string[];user?:string;}
+export interface Input {kind:'file_shared'|'app_mention'|'file_deleted'|'file_unshared'|'home';actor?:Actor;fileId?:string;files?:string[];user?:string;receivedAt?:number;}
 export class CloudEvents {
  constructor(private application:CloudApplication,private botUserId:string){}
  async enqueue(eventId:string,input:Input):Promise<void>{
   const app=this.application,id=createHash('sha256').update(app.config.teamId+':'+eventId).digest('hex');
-  await app.store.atomic<Input,void>('inputs',id,current=>({value:current??input,expiresAt:Date.now()+7*86400_000,result:undefined}));
+  await app.store.atomic<Input,void>('inputs',id,current=>({value:current??{...input,receivedAt:Date.now()},expiresAt:Date.now()+7*86400_000,result:undefined}));
   await app.tasks.enqueue('event:'+id,{teamId:app.config.teamId,cardId:id,kind:'event'});
  }
  private threadKey(actor:Actor,fileId:string){return JSON.stringify([actor.teamId,actor.channelId,actor.threadTs,fileId]);}
@@ -37,9 +36,10 @@ export class CloudEvents {
    if(await app.mode(actor.channelId)==='auto'){await context.checkpoint();await app.submit(actor,input.fileId!,'thread:'+this.threadKey(actor,input.fileId!));}return;
   }
   let files=input.files??[];
-  for(let i=0;!files.length&&i<5;i++){
+  if(!files.length){
    files=(await app.store.list<{team:string;channel:string;parent:string;file:string}>('observed')).map(([,r])=>r).filter(r=>r.team===actor.teamId&&r.channel===actor.channelId&&r.parent===actor.threadTs).map(r=>r.file);
-   if(!files.length)await delay(250,undefined,{signal:context.signal});
+   // Release the single dispatch slot. A later file_shared task must be able to run.
+   if(!files.length&&Date.now()-(input.receivedAt??0)<30_000)throw new Error('Awaiting file share event');
   }
   if(!files.length){await app.api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text:'HWP/HWPX 파일과 함께 @rhwp를 멘션해 주세요. 이전 파일은 해당 메시지 메뉴의 한글 문서 열기로 요청할 수 있습니다.'},context.signal);return;}
   if(files.length>10)throw new UserError('too_many_files','한 번에 문서 10개까지 요청할 수 있습니다.');

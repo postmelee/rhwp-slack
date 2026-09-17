@@ -259,3 +259,7 @@ Slack 클라이언트는 이미지·PDF·편집 카드를 같은 댓글 안의 �
 백업은 SQLite backup API 또는 서버를 정상 종료한 뒤 DB와 남아 있는 `-wal`/`-shm` 파일을 한 묶음으로 보관합니다. 실행 중 DB 본체만 복사하지 않습니다. Compose의 `down -v`는 영속 volume을 삭제하므로 운영 자료가 있는 환경에서 사용하지 않습니다.
 
 이번 범위는 단일 workspace입니다. 다른 workspace 설치용 OAuth·테넌트별 자격 증명 관리·Marketplace 심사 및 배포형 embeds 이용 승인은 별도입니다.
+
+### Cloud Run 검증 환경
+
+로컬 운영을 유지한 채 별도 Cloud Run 환경에서 검증할 수 있다. Firestore 메타데이터, Cloud Tasks, Secret Manager 설정과 이전 조건은 [Cloud Run 운영](cloud-run.md)을 따른다. Slack URL 전환은 실제 클라우드 수용 후 수행한다.

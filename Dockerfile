@@ -17,10 +17,12 @@ COPY src ./src
 COPY studio ./studio
 COPY scripts ./scripts
 COPY tsconfig*.json vite.config.ts ./
-RUN npm run build && npm run build:dev
+RUN npm run build && npm run build:dev \
+    && node_modules/.bin/esbuild src/server/cloud/main.ts --bundle --platform=node --format=cjs '--external:@google-cloud/*' --external:google-auth-library --external:@playwright/test '--external:@rhwp/*' --outfile=dist/cloud/main.cjs
 
 FROM dependencies AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 HOME=/tmp
+COPY --from=build /app/dist/cloud ./dist/cloud
 COPY --from=build /app/dist/editor ./dist/editor
 COPY --from=build /app/dist/studio ./dist/studio
 COPY --from=build /app/.cache/conversion ./.cache/conversion

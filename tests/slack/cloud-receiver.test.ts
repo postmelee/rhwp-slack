@@ -40,3 +40,21 @@ test('cloud settings survive receiver state, mention policy shares automatic req
   await f.runtime.settings.set({teamId:'TTEST',userId:'UTEST',channelId:'CTEST'},'off');const card=(await f.store.list<any>('cards'))[0][0];await assert.rejects(f.application.authorize(card,{teamId:'TTEST',userId:'UTEST',channelId:'CTEST'}));
  }finally{await f.close();}
 });
+test('mention before file_shared yields the single worker slot and retries after the share is observed',async()=>{
+ const f=await start();try{
+  await f.runtime.settings.set({teamId:'TTEST',userId:'UTEST',channelId:'CTEST'},'mention');
+  const mention={...event('ERACE1'),event:{type:'app_mention',user:'UTEST',channel:'CTEST',ts:'123.456'}};
+  assert.equal((await signed(f.origin,mention,{json:true})).status,200);
+  const retry=f.pending[0];await assert.rejects(f.drain(),/Awaiting file share event/);
+  assert.equal(f.api.calls.filter(c=>c.method==='chat.postEphemeral').length,0);
+  assert.equal((await signed(f.origin,event('ERACE2'),{json:true})).status,200);await f.drain();
+  f.pending.push(retry);await f.drain();assert.equal(f.api.messages.size,1);
+ }finally{await f.close();}
+});
+test('metadata outage during event authorization requests a Slack retry instead of silently dropping the event',async()=>{
+ const f=await start();try{
+  const get=f.store.get.bind(f.store);f.store.get=async()=>{throw new Error('metadata unavailable');};
+  assert.equal((await signed(f.origin,event('ESTORE'),{json:true})).status,503);
+  f.store.get=get;assert.equal((await signed(f.origin,event('ESTORE'),{json:true})).status,200);await f.drain();assert.equal(f.api.messages.size,1);
+ }finally{await f.close();}
+});
