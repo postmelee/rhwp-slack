@@ -5,13 +5,17 @@ services:
       target: release
     image: rhwp-slack:local
     init: true
+    restart: unless-stopped
     env_file: .env
     environment:
       HOST: 0.0.0.0
       PORT: '3000'
       HOME: /tmp
+      STATE_DB_PATH: /app/data/state.sqlite
     ports:
       - '127.0.0.1:3000:3000'
+    volumes:
+      - rhwp-state:/app/data
     read_only: true
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=512m,mode=1777
@@ -23,3 +27,6 @@ services:
     security_opt:
       - no-new-privileges:true
     stop_grace_period: 90s
+
+volumes:
+  rhwp-state:

@@ -4,6 +4,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {State} from '../../src/server/state';
+import {Replays} from '../../src/server/replays';
 import {editorServer,EditorApi} from './editor-support';
 import {actor,bytes,config,signed} from './support';
 import {randomUUID} from 'node:crypto';
@@ -52,4 +53,43 @@ test('an obsolete unknown-origin card refresh cannot produce a misleading access
     await signed(server.origin,{type:'event_callback',api_app_id:config.appId,team_id:config.teamId,event_id:'EvSTALE',event:{type:'entity_details_requested',user:actor.userId,channel:actor.channelId,external_ref:{type:'document',id:randomUUID()},entity_url:'https://old.example.com/documents/old',trigger_id:'stale-trigger'}},{json:true});
     await new Promise(r=>setTimeout(r,30));assert.equal(server.api.calls.some(c=>c.method==='chat.postEphemeral'),false);
   }finally{await server.stop();}
+});
+
+test('a crash after source download but before card creation resumes exactly one card',async()=>{
+  const dir=temp(),statePath=join(dir,'state.sqlite'),id=randomUUID();const state=new State(statePath,config.teamId);
+  state.put('jobs',id,{id,actor:{...actor,threadTs:'100.001'},fileId:'FTEST',mode:'open',state:'ready',createdAt:Date.now()});state.close();
+  const server=await editorServer({statePath});try{await server.ready;await server.preparations.idle();await server.documents!.pdf.idle();assert.equal(server.documents!.has(id),true);const posts=server.api.calls.filter(c=>c.method==='chat.postMessage');assert.equal(posts.length,1);assert.equal(posts[0].args.thread_ts,'100.001');}finally{await server.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a pending preview with an existing card resumes without posting a second card or uploading a second PDF',async()=>{
+  const dir=temp(),statePath=join(dir,'state.sqlite'),api=new EditorApi();let server=await editorServer({statePath,api});try{
+    const id=await server.prepare();await server.documents!.pdf.idle();await server.stop();
+    const state=new State(statePath,config.teamId),card=state.get<Record<string,unknown>>('cards',id)!;card.pdf='pending';state.put('cards',id,card);state.close();
+    const posts=api.calls.filter(c=>c.method==='chat.postMessage').length,uploads=api.calls.filter(c=>c.method==='files.getUploadURLExternal').length;
+    server=await editorServer({statePath,api});await server.ready;await server.documents!.pdf.idle();
+    assert.equal(api.calls.filter(c=>c.method==='chat.postMessage').length,posts);assert.equal(api.calls.filter(c=>c.method==='files.getUploadURLExternal').length,uploads);
+    assert.equal((await server.documents!.authorize(id,actor)).pdf,'ready');
+  }finally{await server.stop();rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('event replay claims survive restart and expire without retaining payloads',()=>{
+  const dir=temp(),path=join(dir,'state.sqlite');let now=0;let state=new State(path,config.teamId);
+  try{
+    let replays=new Replays(()=>now,state);assert.equal(replays.claim('EvPERSIST'),true);state.close();
+    state=new State(path,config.teamId);replays=new Replays(()=>now,state);assert.equal(replays.claim('EvPERSIST'),false);
+    now=24*60*60_000;assert.equal(replays.claim('EvPERSIST'),true);
+  }finally{state.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a reopened card rejects changed source bytes even when Slack name and length stay unchanged',async()=>{
+  const dir=temp(),statePath=join(dir,'state.sqlite');let server=await editorServer({statePath});
+  const original=Buffer.from(bytes);
+  try{
+    const id=await server.prepare();await server.documents!.pdf.idle();await server.stop();
+    // The fake downloader returns bytes with the same length/metadata but a different body.
+    bytes[bytes.length-1]^=1;
+    server=await editorServer({statePath});await server.ready;
+    await assert.rejects(server.documents!.ensureSource(id,actor),{code:'source_changed'});
+  }finally{original.copy(bytes);await server.stop();rmSync(dir,{recursive:true,force:true});}
 });

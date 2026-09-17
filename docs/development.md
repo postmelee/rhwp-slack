@@ -12,10 +12,10 @@
 2. `slack/manifest.json`의 `https://example.invalid/slack/events` 세 곳을 운영자가 준비한 동일한 HTTPS 수신 주소로 바꿉니다. 예제 주소는 사용할 수 없습니다.
 3. 테스트 워크스페이스에 manifest로 앱을 만들고 설치합니다. 전체 조직 설치는 이 버전에서 지원하지 않습니다.
 4. 앱의 Signing Secret, Bot User OAuth Token, App ID, Team ID를 로컬 `.env`에 입력합니다. `.env.example`을 복사해 사용하며 비밀값을 Git·이슈·채팅에 기록하지 않습니다.
-5. `SLACK_WORKSPACE_HOST`에는 URL이 아닌 `my-workspace.slack.com` 형태의 hostname, `SLACK_CHANNEL_IDS`에는 허용할 일반 채널 ID를 쉼표로 입력합니다.
+5. `SLACK_WORKSPACE_HOST`에는 URL이 아닌 `my-workspace.slack.com` 형태의 hostname, `SLACK_CHANNEL_IDS`에는 최초 활성화할 일반 채널 ID를 쉼표로 입력합니다. 기존 DB가 있으면 저장된 채널 설정이 우선합니다.
 6. `APP_ORIGIN`에 편집기·Studio·수신기를 함께 서비스할 HTTPS origin을 입력합니다. 경로·query 없이 `https://editor.example.com` 형태로 설정합니다. Origin은 요청 Host header에서 추정하지 않습니다.
 7. 앱 설정의 **Work Object Previews**에서 Work Objects와 file entity를 활성화하고, embeds 도메인 허용 목록에 APP_ORIGIN의 hostname을 등록합니다. SDK의 같은 origin 통신을 위해 **allow-same-origin**을 활성화합니다. 이 설정은 앱 관리 화면에서 확인해야 하며 manifest만으로 활성화했다고 간주하지 않습니다.
-8. manifest에는 `file_shared`, `app_mention`, `entity_details_requested`, `file_deleted`, `file_unshared` 이벤트가 있습니다. `app_mentions:read`를 추가한 기존 앱은 재설치가 필요합니다. `channels:history`/`groups:history` 권한은 사용하지 않습니다.
+8. manifest에는 `file_shared`, `app_mention`, `app_home_opened`, `entity_details_requested`, `file_deleted`, `file_unshared` 이벤트가 있습니다. `app_mentions:read` 또는 상태 반응용 `reactions:write`를 추가한 기존 앱은 해당 권한 승인과 재설치가 필요합니다. `channels:history`/`groups:history` 권한은 사용하지 않습니다.
 9. 허용 채널에 bot을 초대하고 요청자도 해당 채널에 참여하게 합니다. 공개·비공개 채널 모두 이 조건이 필요합니다.
 
 앱 등록·설치·HTTPS 연결은 실제 Slack 관리 작업입니다. 이 저장소의 로컬 테스트나 manifest 생성만으로 설치가 완료되지 않습니다.
@@ -46,6 +46,7 @@ npm run start:slack
 | `/rhwp edit <파일 링크>` | open과 동일 | Studio 편집으로 직접 열기 |
 | `/rhwp pdf <파일 링크>` | 접근 확인·PDF 변환·공유 | Slack에 공유한 PDF로 보기 |
 | `/rhwp help` | 사용법과 미제공 기능 안내 | 동일 |
+| `/rhwp settings` | 지정 관리자만 채널과 동작 모드 설정 | Slack 설정 창 |
 | HWP/HWPX 업로드 | 파일 공유 이벤트로 원본 메시지 식별 | 원본 스레드에 미리보기 댓글 한 개 |
 | `@rhwp` + 첨부 / 관찰한 스레드 | 첨부 또는 같은 스레드의 관찰 파일 사용 | 자동 업로드 요청과 같은 댓글 재사용 |
 | 메시지 메뉴 → 한글 문서 열기 | HWP/HWPX가 여러 개면 선택 창 | 선택한 원본을 Studio로 열기 |
@@ -83,14 +84,14 @@ DM/MPDM, Slack Connect, 조직 공유, 제한된 사용자 공유, remote file�
 | 편집 ticket | 60초, 한 번만 교환, 최대 1,000개 |
 | 편집 세션 | 10분 idle·최대 60분, 최대 1,000개 |
 | 저장 입력·파싱 | 20 MiB·200페이지, 수신 30초·격리 파서 30초, 동시 저장 2개 |
-| 저장 요청 기록 | 60분, 최대 1,000개; 같은 세션·요청 ID·내용 hash로 결속 |
+| 저장 요청 기록 | 60분, 최대 1,000개; team·user·channel·부모 카드·요청 ID·내용 hash로 결속 |
 | PDF 작업 | 실행 1개·실행 포함 최대 4개, 변환 60초·PDF 50 MiB, PNG 각각 5 MiB·합계 25 MiB·최대 10페이지 |
 
 읽기 요청의 429/5xx만 제한적으로 재시도합니다. 429는 Retry-After를 따르되 30초 전체 제한을 넘기지 않습니다. 메시지와 모달 쓰기는 응답이 불확실할 때 자동 재시도하지 않습니다. 알림 실패가 이미 완료한 다운로드를 반복하게 만들지 않습니다. bot이 채널에 없거나 Slack이 알림을 거절하면 최종 ephemeral 알림은 전달되지 않을 수 있습니다.
 
 `files.slack.com/files-pri/TEAM-FILE/` 경로만 인증 다운로드에 사용합니다. 리다이렉트는 수동으로 최대 2번 검사하며 같은 host·문서 경계 밖으로 토큰을 전달하지 않습니다. 다른 CDN 경로를 실제로 확인하기 전 허용 목록을 넓히지 않습니다.
 
-raw payload, response_url, 토큰·서명, Slack의 원문 오류를 로그에 기록하지 않습니다. `response_url`을 호출하지 않으며 알림과 모달은 고정 Slack API 주소를 사용합니다. 원본과 편집본 입력은 디스크에 기록하지 않고 프로세스 메모리와 파이프로 전달합니다. 만료 자료는 접근 시 또는 1분 주기로 정리합니다. 파일 삭제·공유 해제 이벤트는 같은 workspace의 관련 작업·보관 byte·편집 ticket·세션을 만료시킵니다. 재시작을 넘는 중복 방지·복구나 OS 메모리 하드 상한은 제공하지 않습니다.
+raw payload, response_url, 토큰·서명, Slack의 원문 오류를 로그에 기록하지 않습니다. `response_url`을 호출하지 않으며 알림과 모달은 고정 Slack API 주소를 사용합니다. 원본과 편집본 입력은 디스크에 기록하지 않고 프로세스 메모리와 파이프로 전달합니다. 만료 자료는 접근 시 또는 1분 주기로 정리합니다. 파일 삭제·공유 해제 이벤트는 같은 workspace의 관련 작업·보관 byte·편집 ticket·세션을 만료시킵니다. SQLite의 중복 식별·연결 정보로 재시작 복구를 수행합니다. 프로세스 자체의 OS 메모리 하드 상한은 제공하지 않습니다.
 
 ## 편집본 저장과 PDF
 
@@ -99,7 +100,7 @@ raw payload, response_url, 토큰·서명, Slack의 원문 오류를 로그에 �
 - 편집본 저장은 새 HWP/HWPX를 만듭니다. 이름은 `원본명_편집본_1.hwp`처럼 번호를 붙이며 형식은 `.hwp` 또는 `.hwpx`이며 원본 파일·원본 PDF는 바꾸지 않습니다. 저장 성공 뒤 같은 편집본 bytes로 PDF·PNG를 생성해 해당 수정본 카드에 갱신합니다. 수정본 제목을 누르면 그 수정본을 Studio에서 다시 편집합니다.
 - 업로드 완료 호출은 파일 ID마다 한 번만 수행합니다. 비공개 업로드 완료와 카드에 대한 실제 공유를 구분합니다. 응답이 불확실하면 동일 파일의 공유 상태로 확인하며, 클라이언트의 **같은 저장 요청 다시 확인**은 같은 ID·bytes를 재전송합니다. 불확실한 파일을 두고 새 사본을 자동 생성하지 않습니다.
 - PDF 실패는 HWP/HWPX 저장 성공을 취소하지 않습니다. 저장 중 추가 편집은 Studio dirty 상태와 저장 패널에 남습니다. PDF 전용 재시도 버튼은 아직 없으며 저장된 파일에 `/rhwp pdf <파일 링크>`를 사용할 수 있습니다.
-- 재시작 시 세션·멱등 기록이 사라집니다. 편집 링크가 만료되면 Slack에서 다시 열어야 합니다. 저장 결과가 불확실한 상태에서 창을 닫았다면 Slack 첨부를 확인한 후 새 저장을 요청하세요. 정확히 한 번의 저장을 재시작 이후까지 보장하지 않습니다.
+- 재시작 시 편집 세션은 만료되므로 Slack 카드에서 다시 엽니다. 카드·저장 영수증과 업로드 단계는 DB에 유지합니다. 원본 캐시 만료 후에는 권한 재확인과 인증 다운로드로 같은 카드를 복구합니다. 미저장 편집 bytes는 복구하지 않으며 모든 장애 지점에서 정확히 한 번의 저장을 보장하지 않습니다.
 
 ## 검증
 
@@ -208,7 +209,7 @@ docker compose ps
 
 Dockerfile은 Node 24.21.0/npm 11.19.0 이미지의 digest를 고정합니다. `.dockerignore` 허용 목록만 빌드에 사용하므로 로컬 .env·.git·.cache·개인 문서를 전달하지 않습니다. Studio는 고정 commit을 fetch한 뒤 지정 경로의 archive SHA-256을 검사합니다.
 
-Compose는 node 사용자, 읽기 전용 root, 임시 /tmp, 4 GiB 메모리·2 CPU·256 PID, capability 제거와 no-new-privileges를 적용합니다. host의 `127.0.0.1:3000`에만 포트를 공개하며 TLS는 터널 또는 운영 reverse proxy가 담당합니다. 컨테이너 내부 HOST는 0.0.0.0, 로컬 일반 실행 기본값은 127.0.0.1입니다.
+Compose는 재시작 정책 `unless-stopped`, `/app/data`의 영속 `rhwp-state` volume, node 사용자, 읽기 전용 root, 임시 /tmp, 4 GiB 메모리·2 CPU·256 PID, capability 제거와 no-new-privileges를 적용합니다. host의 `127.0.0.1:3000`에만 포트를 공개하며 TLS는 터널 또는 운영 reverse proxy가 담당합니다. 컨테이너 내부 HOST는 0.0.0.0, 로컬 일반 실행 기본값은 127.0.0.1입니다.
 
 ```sh
 docker build --target smoke -t rhwp-slack:smoke .
@@ -239,4 +240,22 @@ Slack 클라이언트는 이미지·PDF·편집 카드를 같은 댓글 안의 �
 5. 편집 카드 제목으로 Slack 내부 Studio를 열고 편집본을 저장합니다. 원본 스레드에 수정본 댓글 한 개가 추가되고, 그 댓글의 PDF·PNG가 준비되어야 합니다.
 6. 파일과 `@rhwp`를 함께 보내거나 이미 감지한 스레드에서 멘션해도 미리보기 댓글이 중복되지 않는지 확인합니다. 서버가 관찰하지 못한 이전 스레드는 원본 메시지 메뉴로 요청합니다.
 
-일반 채널 history 권한은 필요하지 않습니다. 업로드 자동 감지는 `files:read`, 멘션 수신은 `app_mentions:read`를 사용하며, 파일 다운로드·변환 전에 기존 채널 참여/공유 검사를 수행합니다. 원본 메시지에 여러 사람의 공유 기록이 있으면 위치를 추측하지 않고 메시지 메뉴를 안내합니다. 이미 준비된 원본 bytes는 15분 뒤 만료되므로 늦게 열거나 확장할 때는 원본 메뉴로 다시 요청하세요.
+일반 채널 history 권한은 필요하지 않습니다. 업로드 자동 감지는 `files:read`, 멘션 수신은 `app_mentions:read`를 사용하며, 파일 다운로드·변환 전에 기존 채널 참여/공유 검사를 수행합니다. 원본 메시지에 여러 사람의 공유 기록이 있으면 위치를 추측하지 않고 메시지 메뉴를 안내합니다. 이미 준비된 원본 bytes는 15분 뒤 만료되며, 같은 카드를 열거나 확장할 때 권한을 재확인하고 다시 다운로드합니다.
+
+## 내부 워크스페이스 운영
+
+1. `.env`의 `STATE_DB_PATH`를 영속 디스크에 두고 `SLACK_ADMIN_USER_IDS`에 승인된 관리자의 Slack 사용자 ID를 넣습니다. 관리자가 없어도 최초 활성 채널의 문서 사용은 가능하지만 설정 변경은 불가합니다.
+2. 최신 manifest의 Home 탭·`app_home_opened`·`reactions:write`를 앱에 적용하고 필요한 권한을 승인하여 재설치합니다. 이후 `SLACK_REACTIONS_ENABLED=true`로 켭니다.
+3. 신규 채널에 rhwp를 초대한 뒤 관리자가 rhwp Home 또는 `/rhwp settings`에서 채널과 모드를 선택합니다. 자동 감지는 업로드만으로 실행하며, 멘션 요청 모드는 첨부와 `@rhwp` 또는 메시지 메뉴/명령으로 실행합니다. 사용 안 함은 해당 채널의 문서 접근을 차단합니다.
+4. 채널에 참여한 동료가 합성 HWP/HWPX를 올려 ⏳→✅, 스레드 댓글, PDF/갤러리/Studio와 편집본 저장을 확인합니다. 관리자 권한은 일반 문서 사용에 필요하지 않습니다.
+5. 새 카드 생성 후 서버를 재시작하고 같은 카드에서 다시 여는지 확인합니다. DB 도입 전에 메모리에만 있던 카드는 새로 만들어야 합니다.
+
+### 고정 HTTPS로 이전
+
+현재 로컬 Mac과 Quick Tunnel은 컴퓨터·서버·터널이 실행 중일 때만 접근할 수 있습니다. 운영에는 고정 도메인의 HTTPS reverse proxy 또는 named tunnel과 계속 실행되는 서버가 필요합니다. GitHub Pages만으로는 이벤트 수신·인증·PDF 변환·DB를 실행할 수 없습니다.
+
+운영자가 호스트를 정하면 production 서버와 영속 DB를 배치하고 `APP_ORIGIN`, Slack의 모든 request URL, Work Object embed 도메인을 같은 주소로 갱신합니다. 서버만 이동할 때도 기존 DB를 함께 이전해야 합니다. DB의 카드 origin 기록은 알려진 과거 카드 연결을 식별하는 용도이며 오래된 호스트 자체를 계속 운영한다는 의미는 아닙니다.
+
+백업은 SQLite backup API 또는 서버를 정상 종료한 뒤 DB와 남아 있는 `-wal`/`-shm` 파일을 한 묶음으로 보관합니다. 실행 중 DB 본체만 복사하지 않습니다. Compose의 `down -v`는 영속 volume을 삭제하므로 운영 자료가 있는 환경에서 사용하지 않습니다.
+
+이번 범위는 단일 workspace입니다. 다른 workspace 설치용 OAuth·테넌트별 자격 증명 관리·Marketplace 심사 및 배포형 embeds 이용 승인은 별도입니다.

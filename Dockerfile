@@ -29,6 +29,7 @@ COPY --from=build /app/.cache/studio-source/rhwp-studio/src/core/generated/font-
 COPY --from=build /app/.cache/studio-source/assets/fonts ./.cache/studio-source/assets/fonts
 COPY --from=build /app/src ./src
 COPY scripts/healthcheck.mjs scripts/slack-preflight.ts ./scripts/
+RUN mkdir -p /app/data && chown node:node /app/data && chmod 700 /app/data
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["node", "scripts/healthcheck.mjs"]

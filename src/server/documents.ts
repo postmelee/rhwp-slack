@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {authorizeFile, type Actor} from './access';
 import type {Config} from './config';
@@ -11,7 +12,7 @@ import type {State} from './state';
 import {denied,UserError} from './errors';
 export interface Card {
   id:string;actor:Actor;fileId:string;rootFileId:string;name:string;size:number;createdAt:number;
-  origin?:string;
+  origin?:string;contentHash?:string;
   revision:number;sequence?:number;parentId?:string;parentTs?:string;messageTs?:string;posting?:boolean;
   pdf:'pending'|'ready'|'failed';pdfUrl?:string;pdfFileId?:string;
   pageCount?:number;images?:{page:number;fileId:string;shared?:boolean}[];imageTarget?:number;imageState?:'pending'|'ready'|'failed';
@@ -43,7 +44,9 @@ export class Documents {
   async ensureSource(id:string,actor:Actor):Promise<Buffer>{
     const card=await this.authorize(id,actor);
     const bytes=await this.preparations.restore(id,actor,card.fileId);
-    await this.authorize(id,actor);return bytes;
+    await this.authorize(id,actor);
+    if(card.contentHash&&createHash('sha256').update(bytes).digest('hex')!==card.contentHash)throw new UserError('source_changed','원본 파일 내용이 변경되었습니다. 원본 메시지에서 다시 요청해 주세요.');
+    return bytes;
   }
   async recover():Promise<void>{
     for(const card of this.cards.values()){
@@ -129,7 +132,7 @@ export class Documents {
   async publish(job:Readonly<Job>):Promise<void> {
     if(!job.source||!job.bytes||job.state!=='ready')return;
     this.sweep();if(this.closed||this.cards.size>=1000)throw new UserError('busy','문서 요청이 많습니다.');
-    const card:Card={origin:this.config.publicOrigin,id:job.id,actor:{...job.actor},fileId:job.fileId,rootFileId:job.fileId,revision:0,parentTs:job.actor.threadTs,name:job.source.name,size:job.source.size,createdAt:this.now(),pdf:'pending'};
+    const card:Card={contentHash:job.contentHash,origin:this.config.publicOrigin,id:job.id,actor:{...job.actor},fileId:job.fileId,rootFileId:job.fileId,revision:0,parentTs:job.actor.threadTs,name:job.source.name,size:job.source.size,createdAt:this.now(),pdf:'pending'};
     this.cards.set(card.id,card);this.checkpoint();
     try {await this.authorize(card.id,card.actor);await this.post(card);}
     catch(error){this.checkpoint();throw error;}
@@ -147,7 +150,7 @@ export class Documents {
     if(!card){
       this.sweep();if(this.closed||this.cards.size>=1000)throw new UserError('busy','문서 요청이 많습니다.');
       const job=this.preparations.retain(id,actor,fileId,name,bytes);
-      card={origin:this.config.publicOrigin,id,actor:{...actor,threadTs:parent.actor.threadTs},fileId,rootFileId:parent.rootFileId,parentId,parentTs:parent.actor.threadTs,name,size:job.source!.size,revision:Number(/_편집본_(\d+)\./.exec(name)?.[1]??1),createdAt:this.now(),pdf:'pending'};
+      card={contentHash:job.contentHash,origin:this.config.publicOrigin,id,actor:{...actor,threadTs:parent.actor.threadTs},fileId,rootFileId:parent.rootFileId,parentId,parentTs:parent.actor.threadTs,name,size:job.source!.size,revision:Number(/_편집본_(\d+)\./.exec(name)?.[1]??1),createdAt:this.now(),pdf:'pending'};
       this.cards.set(id,card);this.checkpoint();
     }
     this.preparations.retain(id,actor,fileId,name,bytes);

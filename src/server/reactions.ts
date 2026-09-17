@@ -7,6 +7,7 @@ const names=['hourglass_flowing_sand','white_check_mark','warning'];
 /** One reaction state per original message, aggregated across all its requested files. */
 export class Reactions {
   private works=new Map<string,Work>();
+  private dirty=new Map<string,Actor>();
   private tails=new Map<string,Promise<void>>();
   constructor(private api:SlackApi,private enabled:boolean,private store?:State){for(const [id,w] of store?.all<Work>('reactions')??[])this.works.set(id,w);}
   register(id:string,actor:Actor):void{
@@ -19,7 +20,7 @@ export class Reactions {
   private key(a:Actor):string{return JSON.stringify([a.teamId,a.channelId,a.reactionTs]);}
   private sync(actor:Actor):Promise<void>{
     if(!this.enabled)return Promise.resolve();
-    const key=this.key(actor);
+    const key=this.key(actor);this.dirty.set(key,actor);
     const next=(this.tails.get(key)??Promise.resolve()).catch(()=>{}).then(async()=>{
       const works=[...this.works.values()].filter(w=>this.key(w.actor)===key);
       if(!works.some(w=>w.validated))return;
@@ -28,6 +29,7 @@ export class Reactions {
         try{await this.api.call(name===target?'reactions.add':'reactions.remove',{channel:actor.channelId,timestamp:actor.reactionTs,name});}
         catch(e){if(!(e instanceof UserError)||!['already_reacted','no_reaction'].includes(e.code))throw e;}
       }
+      this.dirty.delete(key);
     }).catch(()=>{/* Cosmetic failures never repeat a conversion. Retry during recovery or the next transition. */});
     this.tails.set(key,next);void next.finally(()=>{if(this.tails.get(key)===next)this.tails.delete(key);});return next;
   }
@@ -37,6 +39,6 @@ export class Reactions {
       if(w.validated)await this.sync(w.actor);
     }
   }
-  sweep():void{for(const [id,w] of this.works)if(w.state!=='pending'&&Date.now()-w.updatedAt>7*24*60*60_000){this.works.delete(id);this.store?.delete('reactions',id);}}
+  sweep():void{for(const actor of this.dirty.values())if(!this.tails.has(this.key(actor)))void this.sync(actor);for(const [id,w] of this.works)if(w.state!=='pending'&&Date.now()-w.updatedAt>7*24*60*60_000){this.works.delete(id);this.store?.delete('reactions',id);}}
   async idle():Promise<void>{await Promise.allSettled([...this.tails.values()]);}
 }

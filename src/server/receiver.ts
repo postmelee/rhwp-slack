@@ -38,7 +38,7 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
     return {teamId:config.teamId,botToken:config.botToken,...botIdentity};
   }});
   const selections=new Selections(options.now);
-  const replays=new Replays(options.now);
+  const replays=new Replays(options.now,state);
   const notice=async(actor:Actor,text:string)=>{await api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text});};
   const notify=async(job:Readonly<Job>)=>{
     if(job.state==='ready'&&documents){if(documents.has(job.id))return;try{await documents.publish(job);}catch(error){await reactions.finish(job.id,false);await notice(job.actor,userMessage(error));}return;}
@@ -47,7 +47,7 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
       : job.error??'문서 준비에 실패했습니다.';
     await reactions.finish(job.id,false);await notice(job.actor,text);
   };
-  const preparations=new Preparations(config,api,{download:options.download,now:options.now,notify,state,registered:job=>reactions.register(job.id,job.actor),started:job=>reactions.start(job.id)});
+  const preparations=new Preparations(config,api,{download:options.download,now:options.now,notify,state,registered:job=>reactions.register(job.id,job.actor),started:async job=>{void reactions.start(job.id);}});
   const documents=config.publicOrigin?new Documents(config,api,preparations,{...options,state,complete:card=>reactions.finish(card.id,card.pdf==='ready'&&card.imageState==='ready')}):undefined;
   const saves=documents?new Saves(documents,options.now,state):undefined;
   if(documents&&saves)receiver.router.use(editorRoutes(config.publicOrigin!,documents,saves));
@@ -110,16 +110,16 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
   const threadRequests=new Map<string,string>(state?.all('threads'));
   const clock=options.now??Date.now;
   const remember=(who:Actor,fileId:string)=>{
-    for(const [key,item] of observed)if(item.expires<=clock())observed.delete(key);
+    for(const [key,item] of observed)if(item.expires<=clock()){observed.delete(key);state?.delete('observed',key);}
     const key=JSON.stringify([who.teamId,who.channelId,who.threadTs,fileId]);
-    if(observed.size>=1000&&!observed.has(key))observed.delete(observed.keys().next().value!);
+    if(observed.size>=1000&&!observed.has(key)){const oldest=observed.keys().next().value!;observed.delete(oldest);state?.delete('observed',oldest);}
     observed.set(key,{team:who.teamId,channel:who.channelId,parent:who.threadTs!,file:fileId,expires:clock()+24*60*60_000});state?.put('observed',key,observed.get(key));
   };
   const requestThread=(who:Actor,fileId:string)=>{
     const key=JSON.stringify([who.teamId,who.channelId,who.threadTs,fileId]);
     const previous=threadRequests.get(key),job=previous?preparations.get(previous):undefined;
     if(previous&&documents?.has(previous)||job&&['queued','downloading','ready'].includes(job.state))return;
-    if(threadRequests.size>=1000)threadRequests.delete(threadRequests.keys().next().value!);
+    if(threadRequests.size>=1000){const oldest=threadRequests.keys().next().value!;threadRequests.delete(oldest);state?.delete('threads',oldest);}
     // Automatic file events and mentions from different members share one request.
     const result=preparations.submit(who,fileId,'open','thread:'+key+':'+clock());
     threadRequests.set(key,result.id);state?.put('threads',key,result.id);remember(who,fileId);
