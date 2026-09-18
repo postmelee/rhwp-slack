@@ -10,7 +10,7 @@ for(const format of ['hwp','hwpx'])test(`real ${format} conversion streams PDF f
  assert.deepEqual(retry.pages[0].png,result.pages[1].png);
 });
 
-test('repeated documents compile once; malformed input, abort and timeout discard runtime and recover',async()=>{
+test('repeated documents compile once; malformed input and active abort discard runtime and recover',async()=>{
  const {closeConversionRuntime,convertPdf}=await import('../../src/conversion/convert.mjs');
  await closeConversionRuntime();
  const a=await readFile('tests/fixtures/viewer-two-pages.hwp'),b=await readFile('tests/fixtures/viewer-two-pages.hwpx');
@@ -23,7 +23,7 @@ test('repeated documents compile once; malformed input, abort and timeout discar
  assert.ok(metrics.filter(m=>m.stage==='wasm_init'&&m.phase==='finish').length===3);
  for(const fail of [()=>convertPreview(Buffer.from('invalid')),()=>{
   const controller=new AbortController();return convertPreview(a,{signal:controller.signal,onMetric:m=>{if(m.stage==='parse')controller.abort();}});
- },()=>convertPreview(a,{timeoutMs:1})]){
+ }]){
   await assert.rejects(fail());const recovered=[];
   assert.equal((await convertPdf(b,{onMetric:m=>recovered.push(m)})).subarray(0,5).toString(),'%PDF-');
   assert.equal(recovered.filter(m=>m.stage==='wasm_compile'&&m.phase==='finish').length,1);
@@ -69,4 +69,16 @@ test('built converter deadline terminates real rendering and the next request re
  const bytes=await readFile('tests/fixtures/viewer-two-pages.hwp');
  await assert.rejects(convertPdf(bytes,{timeoutMs:1}),e=>e.code==='conversion_timeout');
  assert.equal((await convertPdf(bytes)).subarray(0,5).toString(),'%PDF-');await closeConversionRuntime();
+});
+
+
+test('deadline during active output discards the runtime before a recovery request',async()=>{
+ const {convertPdf,closeConversionRuntime}=await import('../../src/conversion/convert.mjs');await closeConversionRuntime();
+ const bytes=await readFile('tests/fixtures/viewer-two-pages.hwp');await convertPdf(bytes);
+ let release;const gate=new Promise(r=>release=r);let outputStarted=false;
+ try{await assert.rejects(convertPreview(bytes,{timeoutMs:5000,onPdf:async()=>{outputStarted=true;await gate;}}),e=>e.code==='conversion_timeout');}
+ finally{release();}
+ assert.equal(outputStarted,true,'deadline must exercise active output, not queue cancellation');
+ const recovered=[];assert.equal((await convertPdf(bytes,{onMetric:m=>recovered.push(m)})).subarray(0,5).toString(),'%PDF-');
+ assert.equal(recovered.filter(m=>m.stage==='wasm_compile'&&m.phase==='finish').length,1);await closeConversionRuntime();
 });
