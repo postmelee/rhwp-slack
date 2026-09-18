@@ -15,3 +15,6 @@ await build({configFile:false,publicDir:false,build:{
   lib:{entry:resolve('.cache/studio-source/rhwp-studio/src/command/print-pages.ts'),name:'RhwpPrint',formats:['iife'],fileName:()=> 'print.js'},
   outDir:resolve('.cache/conversion'),emptyOutDir:true,
 }});
+
+// Run after the print bundle, which clears this build directory.
+await import('./build-conversion.mjs');

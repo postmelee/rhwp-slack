@@ -14,7 +14,7 @@
     "build:dev": "npm run prepare:studio && node scripts/build-studio.mjs && node scripts/build-host.mjs --dev",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.tests.json",
     "test": "node scripts/run-tests.mjs",
-    "test:viewer": "npm run build && npm run build:dev && playwright test",
+    "test:viewer": "npm run build && npm run build:dev && playwright test && node --test tests/conversion/*.test.mjs",
     "prepare:studio": "node scripts/prepare-studio.mjs",
     "start:slack": "node --env-file=.env --import tsx src/server/main.ts",
     "test:slack": "node scripts/run-tests.mjs slack",

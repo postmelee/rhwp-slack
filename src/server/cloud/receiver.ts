@@ -69,9 +69,9 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
    await events.enqueue('settings-home:'+view.id+':'+view.hash,{kind:'home',user:body.user.id});await ack();
   }catch(error){await ack({response_action:'errors',errors:{channel:userMessage(error)}});}
  });
- app.action('rhwp_more_pages',async({body,action,ack})=>{
+ for(const actionId of ['rhwp_more_pages','rhwp_retry_preview'])app.action(actionId,async({body,action,ack})=>{
   let actor:Actor|undefined;try{const b=object(body),a=object(action),c=object(b.container);actor=await who(object(b.team).id,object(b.user).id,c.channel_id);
-   if(c.type!=='message'||typeof a.value!=='string'||(b.channel&&object(b.channel).id!==actor.channelId))denied();await documents.morePages(a.value,actor,ts(c.message_ts));
+   if(c.type!=='message'||typeof a.value!=='string'||(b.channel&&object(b.channel).id!==actor.channelId))denied();await (actionId==='rhwp_more_pages'?documents.morePages(a.value,actor,ts(c.message_ts)):documents.retryPreview(a.value,actor,ts(c.message_ts)));
   }catch(error){if(actor)await notice(actor,error);}await ack();
  });
  app.event('entity_details_requested',async({body,event})=>{

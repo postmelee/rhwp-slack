@@ -1,8 +1,10 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {measured,conversionMetric,milestone,errorCode} from './telemetry';
 import {setTimeout as delay} from 'node:timers/promises';
 import type {MetadataStore} from './metadata';
+import {BoundedWork,serialWrites} from '../concurrency';
 import {SharedSessions} from './sessions';
-import {DurableTasks,type TaskSpec,type TaskContext} from './tasks';
+import {DurableTasks,MAX_TASK_ATTEMPTS,type TaskSpec,type TaskContext} from './tasks';
 import {withLease,type LeaseContext} from './lease';
 import type {Config} from '../config';
 import {ID} from '../config';
@@ -17,7 +19,7 @@ import {documentMetadata,documentMessage,documentGallery} from '../document-mess
 import {UserError,denied} from '../errors';
 import {validateDocument} from '../validate-document';
 import {validateInput} from '../../shared/errors';
-import {convertPreview,convertPageImages,type Preview} from '../../conversion/convert.mjs';
+import {convertPreview,convertPageImages,type PageImage} from '../../conversion/convert.mjs';
 interface CloudCard extends Omit<Card,'imageAttempts'|'imageWork'|'updates'> {attempts?:Record<string,UploadAttempt>;fence?:string;removed?:boolean;}
 interface Request {actor:Actor;fileId:string;}
 interface SaveOperation {hash:string;cardId:string;attempt:UploadAttempt;receipt:Receipt;}
@@ -37,17 +39,18 @@ export class CloudApplication {
     if(actor.teamId!==this.config.teamId||!ID.user.test(actor.userId)||!ID.channel.test(actor.channelId)||await this.mode(actor.channelId)==='off')denied();
     return {...this.config,channelIds:new Set([actor.channelId])};
   }
-  async authorize(id:string,actor:Actor):Promise<CloudCard>{
+  async authorize(id:string,actor:Actor):Promise<CloudCard>{return measured('authorize',()=>this.authorizeUnmeasured(id,actor));}
+  private async authorizeUnmeasured(id:string,actor:Actor):Promise<CloudCard>{
     const config=await this.accessConfig(actor),card=await this.store.get<CloudCard>('cards',id);
     if(!card||card.removed||card.actor.teamId!==actor.teamId||card.actor.channelId!==actor.channelId)denied();
     const source=await authorizeFile(this.api,config,actor,card.fileId);
     if(card.rootFileId!==card.fileId)await authorizeFile(this.api,config,actor,card.rootFileId);
     if(source.name!==card.name||source.size!==card.size)denied();return card;
   }
-  async ensureSource(id:string,actor:Actor):Promise<Buffer>{
+  async ensureSource(id:string,actor:Actor,outer?:AbortSignal):Promise<Buffer>{
     const card=await this.authorize(id,actor),config=await this.accessConfig(actor);
-    const source=await authorizeFile(this.api,config,actor,card.fileId),signal=AbortSignal.timeout(30_000);
-    const bytes=await (this.options.download??downloadFile)(source,actor,this.config.botToken,signal);
+    const source=await authorizeFile(this.api,config,actor,card.fileId),signal=AbortSignal.any([AbortSignal.timeout(30_000),...(outer?[outer]:[])]);
+    const bytes=await measured('download',()=>(this.options.download??downloadFile)(source,actor,this.config.botToken,signal));
     const fresh=await this.authorize(id,actor);
     if(fresh.contentHash&&hash(bytes)!==fresh.contentHash)throw new UserError('source_changed','원본 내용이 변경되었습니다. 다시 요청하세요.');
     return bytes; // No cross-request document cache.
@@ -75,11 +78,29 @@ export class CloudApplication {
     if(!await this.store.get('cards',id))await this.reaction(id,actor,'pending',false);
     await this.tasks.enqueue('prepare:'+id,{teamId:actor.teamId,cardId:id,kind:'prepare'});return id;
   }
+  async retryPreview(id:string,actor:Actor,messageTs:string):Promise<void>{
+    await this.authorize(id,actor);
+    await this.locked(id,async(card,context)=>{
+      if(card.messageTs!==messageTs)denied();
+      if(card.pdf==='ready'&&card.imageState==='ready')return;
+      if(card.recovery&&card.recovery.state!=='failed')throw new UserError('pages_pending','자동 재시도 중입니다. 잠시 후 다시 확인하세요.');
+      const taskId=await this.tasks.enqueue('preview-retry:'+id+':'+(card.recovery?.taskId??'initial'),{teamId:actor.teamId,cardId:id,kind:'preview',actor});
+      card.recovery={taskId,state:'running',attempt:0,maxAttempts:MAX_TASK_ATTEMPTS};
+      if(card.pdf!=='ready')card.pdf='pending';if(card.imageState!=='ready')card.imageState='pending';
+      await this.update(card,actor,context);await this.reaction(id,card.actor,'pending',true);
+    });
+  }
   async morePages(id:string,actor:Actor,messageTs:string):Promise<void>{
-    const card=await this.authorize(id,actor);if(card.messageTs!==messageTs)denied();
-    if(!card.pageCount)throw new UserError('pages_pending','페이지 이미지를 준비 중입니다. 잠시 후 다시 시도하세요.');
-    if(card.imageState==='ready'&&(card.images?.length??0)>=Math.min(10,card.pageCount))return;
-    await this.tasks.enqueue('images:'+id+':'+actor.userId,{teamId:actor.teamId,cardId:id,kind:'images',actor});
+    await this.authorize(id,actor);
+    await this.locked(id,async(card,context)=>{
+      if(card.messageTs!==messageTs)denied();
+      if(!card.pageCount||card.pdf!=='ready')throw new UserError('pages_pending','PDF를 준비 중입니다. 잠시 후 다시 시도하세요.');
+      if(card.imageState==='ready'&&(card.images?.length??0)>=Math.min(10,card.pageCount))return;
+      if(card.recovery&&card.recovery.state!=='failed'&&card.imageState!=='ready')return;
+      const taskId=await this.tasks.enqueue('images:'+id+':'+(card.recovery?.taskId??'initial'),{teamId:actor.teamId,cardId:id,kind:'images',actor});
+      card.recovery={taskId,state:'running',attempt:0,maxAttempts:MAX_TASK_ATTEMPTS};card.imageState='pending';
+      await this.update(card,actor,context);await this.reaction(id,card.actor,'pending',true);
+    });
   }
   private guarded(context:TaskContext):SlackApi{return {call:async(method,args,signal)=>{await context.checkpoint();return this.api.call(method,args,AbortSignal.any([context.signal,...(signal?[signal]:[])]));}};}
   private async write(card:CloudCard,context:LeaseContext):Promise<void>{
@@ -97,12 +118,13 @@ export class CloudApplication {
       });return run(card,context);
     });
   }
-  private uploads(card:CloudCard,context:LeaseContext):Uploads {
+  private uploads(card:CloudCard,context:LeaseContext,checkpoint=()=>this.write(card,context)):Uploads {
     return new Uploads(this.guarded(context),this.config,async(url,init)=>{
       await context.checkpoint();return (this.options.fetcher??fetch)(url,{...init,signal:AbortSignal.any([context.signal,...(init?.signal?[init.signal]:[])])});
-    },async()=>{await this.write(card,context);});
+    },checkpoint);
   }
-  private async post(card:CloudCard,context:LeaseContext):Promise<void>{
+  private async post(card:CloudCard,context:LeaseContext):Promise<void>{return measured('card_post',()=>this.postUnmeasured(card,context));}
+  private async postUnmeasured(card:CloudCard,context:LeaseContext):Promise<void>{
     const api=this.guarded(context),uploads=this.uploads(card,context);
     if(card.messageTs)return;
     if(card.posting){
@@ -113,13 +135,15 @@ export class CloudApplication {
     card.posting=true;await this.write(card,context);await this.authorize(card.id,card.actor);
     const posted=await api.call('chat.postMessage',{...documentMessage(card,this.config.publicOrigin!),client_msg_id:card.id,...(card.parentTs?{thread_ts:card.parentTs}:{})});
     if(typeof posted.ts!=='string'||!/^\d+\.\d+$/.test(posted.ts))throw new Error('Missing message receipt');
-    card.messageTs=posted.ts;card.actor.threadTs??=posted.ts;await this.write(card,context);
+    card.messageTs=posted.ts;card.actor.threadTs??=posted.ts;await this.write(card,context);milestone('first_card');
   }
-  private async update(card:CloudCard,actor:Actor,context:LeaseContext):Promise<void>{
+  private async update(card:CloudCard,actor:Actor,context:LeaseContext):Promise<void>{return measured('card_update',()=>this.updateUnmeasured(card,actor,context));}
+  private async updateUnmeasured(card:CloudCard,actor:Actor,context:LeaseContext):Promise<void>{
     await this.write(card,context);await this.authorize(card.id,actor);
     await this.guarded(context).call('chat.update',{...documentMessage(card,this.config.publicOrigin!),ts:card.messageTs,...(documentGallery(card).length?{file_ids:documentGallery(card).map(p=>p.fileId)}:{})});
   }
-  private async confirm(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext):Promise<void>{
+  private async confirm(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext):Promise<void>{return measured('share_confirm',()=>this.confirmUnmeasured(card,fileId,actor,context));}
+  private async confirmUnmeasured(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext):Promise<void>{
     const uploads=this.uploads(card,context);
     for(let i=0;i<6;i++){
       await this.authorize(card.id,actor);
@@ -129,18 +153,33 @@ export class CloudApplication {
     throw new Error('File share is not confirmed');
   }
   async execute(spec:TaskSpec,task:TaskContext):Promise<void>{
+    if(task.terminalFailure){await this.failed(spec,task,task.terminalFailure,true);return;}
     try{await this.executeWork(spec,task);}
-    catch(error){
-      const card=await this.store.get<CloudCard>('cards',spec.cardId).catch(()=>undefined);
-      if(card)await this.authorize(card.id,spec.actor??card.actor).then(async()=>{
-        await this.locked(card.id,async(current,context)=>{
-          if(spec.kind==='preview'&&current.pdf!=='ready')current.pdf='failed';
-          current.imageState='failed';if(current.messageTs)await this.update(current,spec.actor??current.actor,context);
-        });
-        await this.reaction(card.id,card.actor,'failed',true);
-      }).catch(()=>{});
-      throw error;
+    catch(error){await this.failed(spec,task,errorCode(error),!!task.finalAttempt).catch(()=>{});throw error;}
+  }
+  private async failed(spec:TaskSpec,task:TaskContext,code:string,final:boolean):Promise<void>{
+    await task.checkpoint();
+    const card=await this.store.get<CloudCard>('cards',spec.cardId);
+    if(!card){
+      if(spec.kind==='prepare'){
+        const request=await this.store.get<Request>('preparations',spec.cardId);
+        if(request){await authorizeFile(this.api,await this.accessConfig(request.actor),request.actor,request.fileId);await this.reaction(spec.cardId,request.actor,final?'failed':'pending',true);}
+      }
+      return;
     }
+    await this.authorize(card.id,spec.actor??card.actor);
+    await this.locked(card.id,async(current,lease)=>{
+      const context:LeaseContext={...lease,signal:AbortSignal.any([task.signal,lease.signal]),checkpoint:async()=>{await task.checkpoint();await lease.checkpoint();}};
+      await context.checkpoint();
+      // A deadline notification from an older generation cannot overwrite a manual retry.
+      if(current.recovery&&current.recovery.taskId!==task.id)return;
+      if(current.pdf==='ready'&&current.imageState==='ready')return;
+      current.recovery={taskId:task.id??'legacy',state:final?'failed':'retrying',attempt:task.attempt??1,maxAttempts:task.maxAttempts??MAX_TASK_ATTEMPTS,errorCode:code};
+      if(current.pdf!=='ready')current.pdf=final?'failed':'pending';
+      if(current.imageState!=='ready')current.imageState=final?'failed':'pending';
+      if(current.messageTs)await this.update(current,spec.actor??current.actor,context);else await this.write(current,context);
+      await this.reaction(current.id,current.actor,final?'failed':'pending',true);
+    });
   }
   private async executeWork(spec:TaskSpec,task:TaskContext):Promise<void>{
     if(spec.teamId!==this.config.teamId)denied();
@@ -148,7 +187,7 @@ export class CloudApplication {
       const request=await this.store.get<Request>('preparations',spec.cardId);if(!request)throw new Error('Missing request');
       const config=await this.accessConfig(request.actor),source=await authorizeFile(this.api,config,request.actor,request.fileId,task.signal);
       await this.reaction(spec.cardId,request.actor,'pending',true);
-      await task.checkpoint();const bytes=await (this.options.download??downloadFile)(source,request.actor,this.config.botToken,task.signal);
+      await task.checkpoint();const bytes=await measured('download',()=>(this.options.download??downloadFile)(source,request.actor,this.config.botToken,task.signal));
       const fresh=await authorizeFile(this.api,config,request.actor,request.fileId,task.signal);if(fresh.name!==source.name||fresh.size!==source.size||fresh.downloadUrl!==source.downloadUrl)denied();
       await this.store.atomic<CloudCard,void>('cards',spec.cardId,current=>({value:current??{id:spec.cardId,actor:{...request.actor},fileId:source.id,rootFileId:source.id,name:source.name,size:source.size,contentHash:hash(bytes),origin:this.config.publicOrigin,createdAt:Date.now(),revision:0,parentTs:request.actor.threadTs,pdf:'pending',imageState:'pending'},result:undefined}));
       await this.locked(spec.cardId,async(card,context)=>{await task.checkpoint();await this.post(card,context);});
@@ -159,31 +198,62 @@ export class CloudApplication {
       const actor=spec.actor??card.actor;await this.authorize(card.id,actor);
       if(spec.kind==='preview'&&card.pdf==='ready'&&card.imageState==='ready')return;
       await this.reaction(card.id,card.actor,'pending',true);
-      const bytes=await this.ensureSource(card.id,actor);
-      const result=spec.kind==='preview'?await (this.options.convert??convertPreview)(bytes):await (this.options.images??convertPageImages)(bytes,{start:1,end:Math.min(10,card.pageCount??10)});
-      await context.checkpoint();card.pageCount=result.pageCount;card.imageTarget=Math.min(spec.kind==='preview'?3:10,result.pageCount);card.imageState='pending';
-      const uploads=this.uploads(card,context),check=async()=>{await this.authorize(card.id,actor);};
+      card.recovery={taskId:task.id??'legacy',state:'running',attempt:task.attempt??1,maxAttempts:task.maxAttempts??MAX_TASK_ATTEMPTS};
+      if(card.pdf!=='ready')card.pdf='pending';card.imageState='pending';
+      if((task.attempt??1)>1)await this.update(card,actor,context);else await this.write(card,context);
+      const bytes=await this.ensureSource(card.id,actor,context.signal);
+      const serial=serialWrites(),persist=()=>serial(()=>this.write(card,context)),publish=()=>serial(()=>this.update(card,actor,context));
+      const pool=new BoundedWork(this.config.imageUploadConcurrency??1);
+      const uploads=this.uploads(card,context,persist),check=async()=>{await this.authorize(card.id,actor);};
+      const target=spec.kind==='preview'?3:10;
+      const setCount=async(count:number)=>{
+        await context.checkpoint();
+        if(card.pageCount&&card.pageCount!==count)throw new Error('Page count changed');
+        card.pageCount=count;card.imageTarget=Math.min(target,count);
+      };
+      const publishPdf=async(pdf:Buffer,count:number)=>{
+        await setCount(count);
+        if(!card.pdfFileId){
+          card.pdfAttempt??={};
+          const f=await measured('upload_pdf',()=>uploads.store(card.pdfAttempt!,pdf,card.name.replace(/\.(hwp|hwpx)$/i,'.pdf'),actor,check));
+          if(!f.url)throw new Error('PDF permalink missing');card.pdfFileId=f.id;card.pdfUrl=f.url;await persist();
+        }
+        if(card.pdf!=='ready'){
+          await publish();await this.confirm(card,card.pdfFileId,actor,context);
+          card.pdf='ready';await publish();milestone('pdf_ready');
+        }
+      };
+      const uploadPage=async(page:PageImage,count:number)=>{
+        await setCount(count);card.images??=[];card.attempts??={};
+        if(card.images.some(p=>p.page===page.page))return;
+        const attempt=card.attempts[String(page.page)]??={};
+        const f=await measured('upload_png',()=>uploads.store(attempt,page.png,`${card.name.replace(/\.(hwp|hwpx)$/i,'')}_${String(page.page).padStart(3,'0')}.png`,actor,check));
+        await serial(async()=>{card.images!.push({page:page.page,fileId:f.id});card.images!.sort((a,b)=>a.page-b.page);await this.write(card,context);});
+        if(page.page===1){
+          await publish();await this.confirm(card,f.id,actor,context);
+          card.images.find(p=>p.page===1)!.shared=true;await persist();milestone('first_image');
+        }
+      };
       try{
-        if(spec.kind==='preview'&&!card.pdfFileId){
-          const pdf=(result as Preview).pdf;card.pdfAttempt??={};
-          const f=await uploads.store(card.pdfAttempt,pdf,card.name.replace(/\.(hwp|hwpx)$/i,'.pdf'),actor,check);
-          if(!f.url)throw new Error('PDF permalink missing');card.pdfFileId=f.id;card.pdfUrl=f.url;await this.write(card,context);
-        }
-        card.images??=[];card.attempts??={};
-        for(const page of result.pages.slice(0,card.imageTarget)){
-          if(card.images.some(p=>p.page===page.page))continue;
-          const attempt=card.attempts[String(page.page)]??={};
-          const pageUploads=new Uploads(this.guarded(context),this.config,async(url,init)=>{await context.checkpoint();return (this.options.fetcher??fetch)(url,{...init,signal:AbortSignal.any([context.signal,...(init?.signal?[init.signal]:[])])});},async()=>{
-            await this.write(card,context);
-          });
-          const f=await pageUploads.store(attempt,page.png,`${card.name.replace(/\.(hwp|hwpx)$/i,'')}_${String(page.page).padStart(3,'0')}.png`,actor,check);
-          card.images.push({page:page.page,fileId:f.id});await this.write(card,context);
-        }
-        await this.update(card,actor,context);
-        if(card.pdfFileId){await this.confirm(card,card.pdfFileId,actor,context);card.pdf='ready';}
-        for(const page of card.images){await this.confirm(card,page.fileId,actor,context);page.shared=true;}
-        card.imageState='ready';await this.update(card,actor,context);await this.reaction(card.id,card.actor,'ready',true);
-      }catch(error){card.imageState='failed';if(card.pdf!=='ready')card.pdf='failed';await this.update(card,actor,context).catch(()=>{});await this.reaction(card.id,card.actor,'failed',true).catch(()=>{});throw error;}
+      if(card.pdfFileId){
+        // Completed Slack receipts survive worker restarts. No PDF bytes or re-upload needed.
+        if(!card.pageCount)throw new Error('Completed PDF has no page count');
+        await publishPdf(Buffer.alloc(0),card.pageCount);
+      }
+      const limit=Math.min(target,card.pageCount??target);
+      const first=Array.from({length:limit},(_,i)=>i+1).find(page=>!card.images?.some(p=>p.page===page));
+      if(!card.pdfFileId){
+        const result=await measured('conversion',()=>(this.options.convert??convertPreview)(bytes,{timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric,onPdf:publishPdf,onPage:(page,count)=>pool.add(()=>uploadPage(page,count))}));
+        // Also support non-streaming converter adapters. Receipts make this idempotent.
+        await publishPdf(result.pdf,result.pageCount);await pool.finish();for(const page of result.pages)await uploadPage(page,result.pageCount);
+      }else if(first!==undefined){
+        const result=await measured('conversion',()=>(this.options.images??convertPageImages)(bytes,{start:first,end:limit,timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric,onPage:(page,count)=>pool.add(()=>uploadPage(page,count))}));
+        await pool.finish();for(const page of result.pages.filter(p=>p.page<=limit))await uploadPage(page,result.pageCount);
+      }
+      }finally{await pool.finish();}
+      await this.update(card,actor,context);
+      for(const page of card.images??[])if(!page.shared){await this.confirm(card,page.fileId,actor,context);page.shared=true;}
+      card.imageState='ready';card.recovery=undefined;await this.update(card,actor,context);milestone('all_ready');await this.reaction(card.id,card.actor,'ready',true);
     });
   }
   private async reaction(id:string,actor:Actor,state:'pending'|'ready'|'failed',validated:boolean):Promise<void>{

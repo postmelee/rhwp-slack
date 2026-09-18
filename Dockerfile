@@ -26,9 +26,6 @@ COPY --from=build /app/dist/cloud ./dist/cloud
 COPY --from=build /app/dist/editor ./dist/editor
 COPY --from=build /app/dist/studio ./dist/studio
 COPY --from=build /app/.cache/conversion ./.cache/conversion
-COPY --from=build /app/.cache/studio-source/rhwp-studio/src/command/print-pages.ts ./.cache/studio-source/rhwp-studio/src/command/print-pages.ts
-COPY --from=build /app/.cache/studio-source/rhwp-studio/src/core/generated/font-rule-projections/webfont-supply.ts ./.cache/studio-source/rhwp-studio/src/core/generated/font-rule-projections/webfont-supply.ts
-COPY --from=build /app/.cache/studio-source/assets/fonts ./.cache/studio-source/assets/fonts
 COPY --from=build /app/src ./src
 COPY scripts/healthcheck.mjs scripts/slack-preflight.ts ./scripts/
 RUN mkdir -p /app/data /app/.node-compile-cache && chown node:node /app/data /app/.node-compile-cache && chmod 700 /app/data /app/.node-compile-cache

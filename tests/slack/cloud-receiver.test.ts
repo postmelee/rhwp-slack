@@ -12,7 +12,7 @@ import {config,bytes,signed,command} from './support';
 import {EditorApi} from './editor-support';
 async function start(){
  const dir=mkdtempSync(join(tmpdir(),'rhwp-cloud-http-')),state=new State(join(dir,'state.sqlite'),'TTEST'),store=new SqliteMetadata(state),api=new EditorApi();
- const pending:string[]=[];let fail=false;const tasks=new DurableTasks(store,{async publish(id){if(fail)throw new Error('queue down');pending.push(id);}});
+ const pending:string[]=[];let fail=false;const tasks=new DurableTasks(store,{async publish(id,notBefore){if(fail)throw new Error('queue down');if(notBefore===undefined)pending.push(id);}});
  const cfg={...config,publicOrigin:'https://cloud.example.com',adminIds:new Set(['UTEST']),reactions:true};
  const application=new CloudApplication(cfg,api,store,tasks,{download:async()=>bytes,fetcher:async()=>new Response('ok'),convert:async()=>({pdf:Buffer.from('%PDF-synthetic'),pageCount:2,pages:[1,2].map(page=>({page,png:Buffer.from('png')}))})});
  const runtime=createCloudReceiver(cfg,application,{botId:'BBOT',botUserId:'UBOT'}),server=await runtime.receiver.start({host:'127.0.0.1',port:0}),address=server.address();if(!address||typeof address==='string')throw new Error('listen');

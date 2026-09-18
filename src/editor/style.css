@@ -16,3 +16,5 @@ body[data-state=ready] #notice{position:absolute;left:0;top:0;transform:none;wid
 #slack-save button{font:inherit;font-weight:600;border:0;border-radius:5px;padding:8px 12px;background:#176748;color:#fff;cursor:pointer}
 #slack-save button:disabled{opacity:.6;cursor:wait}
 @media(prefers-color-scheme:dark){#slack-save{color:#eee;background:#292e35;border-color:#454c55}}
+
+#reopen{max-width:380px;margin:12px 0 0;line-height:1.6}

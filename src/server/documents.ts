@@ -17,6 +17,7 @@ export interface Card {
   id:string;actor:Actor;fileId:string;rootFileId:string;name:string;size:number;createdAt:number;
   origin?:string;contentHash?:string;
   revision:number;sequence?:number;parentId?:string;parentTs?:string;messageTs?:string;posting?:boolean;
+  recovery?:{taskId:string;state:'running'|'retrying'|'failed';attempt:number;maxAttempts:number;errorCode?:string};
   pdf:'pending'|'ready'|'failed';pdfUrl?:string;pdfFileId?:string;
   pageCount?:number;images?:{page:number;fileId:string;shared?:boolean}[];imageTarget?:number;imageState?:'pending'|'ready'|'failed';
   imageAttempts?:Map<number,UploadAttempt>;pdfAttempt?:UploadAttempt;imageWork?:Promise<void>;updates?:Promise<void>;
@@ -170,7 +171,7 @@ export class Documents {
       ]);
       if(ready[0].status==='rejected')card.pdf='failed';
       await this.update(card);
-      if(card.pdfFileId){await this.confirmShare(card,card.pdfFileId,()=>this.authorize(card.id,card.actor));card.pdf='ready';}
+      if(card.pdfFileId){await this.confirmShare(card,card.pdfFileId,()=>this.authorize(card.id,card.actor));card.pdf='ready';await this.update(card);}
       for(const image of first){const stored=card.images?.find(p=>p.page===image.page);if(stored){await this.confirmShare(card,stored.fileId,()=>this.authorize(card.id,card.actor));stored.shared=true;}}
       await this.shareImages(card,result?.pages.slice(1)??[],card.actor);
       card.imageState=ready.slice(1).some(r=>r.status==='rejected')?'failed':'ready';

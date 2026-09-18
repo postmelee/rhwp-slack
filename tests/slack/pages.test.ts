@@ -34,7 +34,7 @@ test('PDF and first PNG are shared while later image uploads are still pending',
   api.handler=async(method,args)=>{if(method==='files.getUploadURLExternal'&&String(args.filename).endsWith('_02페이지.png'))await gate;return api.response(method,args);};
   const server=await editorServer({api,convert:preview});
   try{
-    await server.prepare();await until(()=>imagePages(api).includes(1));
+    await server.prepare();await until(()=>imagePages(api).includes(1)&&JSON.stringify(latest(api)).includes('PDF로 보기'));
     assert.match(JSON.stringify(latest(api)),/PDF로 보기/);
     assert.equal(api.calls.filter(c=>c.method==='chat.postMessage').length,1);
     release();await server.documents!.pdf.idle();assert.deepEqual(imagePages(api),[1,2,3]);

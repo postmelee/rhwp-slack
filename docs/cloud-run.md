@@ -10,7 +10,7 @@
 - `expiresAt`은 임시 기록의 논리적 만료 시각이다. 승인된 Firestore TTL 정책을 사용하면 만료된 기록을 물리적으로 정리한다. 활성 문서 연결의 만료 필드는 null이다. TTL 삭제는 즉시 실행되지 않으며 과금 항목일 수 있다.
 - ingress는 Slack 서명을 검사하고 작업 ID의 영속 기록과 큐 게시를 마친 뒤 응답한다. worker가 다운로드→변환→업로드→댓글 갱신을 한 HTTP 작업 안에서 완료한다.
 - Cloud Tasks 메시지에는 opaque 작업 ID만 넣는다. Google OIDC와 worker 서비스의 IAM 권한을 모두 확인한다. worker를 공개하지 않는다.
-- 실패한 작업은 Cloud Tasks의 제한된 재시도 정책을 따른다. 최대 재시도 이후에는 운영자가 원인을 확인해야 한다. Slack API와 Firestore 사이의 완전한 exactly-once를 보장하지 않는다. 저장 UUID·파일 ID·업로드 단계로 중복을 줄이고 결과가 불명확하면 기존 파일을 먼저 조회한다.
+- Cloud Tasks 전달과 별개로 실제 변환 작업은 최대3회·생성 후15분으로 제한한다. 변환1회는120초, 작업 시도는최대5분이다. 자동 재시도 중에는 준비 중 상태를 유지하고, 최종 실패에서는 같은 카드에 수동 재시도를 제공한다. worker 종료로 실패 처리가 실행되지 못한 경우를 위해15분 뒤 확인 작업을 예약한다. 큐·DB·Slack 장애가 지속되면 표시 갱신도 지연될 수 있다. Slack API와 Firestore 사이의 완전한 exactly-once를 보장하지 않는다. 저장 UUID·파일 ID·업로드 단계로 중복을 줄이고 결과가 불명확하면 기존 파일을 먼저 조회한다.
 
 ## 리소스와 설정
 
@@ -32,6 +32,7 @@
 - `WORKER_ORIGIN`: 실제 worker의 HTTPS run.app origin.
 - `TASK_SERVICE_ACCOUNT`: Cloud Tasks 전용 호출 서비스 계정.
 - `APP_ORIGIN`: 사용자가 편집기를 여는 ingress의 HTTPS origin.
+- 선택 `RHWP_IMAGE_UPLOAD_CONCURRENCY=1|2`: PNG 업로드 동시 수. 기본 1이며 카드 기록과 메시지 갱신은 직렬화한다. 동일 사양의 각 18회 비교에서 동시 2의 일관된 이점이 없어 현재 운영은 1을 유지한다. [전후 비교 보고서](../mydocs/report/task_m010_2_report.md).
 - `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`: Secret Manager 참조. env 파일·Docker build context·Git에 값을 넣지 않는다.
 
 ingress와 worker에는 Firestore 접근·큐 게시·호출 계정 사용 권한, 두 Slack secret 읽기 권한을 부여한다. task caller에는 worker의 `roles/run.invoker`만 부여한다. 검증 Job 계정에는 이 권한이나 Slack 비밀값을 부여하지 않는다.
@@ -44,6 +45,12 @@ docker build --platform linux/amd64 --target smoke -t rhwp-slack:smoke .
 ```
 
 Cloud Run 명령은 `node dist/cloud/main.cjs`로 지정한다. Docker 기본 CMD는 로컬 단일 서버를 위해 유지한다. 빌드에서 서버를 번들링하므로 시작할 때 TypeScript를 변환하지 않는다. Playwright는 변환이 시작될 때 로딩한다. 이미지 빌드에서는 같은 Node 버전·경로·사용자로 `--warm-code`를 실행해 모듈 컴파일 캐시만 미리 생성한다. 이 모드는 비밀값을 읽거나 외부 서비스에 연결하지 않는다. 운영 명령에는 이 옵션을 넣지 않는다.
+
+변환 자식과 pinned print helper도 빌드에서 번들링한다. 글꼴은 원래 파일 내용을 바꾸지 않고 고정 자산으로 준비하며, Chromium에는 허용 목록의 로컬 응답으로 필요한 파일만 전달한다. 변환 브라우저의 외부 네트워크 요청은 차단한다. 원본 문서나 변환 결과를 빌드·요청 간 캐시에 넣지 않는다.
+
+PDF가 생성되면 PNG 완료를 기다리지 않고 업로드와 같은 카드의 공유 확인을 진행한다. PDF ready 이후 PNG가 실패해도 PDF 링크는 유지한다. 다음 worker는 완료된 Slack 파일ID를 재사용하고 누락된 이미지 범위만 준비한다. PDF/PNG의 완료 순서·상태와 실제 사용 가능한 링크를 구분한다.
+
+단계 계측에는 작업별 허용된 단계·시간·오류코드·메모리 숫자만 기록한다. `conversion` 구간은 스트림 콜백의 업로드 시간을 포함할 수 있으므로 내부 단계와 합산하지 않는다. `cgroupPeakBytes`는 인스턴스 수명 최대치이며 해당 작업만의 메모리 증가량이 아니다. 로컬 변환 비교는 `node scripts/benchmark-conversion.mjs INPUT --output JSON --runs 3`으로 수행하며, Slack 전체 대기 시간과 구분한다.
 
 배포는 이미지 digest를 고정하고 먼저 비공개 환경에서 검증한다. 합성 문서로 서명 거절·실제 OIDC 작업·PDF/PNG·Studio 편집·동일 스레드 저장·티켓 재사용 거절을 확인한다. `smoke` 이미지의 `node scripts/container-smoke.mjs --server-only`는 비밀값 없이 단위/Slack/security 회귀와 HWP/HWPX PDF 변환을 실행한다.
 
@@ -87,6 +94,12 @@ node --import tsx scripts/migrate-cloud-state.ts \
 - 지출 집계·차단 지연 및 Cloud Run 외 서비스 비용 때문에 총 결제액의 절대 상한을 보장하지 않는다. 달력 월 단위이므로 한 달 시험 기간은 두 결제 월에 걸친다.
 - 현재 `rhwp-slack-test`, `rhwp-전체` 채널 정책을 이전했다. 채널에 앱을 초대한 뒤 관리자가 `/rhwp settings`에서 자동 감지·멘션 전용·중지를 설정한다. 활성 채널의 일반 구성원도 문서 사용이 가능하지만 별도 동료 계정으로 직접 수용한 것은 아니다.
 - 초기(9/20), 7일(9/24), 30일(10/17) 점검을 예약했다. 로컬 Codex 후속 작업의 실행 환경·인증이 필요하며 클라우드 장애 차단 장치를 대신하지 않는다.
+
+### 2026-09-18 동일 사양 성능 개선 반영
+
+실행 소스 b079981, ingress `rhwp-ingress-00011-l6z`와 worker `rhwp-worker-00007-jbt`에 각각 100% 트래픽을 보낸다. 사양·예산·권한·namespace는 그대로다. 실제 Slack에서 PDF·이미지 보기와 Studio 수정·같은 스레드 저장을 확인했다. 이미지 digest와 검증 조건은 [최종 보고서](../mydocs/report/task_m010_2_report.md)에 기록했다.
+
+이 배포의 복구 대상은 ingress `rhwp-ingress-00009-btj`, worker `rhwp-worker-00006-m9v`이다. 진행 중 작업과 큐를 확인한 뒤 두 서비스의 트래픽을 이전 리비전으로 되돌리고, 같은 Firestore namespace를 유지한다. 이전 코드의 재시도 UI는 다르므로 미완료 작업을 점검한다.
 
 ### 복구 주의
 
