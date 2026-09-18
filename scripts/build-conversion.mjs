@@ -24,5 +24,6 @@ for(const rule of rules){
 }
 await writeFile(resolve(out,'fonts.json'),JSON.stringify({css,files}));
 await build({entryPoints:['src/conversion/pdf-child.mjs'],bundle:true,platform:'node',format:'esm',packages:'external',outfile:resolve(out,'pdf-child.mjs')});
+await build({entryPoints:['src/conversion/runtime-child.mjs'],bundle:true,platform:'node',format:'esm',packages:'external',outfile:resolve(out,'runtime-child.mjs')});
 await rm(resolve(out,'font-rules.mjs'));
 console.log(JSON.stringify({conversionBuild:true,fontFamilies:seen.size,fontFiles:sources.size,fontCssBytes:Buffer.byteLength(css),previousInlineBytes}));

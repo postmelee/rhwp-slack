@@ -12,3 +12,5 @@ export interface Preview extends PageImages {pdf:Buffer;}
 export function convertPdf(bytes:Uint8Array,options?:ConversionOptions):Promise<Buffer>;
 export function convertPreview(bytes:Uint8Array,options?:ConversionOptions):Promise<Preview>;
 export function convertPageImages(bytes:Uint8Array,options?:ConversionOptions&{start?:number;end?:number}):Promise<PageImages>;
+
+export function closeConversionRuntime():Promise<void>;

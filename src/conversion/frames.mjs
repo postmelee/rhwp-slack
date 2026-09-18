@@ -4,7 +4,7 @@ export const MAX_PNG_TOTAL_BYTES=25*1024*1024;
 export const MAX_PREVIEW_PAGES=10;
 export class OutputError extends Error {}
 const invalid=()=>{throw new OutputError('Invalid conversion output');};
-export async function readFrames(stream,mode,start,end,{onPdf,onPage}={}){
+export async function readFrames(stream,mode,start,end,{onPdf,onPage,eof=true}={}){
   const iterator=stream[Symbol.asyncIterator]();let pending=Buffer.alloc(0),total=0;
   async function next(){
     const r=await iterator.next();if(r.done)return false;
@@ -26,13 +26,13 @@ export async function readFrames(stream,mode,start,end,{onPdf,onPage}={}){
   const info=await header();
   if(info?.type!=='document'||!Number.isSafeInteger(info.pageCount)||info.pageCount<1||info.pageCount>200)invalid();
   const pageCount=info.pageCount,pages=[];let pdf;
-  if(mode==='preview'){
+  if(mode==='preview'||mode==='pdf'){
     const frame=await header();if(frame?.type!=='pdf'||!Number.isSafeInteger(frame.bytes)||frame.bytes<5||frame.bytes>MAX_PDF_BYTES)invalid();
     pdf=await read(frame.bytes);if(pdf.subarray(0,5).toString()!=='%PDF-')invalid();
     await onPdf?.(pdf,pageCount);
   }else if(mode!=='images')invalid();
   let pngBytes=0;
-  for(let page=start;page<=Math.min(end,pageCount);page++){
+  for(let page=start;mode!=='pdf'&&page<=Math.min(end,pageCount);page++){
     const frame=await header();
     if(frame?.type!=='png'||frame.page!==page||!Number.isSafeInteger(frame.bytes)||frame.bytes<8||frame.bytes>MAX_PNG_BYTES)invalid();
     pngBytes+=frame.bytes;if(pngBytes>MAX_PNG_TOTAL_BYTES)invalid();
@@ -40,6 +40,6 @@ export async function readFrames(stream,mode,start,end,{onPdf,onPage}={}){
     const image={page,png};pages.push(image);await onPage?.(image,pageCount);
   }
   if((await header())?.type!=='end'||pending.length)invalid();
-  while(await next())if(pending.length)invalid();
-  return mode==='preview'?{pdf,pageCount,pages}:{pageCount,pages};
+  if(eof)while(await next())if(pending.length)invalid();
+  return mode==='pdf'?pdf:mode==='preview'?{pdf,pageCount,pages}:{pageCount,pages};
 }
