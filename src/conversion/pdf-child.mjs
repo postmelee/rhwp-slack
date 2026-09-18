@@ -3,6 +3,7 @@ import init, { HwpDocument } from '@rhwp/core';
 import { chromium } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import {writeSync} from 'node:fs';
+import {once} from 'node:events';
 import { resolve } from 'node:path';
 import {routeFont} from './font-routes.mjs';
 import { validateInput, MAX_PAGES, MAX_FILE_BYTES } from '../shared/errors.ts';
@@ -12,6 +13,11 @@ let browser,doc,stage='input',started=performance.now();
 function metric(phase){try{writeSync(3,JSON.stringify({stage,phase,...(phase==='start'?{}:{durationMs:Math.round(performance.now()-started),rssBytes:process.memoryUsage().rss})})+'\n');}catch{}}
 function begin(next){metric('finish');stage=next;started=performance.now();metric('start');}
 metric('start');
+async function output(bytes){if(!process.stdout.write(bytes))await once(process.stdout,'drain');}
+async function frame(info,bytes){
+  const json=Buffer.from(JSON.stringify(info)),length=Buffer.alloc(4);length.writeUInt32BE(json.length);
+  await output(length);await output(json);if(bytes)await output(bytes);
+}
 const [mode='pdf',first='0',last='0']=process.argv.slice(2);
 const start=Number(first),end=Number(last);
 if(!['pdf','preview','images'].includes(mode)||(mode!=='pdf'&&(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<1||end<start||end>10)))throw new Error('range');
@@ -26,8 +32,10 @@ try {
   const count=doc.pageCount();if(count<1||count>MAX_PAGES)throw new Error('pages');
   begin('svg_render');
   const pages=[];let svgSize=0;
-  for(let i=mode==='images'?start-1:0;i<(mode==='images'?Math.min(end,count):count);i++) {
-    const svg=doc.renderPageSvgWithProfile(i,'print');svgSize+=Buffer.byteLength(svg);
+  for(let i=0;i<(mode==='images'?Math.min(end,count):count);i++) {
+    // Preserve the preceding paper geometry for identical screenshot rounding on range retries.
+    // Its document content need not be rendered again.
+    const svg=mode==='images'&&i<start-1?'<svg xmlns="http://www.w3.org/2000/svg"/>':doc.renderPageSvgWithProfile(i,'print');svgSize+=Buffer.byteLength(svg);
     if(svgSize>100*1024*1024)throw new Error('svg-size');
     const info=JSON.parse(doc.getPageInfo(i));
     if(!Number.isFinite(info.width)||!Number.isFinite(info.height)||info.width<=0||info.height<=0||info.width>10000||info.height>10000)throw new Error('page-size');
@@ -67,22 +75,22 @@ try {
   begin('pdf');
   const pdf=mode==='images'?Buffer.alloc(0):await page.pdf({preferCSSPageSize:true,printBackground:true,displayHeaderFooter:false});
   if(pdf.length>50*1024*1024)throw new Error('pdf-size');
-  if(mode==='pdf'){begin('output');process.stdout.write(pdf);}
+  if(mode==='pdf'){begin('output');await output(pdf);}
   else {
+    await frame({type:'document',pageCount:count});
+    if(mode==='preview')await frame({type:'pdf',bytes:pdf.length},pdf);
     begin('png');
-    const images=[];let total=0;
+    let total=0;
+    for(let i=0;i<start-1;i++)await page.locator('.page').nth(i).evaluate(el=>{const rect=el.getBoundingClientRect();el.style.zoom=String(Math.min(1,800/rect.width,1200/rect.height));});
     for(let number=start;number<=Math.min(end,count);number++){
-      const element=page.locator('.page').nth(mode==='images'?number-start:number-1);
+      const element=page.locator('.page').nth(number-1);
       await element.evaluate(el=>{const rect=el.getBoundingClientRect();el.style.zoom=String(Math.min(1,800/rect.width,1200/rect.height));});
       const png=await element.screenshot({type:'png',timeout:10_000});total+=png.length;
       if(png.length>5*1024*1024||total>25*1024*1024)throw new Error('preview-size');
-      images.push({page:number,png});
+      await frame({type:'png',page:number,bytes:png.length},png);
     }
     begin('output');
-    const manifest=Buffer.from(JSON.stringify({pageCount:count,pdfBytes:pdf.length,pages:images.map(({page,png})=>({page,bytes:png.length}))}));
-    const length=Buffer.alloc(4);length.writeUInt32BE(manifest.length);
-    process.stdout.write(length);process.stdout.write(manifest);process.stdout.write(pdf);
-    for(const {png} of images)process.stdout.write(png);
+    await frame({type:'end'});
   }
   metric('finish');
 } catch { metric('failed');process.exitCode=1; }

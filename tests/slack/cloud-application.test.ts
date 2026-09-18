@@ -13,7 +13,7 @@ import {actor,config,bytes} from './support';
 function fixture(){
  const dir=mkdtempSync(join(tmpdir(),'rhwp-cloud-app-')),state=new State(join(dir,'metadata.sqlite'),'TTEST'),store=new SqliteMetadata(state),api=new EditorApi();
  const pending:string[]=[];let failPublish=false,failUpload=false;const tasks=new DurableTasks(store,{async publish(id,notBefore){if(failPublish)throw new Error('queue unavailable');if(notBefore===undefined)pending.push(id);}});
- const make=()=>new CloudApplication({...config,publicOrigin:'https://cloud.example.com'},api,store,tasks,{download:async()=>bytes,fetcher:async(url)=>{assert.ok(String(url).startsWith('https://files.slack.com/upload/v1/'));if(failUpload)throw new Error('upload down');return new Response('ok');},convert:async()=>({pdf:Buffer.from('%PDF-synthetic'),pageCount:12,pages:[1,2,3].map(page=>({page,png:Buffer.from('png')}))}),images:async()=>({pageCount:12,pages:Array.from({length:10},(_,i)=>({page:i+1,png:Buffer.from('png')}))})});
+ const make=(options:NonNullable<ConstructorParameters<typeof CloudApplication>[4]>={})=>new CloudApplication({...config,publicOrigin:'https://cloud.example.com'},api,store,tasks,{download:async()=>bytes,fetcher:async(url)=>{assert.ok(String(url).startsWith('https://files.slack.com/upload/v1/'));if(failUpload)throw new Error('upload down');return new Response('ok');},convert:async()=>({pdf:Buffer.from('%PDF-synthetic'),pageCount:12,pages:[1,2,3].map(page=>({page,png:Buffer.from('png')}))}),images:async()=>({pageCount:12,pages:Array.from({length:10},(_,i)=>({page:i+1,png:Buffer.from('png')}))}),...options});
  return {store,api,tasks,make,pending,setPublishFailure(v:boolean){failPublish=v;},setUploadFailure(v:boolean){failUpload=v;},async drain(){while(pending.length){const id=pending.shift()!;await tasks.execute(id,(spec,ctx)=>make().execute(spec,ctx));}},close(){state.close();rmSync(dir,{recursive:true,force:true});}};
 }
 test('replacement workers build one thread card and persist file IDs without document bytes or upload URLs',async()=>{
@@ -67,5 +67,29 @@ test('retrying remains pending; final failure has a new manual generation and on
   await f.tasks.execute(job,(s,c)=>f.make().execute(s,c));assert.equal((await f.make().authorize(id,actor)).recovery?.taskId,next);
   f.setUploadFailure(false);await f.tasks.execute(next,(s,c)=>f.make().execute(s,c));
   assert.equal((await f.make().authorize(id,actor)).pdf,'ready');assert.equal(f.api.calls.filter(c=>c.method==='chat.postMessage').length,1);
+ }finally{f.close();}
+});
+
+
+test('PDF is shared before a PNG failure; a replacement worker reuses it and starts at the first missing image',async()=>{
+ const f=fixture();try{
+  const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:partial');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>f.make().execute(s,c));const job=f.pending.shift()!;
+  const first=f.make({convert:async(_bytes,options)=>{
+    await options?.onPdf?.(Buffer.from('%PDF-synthetic'),12);
+    const card=await f.make().authorize(id,actor);assert.equal(card.pdf,'ready');assert.equal(card.imageState,'pending');
+    assert.match(JSON.stringify(f.api.messages.get(card.messageTs!)),/PDF로 보기/);
+    await options?.onPage?.({page:1,png:Buffer.from('png')},12);
+    throw Object.assign(new Error('synthetic PNG failure'),{code:'conversion_timeout'});
+  }});
+  await assert.rejects(f.tasks.execute(job,(s,c)=>first.execute(s,c)));
+  const pdfUploads=()=>f.api.calls.filter(c=>c.method==='files.getUploadURLExternal'&&String(c.args.filename).endsWith('.pdf')).length;
+  assert.equal(pdfUploads(),1);assert.equal((await f.make().authorize(id,actor)).pdf,'ready');
+  const next=f.make({convert:async()=>{throw new Error('PDF must not run again');},images:async(_bytes,options)=>{
+    assert.equal(options?.start,2);assert.equal(options?.end,3);
+    return {pageCount:12,pages:[2,3].map(page=>({page,png:Buffer.from('png')}))};
+  }});
+  await f.tasks.execute(job,(s,c)=>next.execute(s,c));const card=await f.make().authorize(id,actor);
+  assert.equal(pdfUploads(),1);assert.equal(card.imageState,'ready');assert.deepEqual(card.images?.map(p=>p.page),[1,2,3]);
  }finally{f.close();}
 });
