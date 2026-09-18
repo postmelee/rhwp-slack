@@ -32,7 +32,7 @@
 - `WORKER_ORIGIN`: 실제 worker의 HTTPS run.app origin.
 - `TASK_SERVICE_ACCOUNT`: Cloud Tasks 전용 호출 서비스 계정.
 - `APP_ORIGIN`: 사용자가 편집기를 여는 ingress의 HTTPS origin.
-- 선택 `RHWP_IMAGE_UPLOAD_CONCURRENCY=1|2`: PNG 업로드 동시 수. 기본1이며,2는 동일 환경에서 시간·안정성을 비교한 뒤 선택한다. 카드 기록과 메시지 갱신은 직렬화한다.
+- 선택 `RHWP_IMAGE_UPLOAD_CONCURRENCY=1|2`: PNG 업로드 동시 수. 기본 1이며 카드 기록과 메시지 갱신은 직렬화한다. 동일 사양의 각 18회 비교에서 동시 2의 일관된 이점이 없어 현재 운영은 1을 유지한다. [전후 비교 보고서](../mydocs/report/task_m010_2_report.md).
 - `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`: Secret Manager 참조. env 파일·Docker build context·Git에 값을 넣지 않는다.
 
 ingress와 worker에는 Firestore 접근·큐 게시·호출 계정 사용 권한, 두 Slack secret 읽기 권한을 부여한다. task caller에는 worker의 `roles/run.invoker`만 부여한다. 검증 Job 계정에는 이 권한이나 Slack 비밀값을 부여하지 않는다.
@@ -94,6 +94,12 @@ node --import tsx scripts/migrate-cloud-state.ts \
 - 지출 집계·차단 지연 및 Cloud Run 외 서비스 비용 때문에 총 결제액의 절대 상한을 보장하지 않는다. 달력 월 단위이므로 한 달 시험 기간은 두 결제 월에 걸친다.
 - 현재 `rhwp-slack-test`, `rhwp-전체` 채널 정책을 이전했다. 채널에 앱을 초대한 뒤 관리자가 `/rhwp settings`에서 자동 감지·멘션 전용·중지를 설정한다. 활성 채널의 일반 구성원도 문서 사용이 가능하지만 별도 동료 계정으로 직접 수용한 것은 아니다.
 - 초기(9/20), 7일(9/24), 30일(10/17) 점검을 예약했다. 로컬 Codex 후속 작업의 실행 환경·인증이 필요하며 클라우드 장애 차단 장치를 대신하지 않는다.
+
+### 2026-09-18 동일 사양 성능 개선 반영
+
+실행 소스 b079981, ingress `rhwp-ingress-00011-l6z`와 worker `rhwp-worker-00007-jbt`에 각각 100% 트래픽을 보낸다. 사양·예산·권한·namespace는 그대로다. 실제 Slack에서 PDF·이미지 보기와 Studio 수정·같은 스레드 저장을 확인했다. 이미지 digest와 검증 조건은 [최종 보고서](../mydocs/report/task_m010_2_report.md)에 기록했다.
+
+이 배포의 복구 대상은 ingress `rhwp-ingress-00009-btj`, worker `rhwp-worker-00006-m9v`이다. 진행 중 작업과 큐를 확인한 뒤 두 서비스의 트래픽을 이전 리비전으로 되돌리고, 같은 Firestore namespace를 유지한다. 이전 코드의 재시도 UI는 다르므로 미완료 작업을 점검한다.
 
 ### 복구 주의
 
