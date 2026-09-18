@@ -10,10 +10,10 @@ const output=option('--output',undefined),runs=Number(option('--runs','3')),time
 if(!output||!Number.isSafeInteger(runs)||runs<1||runs>20||!Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>900000)throw new Error('Invalid benchmark options');
 const bytes=await readFile(input),result={schema:1,runtime:process.version,platform:process.platform,arch:process.arch,inputSha256:createHash('sha256').update(bytes).digest('hex'),inputBytes:bytes.length,timeoutMs,scope:'conversion-only; new child/browser per call',samples:[]};
 for(let run=1;run<=runs;run++){
- const metrics=[],started=performance.now();
+ const metrics=[],milestones=[],started=performance.now();
  try{
-  const preview=await convertPreview(bytes,{timeoutMs,onMetric:value=>{const m=validMetric(value);if(m)metrics.push(m);}});
-  result.samples.push({run,ok:true,durationMs:Math.round(performance.now()-started),pageCount:preview.pageCount,pdfBytes:preview.pdf.length,pngBytes:preview.pages.map(p=>p.png.length),metrics});
+  const preview=await convertPreview(bytes,{timeoutMs,onPdf:()=>milestones.push({name:'pdf_generated',elapsedMs:Math.round(performance.now()-started)}),onPage:page=>milestones.push({name:'png_generated',page:page.page,elapsedMs:Math.round(performance.now()-started)}),onMetric:value=>{const m=validMetric(value);if(m)metrics.push(m);}});
+  result.samples.push({run,ok:true,durationMs:Math.round(performance.now()-started),pageCount:preview.pageCount,pdfBytes:preview.pdf.length,pngBytes:preview.pages.map(p=>p.png.length),metrics,milestones});
  }catch(error){result.samples.push({run,ok:false,durationMs:Math.round(performance.now()-started),errorCode:['conversion_timeout','conversion_child','conversion_output','conversion_start'].includes(error.code)?error.code:'internal',metrics});}
  await mkdir(dirname(output),{recursive:true});await writeFile(output,JSON.stringify(result,null,2),{mode:0o600});
  console.log(JSON.stringify({run,ok:result.samples.at(-1).ok,durationMs:result.samples.at(-1).durationMs}));

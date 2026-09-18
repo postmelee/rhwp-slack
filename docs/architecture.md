@@ -4,7 +4,7 @@
 
 Slack → 서명 검증된 Bolt → 채널·사용자·파일 권한 확인 → 메모리 원본 준비 → Work Object 카드로 이어집니다. 카드 열기는 사용자 권한을 다시 확인한 뒤 `entity.presentDetails`에만 편집 ticket을 제공합니다. 채널에 게시하는 metadata에는 인증 URL이나 ticket을 넣지 않습니다.
 
-Studio는 자체 호스팅 SDK iframe입니다. 호스트가 인증 API에서 받은 bytes를 SDK에 전달합니다. Slack bot token은 브라우저에 전달하지 않습니다. 문서 복구·최근 문서·자동 저장·영속 이력은 사용하지 않으며 현재 undo/redo와 dirty 상태를 유지합니다.
+Studio는 자체 호스팅 SDK iframe입니다. 호스트가 인증 API에서 받은 bytes를 SDK에 전달합니다. Slack bot token은 브라우저에 전달하지 않습니다. 문서 복구·최근 문서·자동 저장·영속 이력은 사용하지 않으며 현재 undo/redo와 dirty 상태를 유지합니다. 초기화 전체는120초로 제한하며 실패 시 iframe을 정리하고 Slack 편집 카드에서 다시 열도록 안내합니다. 티켓 없는 외부 직접 열기는 빈 편집기를 시작하지 않습니다.
 
 별도 PDF 보기 화면이나 편집/보기 전환은 없습니다. PDF는 앱이 Slack에 업로드·공유한 파일의 permalink로 연결합니다. 브라우저로 열리는 URL action 대신 같은 메시지의 mrkdwn 파일 링크를 사용합니다. PDF 링크는 같은 메시지 상단에 두고, 페이지 PNG는 공식 `chat.update.file_ids`로 같은 댓글에 추가합니다. 세로 이미지 블록 대신 Slack 기본 갤러리를 사용하며 Work Object는 편집 진입용 카드로 둡니다. 카드와 갤러리의 펼침·배치는 Slack 클라이언트가 결정합니다.
 
@@ -63,3 +63,6 @@ POST는 정확한 Origin을 요구합니다. GET은 bearer로 인증하고 Origi
 ## Cloud Run 모드
 
 Cloud Run은 ingress와 worker를 분리하고 Firestore에 연결 메타데이터·해시 티켓/세션을, Cloud Tasks에 작업 ID를 저장한다. 문서 bytes는 요청 간에 캐시하지 않고 처리할 때 Slack에서 다시 다운로드한다. 세션과 문서 연결은 인스턴스 교체 뒤에도 유효 기간 안에서 유지되며 접근 권한을 다시 검사한다. 로컬 모드의 SQLite·프로세스 내부 큐·15분 bytes 캐시와 구별한다. 상세한 IAM·자원 상한·이전·비용 검증은 [Cloud Run 운영](cloud-run.md)을 따른다.
+
+
+Cloud worker는 같은 파서·print DOM에서 PDF를 먼저 전달하고 페이지별 PNG를 이어서 처리합니다. 완료된 PDF는 이미지 생성 실패로 실패 상태로 바뀌지 않으며, 재시도에서는 완료 파일ID를 재사용합니다. PNG 업로드 동시 수는1~2로 제한하고 카드 쓰기는 직렬화합니다. 이 스트리밍·영속 작업 복구 경로는 Cloud Run용이며 로컬 단일 서버의 큐 정책과 구별합니다.

@@ -158,6 +158,7 @@ export class CloudApplication {
     catch(error){await this.failed(spec,task,errorCode(error),!!task.finalAttempt).catch(()=>{});throw error;}
   }
   private async failed(spec:TaskSpec,task:TaskContext,code:string,final:boolean):Promise<void>{
+    await task.checkpoint();
     const card=await this.store.get<CloudCard>('cards',spec.cardId);
     if(!card){
       if(spec.kind==='prepare'){
@@ -167,7 +168,9 @@ export class CloudApplication {
       return;
     }
     await this.authorize(card.id,spec.actor??card.actor);
-    await this.locked(card.id,async(current,context)=>{
+    await this.locked(card.id,async(current,lease)=>{
+      const context:LeaseContext={...lease,signal:AbortSignal.any([task.signal,lease.signal]),checkpoint:async()=>{await task.checkpoint();await lease.checkpoint();}};
+      await context.checkpoint();
       // A deadline notification from an older generation cannot overwrite a manual retry.
       if(current.recovery&&current.recovery.taskId!==task.id)return;
       if(current.pdf==='ready'&&current.imageState==='ready')return;

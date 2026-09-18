@@ -115,3 +115,18 @@ test('out-of-order parallel PNG uploads preserve gallery order and durable recei
   const posted=f.api.messages.get(card.messageTs!)!;assert.deepEqual((posted.files as {id:string}[]).map(f=>f.id),card.images?.map(p=>p.fileId));
  }finally{f.close();}
 });
+
+
+test('a worker that lost task ownership cannot publish a stale retry notice',async()=>{
+ const f=fixture();try{
+  const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:lost-owner');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>f.make().execute(s,c));const job=f.pending.shift()!;
+  const app=f.make({convert:async()=>{
+    await f.store.atomic<any,void>('tasks',job,current=>({value:{...current,owner:'replacement-worker'},result:undefined}));
+    throw new Error('old worker failed');
+  }});
+  await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)));
+  const card=await f.make().authorize(id,actor);assert.equal(card.recovery?.state,'running');
+  assert.equal(JSON.stringify(f.api.messages.get(card.messageTs!)).includes('자동으로 다시 시도'),false);
+ }finally{f.close();}
+});
