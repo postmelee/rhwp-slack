@@ -1,4 +1,5 @@
 // This process receives no application credentials. Only immutable build assets survive jobs.
+import {createHash} from 'node:crypto';
 import {Worker} from 'node:worker_threads';
 import {readFile} from 'node:fs/promises';
 import {once} from 'node:events';
@@ -12,12 +13,18 @@ async function stop(){if(stopping)return;stopping=true;process.exit(1);}
 process.on('disconnect',()=>{void stop();});process.on('SIGTERM',()=>{void stop();});
 process.stdout.on('error',()=>{void stop();});
 try{
+ const manifest=JSON.parse(await readFile('.cache/conversion/runtime.json','utf8'));
+ const pinned=new Map();
+ const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+ for(const path of ['node_modules/@rhwp/core/rhwp_bg.wasm','node_modules/@rhwp/core/rhwp.js',...['fonts.json','print.js','pdf-child.mjs','runtime-child.mjs'].map(name=>'.cache/conversion/'+name)]){
+  const bytes=await readFile(path);if(digest(bytes)!==manifest.hashes[path])throw new Error('build mismatch');pinned.set(path,bytes);
+ }
  const start=performance.now();metric('wasm_compile','start');
- const module=await WebAssembly.compile(await readFile('node_modules/@rhwp/core/rhwp_bg.wasm'));
+ const module=await WebAssembly.compile(pinned.get('node_modules/@rhwp/core/rhwp_bg.wasm'));
  metric('wasm_compile','finish',start);
- const fontManifest=JSON.parse(await readFile('.cache/conversion/fonts.json','utf8'));
- const fontBytes=Object.fromEntries(await Promise.all(Object.values(fontManifest.files).map(async file=>[file,await readFile(resolve('.cache/conversion/fonts',file))])));
- const print=await readFile('.cache/conversion/print.js','utf8');
+ const fontManifest=JSON.parse(pinned.get('.cache/conversion/fonts.json').toString());
+ const fontBytes=Object.fromEntries(await Promise.all(Object.values(fontManifest.files).map(async file=>{if(!/^[a-f0-9]{64}\.woff2$/.test(file))throw new Error('font name');const bytes=await readFile(resolve('.cache/conversion/fonts',file));if(digest(bytes)!==file.slice(0,-6))throw new Error('font mismatch');return [file,bytes];})));
+ const print=pinned.get('.cache/conversion/print.js').toString();pinned.clear();
  const browserWs=process.env.RHWP_PDF_BROWSER_WS;if(!browserWs)throw new Error('supervisor');
  process.on('message',request=>{
   if(active||stopping||request?.type!=='convert'){void stop();return;}

@@ -59,3 +59,20 @@ Stage 5 overlay는 Studio 내부에서 documentEpoch·changeSeq·documentSha256�
 ## Linux 이미지
 
 Node 24.21.0-bookworm-slim 기반 이미지 digest는 `sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553`입니다. npm 11.19.0을 포함합니다. Playwright 1.63.0이 지정한 Chromium과 필요한 Debian 라이브러리를 설치합니다. apt mirror 패키지는 snapshot으로 고정하지 않았으므로 이미지의 byte 단위 완전 재현성을 보장하지 않습니다. Stage 6 로컬 대상은 Linux ARM64이고 CI의 AMD64 실행 결과와 구분합니다.
+
+## 변환 환경 재사용과 업스트림 갱신
+
+변환용 브라우저 프로세스와 비밀값 없는 Node child를 같은 서버 인스턴스 안에서 재사용합니다. child는 고정 글꼴 bytes·print helper·`WebAssembly.Module`을 보관합니다. 매 문서는 새 worker thread의 JavaScript binding과 새 WASM instance/memory, 새 browser context를 사용하고 작업 완료 후 모두 종료합니다. font bytes는 worker로 복제하며 문서의 메모리나 SharedArrayBuffer를 재사용하지 않습니다. 글꼴 파일 읽기는 줄지만 문서별 브라우저 글꼴 적용/이미지 decode는 여전히 필요합니다.
+
+`WebAssembly.Module`은 현재 Node/V8 프로세스 안의 컴파일 결과입니다. `.wasm` 파일은 배포용 바이트코드이며 이것만 저장했다고 매 실행의 컴파일이 사라지는 것은 아닙니다. 이 구현은 Module을 새 thread에 전달해 컴파일을 반복하지 않습니다. 인스턴스 종료/교체 후에는 다시 컴파일합니다. [Node worker 메시지 규칙](https://nodejs.org/docs/latest-v24.x/api/worker_threads.html#portpostmessagevalue-transferlist), [Playwright context](https://playwright.dev/docs/browser-contexts)를 따릅니다.
+
+빌드 시 `.cache/conversion/runtime.json`은 core 버전·Studio commit과 WASM/JS 바인딩/글꼴 목록/print helper/변환 코드 해시를 묶습니다. runtime 시작 시 고정 자산 해시와 글꼴 파일명 해시를 검증하며, 요청 사이 cacheKey가 바뀌면 구 환경을 폐기합니다. 운영 컨테이너 자산은 불변이며 개발 환경에서 재빌드할 때도 서버를 재시작합니다. 빌드 도중 파일을 덮어쓰면서 요청을 처리하는 hot swap은 지원하지 않습니다.
+
+업스트림 갱신 순서:
+
+1. rhwp 릴리스의 core/editor 버전과 Studio commit·archive hash를 확인해 `package.json`·`package-lock.json`·`studio/upstream.json`을 함께 갱신합니다. 버전 불일치는 변환 빌드가 거절합니다.
+2. `npm ci`, `npm run build`, `npm run build:dev`로 JS·WASM·Studio·폰트·print helper를 같은 버전에서 다시 만듭니다. 기존 core API와 overlay 앵커 변경을 검토합니다.
+3. HWP/HWPX·단문/장문·반복·실패 복구 및 출력 시각 비교를 실행하고 CI를 확인합니다. 레이아웃 변화가 있으면 업스트림 변화와 이번 앱 변경을 분리해 기록합니다.
+4. 새 이미지 digest로 별도 후보를 검증하고 Cloud Run revision을 전환합니다. 새 revision은 새 runtime/cache를 만들며 이전 이미지 digest를 rollback용으로 남깁니다.
+
+WASM 파일 하나를 운영 중 교체하거나 업스트림 커밋마다 자동으로 운영에 반영하지 않습니다. 이번 성능 개선의 엔진 기준은 0.8.6을 유지합니다.

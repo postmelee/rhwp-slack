@@ -11,11 +11,12 @@ for(const suite of ['unit','slack','security']){
 const conversion=spawnSync(process.execPath,['--test','tests/conversion/render.test.mjs'],{stdio:'inherit'});
 assert.equal(conversion.status,0,'streaming PDF and range retry failed');
 if(process.argv.includes('--server-only')){
-  const {convertPdf}=await import('../src/conversion/convert.mjs');
+  const {convertPdf,closeConversionRuntime}=await import('../src/conversion/convert.mjs');
   for(const format of ['hwp','hwpx']){
     const pdf=await convertPdf(readFileSync(`tests/fixtures/viewer-two-pages.${format}`));
     assert.equal(pdf.subarray(0,5).toString(),'%PDF-');
   }
+  await closeConversionRuntime();
 }else{
   // This target additionally hosts the user's Studio browser inside the same cgroup.
   const result=spawnSync(process.execPath,['node_modules/@playwright/test/cli.js','test','tests/viewer/slack-flow.spec.ts','--output=/tmp/test-results'],{stdio:'inherit'});

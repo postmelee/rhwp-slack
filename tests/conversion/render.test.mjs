@@ -52,3 +52,13 @@ test('queued cancellation is prompt and does not stop the active document',async
  finally{release();}
  assert.equal((await active).pageCount,2);await closeConversionRuntime();
 });
+
+test('bounded reuse recycles a long series without accumulating document state',async()=>{
+ const {closeConversionRuntime}=await import('../../src/conversion/convert.mjs');await closeConversionRuntime();
+ const a=await readFile('tests/fixtures/viewer-two-pages.hwp');let compiles=0,reuses=0,reference;
+ for(let i=0;i<22;i++){
+  const r=await convertPageImages(a,{start:1,end:1,onMetric:m=>{if(m.stage==='wasm_compile'&&m.phase==='finish')compiles++;if(m.stage==='runtime_reuse')reuses++;}});
+  reference??=r.pages[0].png;assert.deepEqual(r.pages[0].png,reference);
+ }
+ assert.ok(compiles>=2);assert.ok(reuses>0);await closeConversionRuntime();
+});

@@ -110,3 +110,9 @@ node --import tsx scripts/migrate-cloud-state.ts \
 현재 배포는 한 워크스페이스용이다. 공개 제출 전 OAuth 설치·워크스페이스별 토큰/설정 분리, 제거/권한 철회, 개인정보 처리·보존/삭제·지원 안내, 타 워크스페이스 수용을 준비한다. 공식 2026-09-01 공지에 따르면 2026년 7월부터 최소 **10개 활성 워크스페이스 설치**를 유지해야 한다. [설치 수 요건](https://docs.slack.dev/changelog/2026/09/01/slack-marketplace-install-requirement/).
 
 Slack 내부 Studio에 사용하는 Work Objects embeds는 외부 배포 앱에 대해 초대형 pilot이다. Marketplace 외부 배포에서 같은 편집 UX를 유지하려면 참여 승인을 별도 확보해야 한다. 현재 워크스페이스의 동작 검증을 외부 배포 허가로 간주하지 않는다. [Embeds 조건](https://docs.slack.dev/messaging/work-objects-embeds/), [심사 안내](https://docs.slack.dev/slack-marketplace/slack-marketplace-review-guide/).
+
+## 변환 환경 수명
+
+같은 worker 인스턴스에서는 브라우저와 credential-free 변환 child를 재사용합니다. compiled WASM·고정 font bytes·print helper만 보관하고 문서별 JS/WASM 실행 환경과 browser context는 매번 생성·폐기합니다. 변환 20회 또는 직전 child RSS 768MiB 초과 시 다음 변환 전에, idle 5분·자산 변경·실패/취소 시 환경을 교체합니다. min instance·CPU·메모리 설정과 독립적인 앱 내부 정책이며 별도 keep-alive 요청은 보내지 않습니다.
+
+`conversion_stage`의 `wasm_compile`은 새 child 준비, `runtime_reuse`는 준비된 환경 재사용, `wasm_init`은 문서별 새 WASM instance 초기화입니다. `fonts_ready`는 반복 문서에도 남습니다. Cloud Run instance 교체 또는 앱 내부 재생성 후 재사용 이득이 사라지는 첫 요청과 이후 요청을 구분해 비교합니다. 빌드/갱신 절차는 [의존성 문서](dependencies.md#변환-환경-재사용과-업스트림-갱신)를 따릅니다.

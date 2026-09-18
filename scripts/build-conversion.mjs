@@ -27,3 +27,14 @@ await build({entryPoints:['src/conversion/pdf-child.mjs'],bundle:true,platform:'
 await build({entryPoints:['src/conversion/runtime-child.mjs'],bundle:true,platform:'node',format:'esm',packages:'external',outfile:resolve(out,'runtime-child.mjs')});
 await rm(resolve(out,'font-rules.mjs'));
 console.log(JSON.stringify({conversionBuild:true,fontFamilies:seen.size,fontFiles:sources.size,fontCssBytes:Buffer.byteLength(css),previousInlineBytes}));
+
+const core=JSON.parse(await readFile('node_modules/@rhwp/core/package.json','utf8'));
+const editor=JSON.parse(await readFile('node_modules/@rhwp/editor/package.json','utf8'));
+const upstream=JSON.parse(await readFile('studio/upstream.json','utf8'));
+if(core.version!==editor.version||core.version!==upstream.version)throw new Error('core/editor/Studio versions must match');
+const digest=data=>createHash('sha256').update(data).digest('hex');
+const inputs=['node_modules/@rhwp/core/rhwp_bg.wasm','node_modules/@rhwp/core/rhwp.js',...['fonts.json','print.js','pdf-child.mjs','runtime-child.mjs'].map(name=>'.cache/conversion/'+name)];
+const hashes=Object.fromEntries(await Promise.all(inputs.map(async path=>[path,digest(await readFile(path))])));
+const playwright=JSON.parse(await readFile('node_modules/@playwright/test/package.json','utf8')).version;
+const identity={schema:1,core:core.version,studioCommit:upstream.commit,playwright,node:process.version,hashes};
+await writeFile(resolve(out,'runtime.json'),JSON.stringify({...identity,cacheKey:digest(JSON.stringify(identity))}));

@@ -1,4 +1,5 @@
 import {spawn} from 'node:child_process';
+import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {workerEnvironment} from './worker-env.mjs';
 import {readFrames,OutputError} from './frames.mjs';
@@ -89,10 +90,15 @@ async function runConversion(bytes,{timeoutMs,onMetric,signal,onPdf,onPage},mode
   if(timeoutMs<=0)throw new ConversionError('conversion_timeout','문서 변환 시간이 초과되었습니다.','queue');
   let stage='runtime_start';
   const metric=value=>{const clean=validMetric(value);if(!clean)return;if(clean.phase==='start')stage=clean.stage;try{onMetric?.(clean);}catch{}};
+  let cacheKey;
+  try{cacheKey=JSON.parse(await readFile('.cache/conversion/runtime.json','utf8')).cacheKey;
+    if(typeof cacheKey!=='string'||!/^[a-f0-9]{64}$/.test(cacheKey))throw new Error();
+  }catch{throw new ConversionError('conversion_start','변환 자산 버전을 확인할 수 없습니다.');}
+  if(signal?.aborted)throw signal.reason??new ConversionError('conversion_aborted','문서 변환이 취소되었습니다.');
   let r=runtime;
-  if(r&&(r.disposed||r.jobs>=MAX_JOBS||r.rss>MAX_RSS_BYTES)){dispose(r);r=undefined;}
+  if(r&&(r.disposed||r.cacheKey!==cacheKey||r.jobs>=MAX_JOBS||r.rss>MAX_RSS_BYTES)){dispose(r);r=undefined;}
   const reused=!!r;
-  if(!r)r=startRuntime(metric);
+  if(!r){r=startRuntime(metric);r.cacheKey=cacheKey;}
   clearTimeout(r.idle);refs(r,true);r.metric=metric;
   if(reused)metric({stage:'runtime_reuse',phase:'finish',durationMs:0});
   let timer,abort;

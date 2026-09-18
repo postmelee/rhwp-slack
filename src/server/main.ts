@@ -1,3 +1,4 @@
+import {closeConversionRuntime} from '../conversion/convert.mjs';
 import {loadConfig} from './config';
 import {HttpSlackApi} from './slack-api';
 import {createSlackReceiver, verifyInstallation} from './receiver';
@@ -11,7 +12,7 @@ try {
   let stopping=false;
   const stop=async()=>{
     if(stopping)return;stopping=true;
-    await runtime.receiver.stop();await runtime.close();
+    await runtime.receiver.stop();await runtime.close();await closeConversionRuntime();
   };
   process.once('SIGINT',()=>{void stop();});process.once('SIGTERM',()=>{void stop();});
 } catch {
