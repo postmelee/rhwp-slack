@@ -10,10 +10,10 @@ import {DurableTasks} from '../../src/server/cloud/tasks';
 import {CloudApplication} from '../../src/server/cloud/application';
 import {EditorApi} from './editor-support';
 import {actor,config,bytes} from './support';
-function fixture(){
+function fixture(concurrency:1|2=1){
  const dir=mkdtempSync(join(tmpdir(),'rhwp-cloud-app-')),state=new State(join(dir,'metadata.sqlite'),'TTEST'),store=new SqliteMetadata(state),api=new EditorApi();
  const pending:string[]=[];let failPublish=false,failUpload=false;const tasks=new DurableTasks(store,{async publish(id,notBefore){if(failPublish)throw new Error('queue unavailable');if(notBefore===undefined)pending.push(id);}});
- const make=(options:NonNullable<ConstructorParameters<typeof CloudApplication>[4]>={})=>new CloudApplication({...config,publicOrigin:'https://cloud.example.com'},api,store,tasks,{download:async()=>bytes,fetcher:async(url)=>{assert.ok(String(url).startsWith('https://files.slack.com/upload/v1/'));if(failUpload)throw new Error('upload down');return new Response('ok');},convert:async()=>({pdf:Buffer.from('%PDF-synthetic'),pageCount:12,pages:[1,2,3].map(page=>({page,png:Buffer.from('png')}))}),images:async()=>({pageCount:12,pages:Array.from({length:10},(_,i)=>({page:i+1,png:Buffer.from('png')}))}),...options});
+ const make=(options:NonNullable<ConstructorParameters<typeof CloudApplication>[4]>={})=>new CloudApplication({...config,imageUploadConcurrency:concurrency,publicOrigin:'https://cloud.example.com'},api,store,tasks,{download:async()=>bytes,fetcher:async(url)=>{assert.ok(String(url).startsWith('https://files.slack.com/upload/v1/'));if(failUpload)throw new Error('upload down');return new Response('ok');},convert:async()=>({pdf:Buffer.from('%PDF-synthetic'),pageCount:12,pages:[1,2,3].map(page=>({page,png:Buffer.from('png')}))}),images:async()=>({pageCount:12,pages:Array.from({length:10},(_,i)=>({page:i+1,png:Buffer.from('png')}))}),...options});
  return {store,api,tasks,make,pending,setPublishFailure(v:boolean){failPublish=v;},setUploadFailure(v:boolean){failUpload=v;},async drain(){while(pending.length){const id=pending.shift()!;await tasks.execute(id,(spec,ctx)=>make().execute(spec,ctx));}},close(){state.close();rmSync(dir,{recursive:true,force:true});}};
 }
 test('replacement workers build one thread card and persist file IDs without document bytes or upload URLs',async()=>{
@@ -91,5 +91,27 @@ test('PDF is shared before a PNG failure; a replacement worker reuses it and sta
   }});
   await f.tasks.execute(job,(s,c)=>next.execute(s,c));const card=await f.make().authorize(id,actor);
   assert.equal(pdfUploads(),1);assert.equal(card.imageState,'ready');assert.deepEqual(card.images?.map(p=>p.page),[1,2,3]);
+ }finally{f.close();}
+});
+
+
+test('out-of-order parallel PNG uploads preserve gallery order and durable receipts',async()=>{
+ const f=fixture(2);try{
+  const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:parallel');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>f.make().execute(s,c));const job=f.pending.shift()!;
+  let active=0,peak=0;
+  const app=f.make({fetcher:async(url)=>{
+    const file=f.api.files.get(String(url).split('/').at(-1)!);const isPng=String(file?.name).endsWith('.png');
+    if(isPng){active++;peak=Math.max(peak,active);await new Promise(r=>setTimeout(r,String(file?.name).includes('_001')?35:5));active--;}
+    return new Response('ok');
+  },convert:async(_bytes,options)=>{
+    const pdf=Buffer.from('%PDF-synthetic'),pages=[1,2,3].map(page=>({page,png:Buffer.from('png')}));
+    await options?.onPdf?.(pdf,12);for(const page of pages)await options?.onPage?.(page,12);
+    return {pdf,pageCount:12,pages};
+  }});
+  await f.tasks.execute(job,(s,c)=>app.execute(s,c));const card=await app.authorize(id,actor);
+  assert.equal(peak,2);assert.equal(active,0);assert.deepEqual(card.images?.map(p=>p.page),[1,2,3]);assert.ok(card.images?.every(p=>p.shared));
+  assert.equal(f.api.calls.filter(c=>c.method==='files.getUploadURLExternal').length,4);
+  const posted=f.api.messages.get(card.messageTs!)!;assert.deepEqual((posted.files as {id:string}[]).map(f=>f.id),card.images?.map(p=>p.fileId));
  }finally{f.close();}
 });

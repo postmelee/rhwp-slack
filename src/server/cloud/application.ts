@@ -2,6 +2,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {measured,conversionMetric,milestone,errorCode} from './telemetry';
 import {setTimeout as delay} from 'node:timers/promises';
 import type {MetadataStore} from './metadata';
+import {BoundedWork,serialWrites} from '../concurrency';
 import {SharedSessions} from './sessions';
 import {DurableTasks,MAX_TASK_ATTEMPTS,type TaskSpec,type TaskContext} from './tasks';
 import {withLease,type LeaseContext} from './lease';
@@ -117,10 +118,10 @@ export class CloudApplication {
       });return run(card,context);
     });
   }
-  private uploads(card:CloudCard,context:LeaseContext):Uploads {
+  private uploads(card:CloudCard,context:LeaseContext,checkpoint=()=>this.write(card,context)):Uploads {
     return new Uploads(this.guarded(context),this.config,async(url,init)=>{
       await context.checkpoint();return (this.options.fetcher??fetch)(url,{...init,signal:AbortSignal.any([context.signal,...(init?.signal?[init.signal]:[])])});
-    },async()=>{await this.write(card,context);});
+    },checkpoint);
   }
   private async post(card:CloudCard,context:LeaseContext):Promise<void>{return measured('card_post',()=>this.postUnmeasured(card,context));}
   private async postUnmeasured(card:CloudCard,context:LeaseContext):Promise<void>{
@@ -198,7 +199,9 @@ export class CloudApplication {
       if(card.pdf!=='ready')card.pdf='pending';card.imageState='pending';
       if((task.attempt??1)>1)await this.update(card,actor,context);else await this.write(card,context);
       const bytes=await this.ensureSource(card.id,actor,context.signal);
-      const uploads=this.uploads(card,context),check=async()=>{await this.authorize(card.id,actor);};
+      const serial=serialWrites(),persist=()=>serial(()=>this.write(card,context)),publish=()=>serial(()=>this.update(card,actor,context));
+      const pool=new BoundedWork(this.config.imageUploadConcurrency??1);
+      const uploads=this.uploads(card,context,persist),check=async()=>{await this.authorize(card.id,actor);};
       const target=spec.kind==='preview'?3:10;
       const setCount=async(count:number)=>{
         await context.checkpoint();
@@ -210,11 +213,11 @@ export class CloudApplication {
         if(!card.pdfFileId){
           card.pdfAttempt??={};
           const f=await measured('upload_pdf',()=>uploads.store(card.pdfAttempt!,pdf,card.name.replace(/\.(hwp|hwpx)$/i,'.pdf'),actor,check));
-          if(!f.url)throw new Error('PDF permalink missing');card.pdfFileId=f.id;card.pdfUrl=f.url;await this.write(card,context);
+          if(!f.url)throw new Error('PDF permalink missing');card.pdfFileId=f.id;card.pdfUrl=f.url;await persist();
         }
         if(card.pdf!=='ready'){
-          await this.update(card,actor,context);await this.confirm(card,card.pdfFileId,actor,context);
-          card.pdf='ready';await this.update(card,actor,context);milestone('pdf_ready');
+          await publish();await this.confirm(card,card.pdfFileId,actor,context);
+          card.pdf='ready';await publish();milestone('pdf_ready');
         }
       };
       const uploadPage=async(page:PageImage,count:number)=>{
@@ -222,12 +225,13 @@ export class CloudApplication {
         if(card.images.some(p=>p.page===page.page))return;
         const attempt=card.attempts[String(page.page)]??={};
         const f=await measured('upload_png',()=>uploads.store(attempt,page.png,`${card.name.replace(/\.(hwp|hwpx)$/i,'')}_${String(page.page).padStart(3,'0')}.png`,actor,check));
-        card.images.push({page:page.page,fileId:f.id});await this.write(card,context);
+        await serial(async()=>{card.images!.push({page:page.page,fileId:f.id});card.images!.sort((a,b)=>a.page-b.page);await this.write(card,context);});
         if(page.page===1){
-          await this.update(card,actor,context);await this.confirm(card,f.id,actor,context);
-          card.images.find(p=>p.page===1)!.shared=true;await this.write(card,context);milestone('first_image');
+          await publish();await this.confirm(card,f.id,actor,context);
+          card.images.find(p=>p.page===1)!.shared=true;await persist();milestone('first_image');
         }
       };
+      try{
       if(card.pdfFileId){
         // Completed Slack receipts survive worker restarts. No PDF bytes or re-upload needed.
         if(!card.pageCount)throw new Error('Completed PDF has no page count');
@@ -236,13 +240,14 @@ export class CloudApplication {
       const limit=Math.min(target,card.pageCount??target);
       const first=Array.from({length:limit},(_,i)=>i+1).find(page=>!card.images?.some(p=>p.page===page));
       if(!card.pdfFileId){
-        const result=await measured('conversion',()=>(this.options.convert??convertPreview)(bytes,{timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric,onPdf:publishPdf,onPage:uploadPage}));
+        const result=await measured('conversion',()=>(this.options.convert??convertPreview)(bytes,{timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric,onPdf:publishPdf,onPage:(page,count)=>pool.add(()=>uploadPage(page,count))}));
         // Also support non-streaming converter adapters. Receipts make this idempotent.
-        await publishPdf(result.pdf,result.pageCount);for(const page of result.pages)await uploadPage(page,result.pageCount);
+        await publishPdf(result.pdf,result.pageCount);await pool.finish();for(const page of result.pages)await uploadPage(page,result.pageCount);
       }else if(first!==undefined){
-        const result=await measured('conversion',()=>(this.options.images??convertPageImages)(bytes,{start:first,end:limit,timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric,onPage:uploadPage}));
-        for(const page of result.pages.filter(p=>p.page<=limit))await uploadPage(page,result.pageCount);
+        const result=await measured('conversion',()=>(this.options.images??convertPageImages)(bytes,{start:first,end:limit,timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric,onPage:(page,count)=>pool.add(()=>uploadPage(page,count))}));
+        await pool.finish();for(const page of result.pages.filter(p=>p.page<=limit))await uploadPage(page,result.pageCount);
       }
+      }finally{await pool.finish();}
       await this.update(card,actor,context);
       for(const page of card.images??[])if(!page.shared){await this.confirm(card,page.fileId,actor,context);page.shared=true;}
       card.imageState='ready';card.recovery=undefined;await this.update(card,actor,context);milestone('all_ready');await this.reaction(card.id,card.actor,'ready',true);

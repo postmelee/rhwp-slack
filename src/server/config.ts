@@ -1,6 +1,6 @@
 export interface Config {
   signingSecret: string; botToken: string; appId: string; teamId: string;
-  statePath?:string; adminIds?:ReadonlySet<string>; reactions?:boolean;
+  imageUploadConcurrency?:1|2; statePath?:string; adminIds?:ReadonlySet<string>; reactions?:boolean;
   host?: '127.0.0.1'|'0.0.0.0'; publicOrigin?: string; workspaceHost: string; channelIds: ReadonlySet<string>; port: number;
 }
 export const ID = {team:/^T[A-Z0-9]{2,}$/, app:/^A[A-Z0-9]{2,}$/, user:/^[UW][A-Z0-9]{2,}$/, channel:/^[CG][A-Z0-9]{2,}$/, file:/^F[A-Z0-9]{2,}$/};
@@ -19,7 +19,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const origin=new URL(required('APP_ORIGIN', /^https:\/\//));
   if(origin.username || origin.password || origin.pathname!=='/' || origin.search || origin.hash || /(^|\.)slack\.com$/.test(origin.hostname)) throw new Error('APP_ORIGIN 설정을 확인하세요.');
   if((env.SLACK_ADMIN_USER_IDS??'').split(',').map(s=>s.trim()).filter(Boolean).some(id=>!ID.user.test(id)))throw new Error('SLACK_ADMIN_USER_IDS 설정을 확인하세요.');
+  const imageUploadConcurrency=Number(env.RHWP_IMAGE_UPLOAD_CONCURRENCY??'1');
+  if(imageUploadConcurrency!==1&&imageUploadConcurrency!==2)throw new Error('RHWP_IMAGE_UPLOAD_CONCURRENCY 설정을 확인하세요.');
   return {
+    imageUploadConcurrency,
     host,publicOrigin:origin.origin, statePath:env.STATE_DB_PATH?.trim()||'.data/state.sqlite',
     adminIds:new Set((env.SLACK_ADMIN_USER_IDS??'').split(',').map(s=>s.trim()).filter(Boolean)),
     reactions:env.SLACK_REACTIONS_ENABLED==='true',
