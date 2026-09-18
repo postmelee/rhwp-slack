@@ -77,8 +77,6 @@ test('PDF is shared before a PNG failure; a replacement worker reuses it and sta
   await f.tasks.execute(f.pending.shift()!,(s,c)=>f.make().execute(s,c));const job=f.pending.shift()!;
   const first=f.make({convert:async(_bytes,options)=>{
     await options?.onPdf?.(Buffer.from('%PDF-synthetic'),12);
-    const card=await f.make().authorize(id,actor);assert.equal(card.pdf,'ready');assert.equal(card.imageState,'pending');
-    assert.match(JSON.stringify(f.api.messages.get(card.messageTs!)),/PDF로 보기/);
     await options?.onPage?.({page:1,png:Buffer.from('png')},12);
     throw Object.assign(new Error('synthetic PNG failure'),{code:'conversion_timeout'});
   }});
@@ -129,4 +127,35 @@ test('a worker that lost task ownership cannot publish a stale retry notice',asy
   const card=await f.make().authorize(id,actor);assert.equal(card.recovery?.state,'running');
   assert.equal(JSON.stringify(f.api.messages.get(card.messageTs!)).includes('자동으로 다시 시도'),false);
  }finally{f.close();}
+});
+
+
+test('first PNG uploads while PDF transfer is blocked, and failure drains both before retry',async()=>{
+ for(const failPdf of [false,true]){
+  const f=fixture();let releasePdf!:()=>void;const gate=new Promise<void>(r=>releasePdf=r);
+  let pngStarted!:()=>void;const pngGate=new Promise<void>(r=>pngStarted=r);
+  let pdfActive=false,finished=false;
+  try{
+   const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:independent');
+   await f.tasks.execute(f.pending.shift()!,(s,c)=>f.make().execute(s,c));const job=f.pending.shift()!;
+   const app=f.make({fetcher:async(url)=>{
+    const name=String(f.api.files.get(String(url).split('/').at(-1)!)?.name);
+    if(name.endsWith('.pdf')){pdfActive=true;await gate;pdfActive=false;if(failPdf)throw new Error('pdf transfer down');}
+    else{assert.equal(pdfActive,true);pngStarted();}
+    return new Response('ok');
+   },convert:async(_bytes,options)=>{
+    const pdf=Buffer.from('%PDF-synthetic'),pages=[{page:1,png:Buffer.from('png')}];
+    await options?.onPdf?.(pdf,1);await options?.onPage?.(pages[0],1);return {pdf,pages,pageCount:1};
+   }});
+   const work=f.tasks.execute(job,(s,c)=>app.execute(s,c)).then(()=>({ok:true}),()=>({ok:false})).finally(()=>{finished=true;});
+   await Promise.race([pngGate,new Promise((_,reject)=>setTimeout(()=>reject(new Error('PNG waited for PDF')),2000))]);
+   assert.equal(finished,false);releasePdf();assert.equal((await work).ok,!failPdf);assert.equal(pdfActive,false);
+   const card=await f.make().authorize(id,actor);assert.equal(card.images?.length,1);
+   if(failPdf){
+    await f.tasks.execute(job,(s,c)=>f.make({convert:async()=>({pdf:Buffer.from('%PDF-retry'),pageCount:1,pages:[]})}).execute(s,c));
+    assert.equal((await f.make().authorize(id,actor)).pdf,'ready');
+    assert.equal(f.api.calls.filter(c=>c.method==='files.getUploadURLExternal'&&String(c.args.filename).endsWith('.png')).length,1);
+   }else assert.equal(card.imageState,'ready');
+  }finally{releasePdf();f.close();}
+ }
 });

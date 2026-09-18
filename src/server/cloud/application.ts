@@ -203,7 +203,12 @@ export class CloudApplication {
       if((task.attempt??1)>1)await this.update(card,actor,context);else await this.write(card,context);
       const bytes=await this.ensureSource(card.id,actor,context.signal);
       const serial=serialWrites(),persist=()=>serial(()=>this.write(card,context)),publish=()=>serial(()=>this.update(card,actor,context));
-      const pool=new BoundedWork(this.config.imageUploadConcurrency??1);
+      const pool=new BoundedWork(this.config.imageUploadConcurrency??1),pdfWork=new BoundedWork(1);
+      const finishUploads=async()=>{
+        // Neither failure may release the lease while the other upload still runs.
+        const results=await Promise.allSettled([pdfWork.finish(),pool.finish()]);
+        for(const result of results)if(result.status==='rejected')throw result.reason;
+      };
       const uploads=this.uploads(card,context,persist),check=async()=>{await this.authorize(card.id,actor);};
       const target=spec.kind==='preview'?3:10;
       const setCount=async(count:number)=>{
@@ -243,15 +248,15 @@ export class CloudApplication {
       const limit=Math.min(target,card.pageCount??target);
       const first=Array.from({length:limit},(_,i)=>i+1).find(page=>!card.images?.some(p=>p.page===page));
       if(!card.pdfFileId){
-        const result=await measured('conversion',()=>(this.options.convert??convertPreview)(bytes,{timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric,onPdf:publishPdf,onPage:(page,count)=>pool.add(()=>uploadPage(page,count))}));
+        const result=await measured('conversion',()=>(this.options.convert??convertPreview)(bytes,{timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric,onPdf:(pdf,count)=>pdfWork.add(()=>publishPdf(pdf,count)),onPage:(page,count)=>pool.add(()=>uploadPage(page,count))}));
         // Also support non-streaming converter adapters. Receipts make this idempotent.
-        await publishPdf(result.pdf,result.pageCount);await pool.finish();for(const page of result.pages)await uploadPage(page,result.pageCount);
+        await pdfWork.finish();await publishPdf(result.pdf,result.pageCount);await pool.finish();for(const page of result.pages)await uploadPage(page,result.pageCount);
       }else if(first!==undefined){
         const result=await measured('conversion',()=>(this.options.images??convertPageImages)(bytes,{start:first,end:limit,timeoutMs:120_000,signal:context.signal,onMetric:conversionMetric,onPage:(page,count)=>pool.add(()=>uploadPage(page,count))}));
         await pool.finish();for(const page of result.pages.filter(p=>p.page<=limit))await uploadPage(page,result.pageCount);
       }
-      }finally{await pool.finish();}
-      await this.update(card,actor,context);
+      }finally{await finishUploads();}
+      if(card.images?.some(page=>!page.shared))await this.update(card,actor,context);
       for(const page of card.images??[])if(!page.shared){await this.confirm(card,page.fileId,actor,context);page.shared=true;}
       card.imageState='ready';card.recovery=undefined;await this.update(card,actor,context);milestone('all_ready');await this.reaction(card.id,card.actor,'ready',true);
     });
