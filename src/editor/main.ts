@@ -1,6 +1,7 @@
 import { createStudio, type RhwpEditor } from '@rhwp/editor';
 import { validateInput, MAX_PAGES, MAX_FILE_BYTES } from '../shared/errors';
 import {attachSave} from './save';
+import {Startup} from './startup';
 import './style.css';
 
 const status = document.querySelector<HTMLElement>('#status')!;
@@ -12,8 +13,9 @@ const editorTicket = new URLSearchParams(location.hash.slice(1)).get('ticket');
 // Remove credentials from the URL before any child frame is created.
 history.replaceState(null, '', location.pathname + location.search);
 let bearer: string | undefined;
+let startup:Startup|undefined;
 async function api(path: string, init: RequestInit = {}): Promise<Response> {
-  const response = await fetch('/api/editor/' + path, {...init, credentials:'omit', cache:'no-store', referrerPolicy:'no-referrer', signal:AbortSignal.timeout(90_000), headers:{...init.headers, ...(bearer?{Authorization:'Bearer '+bearer}:{})}});
+  const response = await fetch('/api/editor/' + path, {...init, credentials:'omit', cache:'no-store', referrerPolicy:'no-referrer', signal:AbortSignal.any([AbortSignal.timeout(90_000),...(startup?[startup.signal]:[])]), headers:{...init.headers, ...(bearer?{Authorization:'Bearer '+bearer}:{})}});
   if (!response.ok) throw new Error((await response.json().catch(()=>({}))).error || 'Slack 연결을 확인해 주세요.');
   return response;
 }
@@ -41,7 +43,7 @@ async function load(bytes: Uint8Array, name: string): Promise<void> {
   input.disabled = true;
   setStatus('문서를 여는 중입니다.', 'loading');
   try {
-    const result = await studio.loadFile(bytes, name);
+    const result = await (startup?startup.run(()=>studio.loadFile(bytes,name)):studio.loadFile(bytes,name));
     if (result.pageCount > MAX_PAGES) {
       studio.destroy();
       throw new Error('200페이지 이하 문서만 열 수 있습니다. 편집기를 다시 열어 주세요.');
@@ -54,12 +56,20 @@ async function load(bytes: Uint8Array, name: string): Promise<void> {
     input.disabled = false;
   }
 }
-try {
+async function initialize():Promise<void>{
+  if(!editorTicket&&!__LOCAL_FILES__){
+    setStatus('Slack에서 문서 열기를 선택하세요.','empty');
+    document.querySelector<HTMLElement>('#reopen')!.hidden=false;return;
+  }
+  startup=new Startup();
+  try {
+  setStatus('Slack 문서 접근 권한을 확인하고 있습니다.','loading');
   if (editorTicket) bearer = (await (await api('exchange', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ticket:editorTicket})})).json()).token;
-  studio = await createStudio('#editor', {
+  setStatus('rhwp 편집기를 준비하고 있습니다.','loading');
+  studio = await startup.run(()=>createStudio('#editor', {
     studioUrl: new URL('/studio/?chrome=embed', location.origin).href,
     plugins: ['hwpctrl'], requestTimeoutMs: 60_000, handshakeTimeoutMs: 10_000,
-  });
+  }),late=>late.destroy());
   studio.element.title = 'rhwp-studio 문서 편집기';
   setStatus(devtools ? '문서를 선택하세요' : 'Slack에서 문서 열기를 선택하세요.', 'empty');
   window.addEventListener('message', event => {
@@ -69,7 +79,7 @@ try {
     setDirty(event.data.dirty);
   });
   if (bearer) {
-    setStatus('문서를 여는 중입니다.', 'loading');
+    setStatus('Slack에서 문서를 가져오고 있습니다.', 'loading');
     const meta = await (await api('document')).json();
     const bytes = await (await api('source')).arrayBuffer();
     await load(new Uint8Array(bytes), meta.name);
@@ -97,6 +107,11 @@ try {
       await load(new Uint8Array(await response.arrayBuffer()), (await meta.json()).name);
     }
   }
-} catch (error) {
-  showError(error);
+  startup.finish();startup=undefined;
+  } catch (error) {
+    const failure=startup?.signal.aborted?startup.signal.reason:error;
+    startup?.cancel(failure);studio?.destroy();document.querySelector('#editor')!.replaceChildren();
+    bearer=undefined;showError(failure);document.querySelector<HTMLElement>('#reopen')!.hidden=false;
+  }
 }
+void initialize();
