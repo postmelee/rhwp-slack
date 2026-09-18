@@ -59,7 +59,7 @@ function convert(bytes,{timeoutMs=60_000,onMetric,signal}={},mode,start,end){
       browserServer=server;if(done){cleanup();return;}
       metric({stage:'browser_start',phase:'finish',durationMs:Math.round(performance.now()-started)});
       spawnedAt=performance.now();metric({stage:'process_start',phase:'start'});
-      child=spawn(process.execPath,['--import','tsx',resolve('src/conversion/pdf-child.mjs'),mode,String(start),String(end)],{
+      child=spawn(process.execPath,[resolve('.cache/conversion/pdf-child.mjs'),mode,String(start),String(end)],{
         detached:process.platform!=='win32',stdio:['pipe','pipe','pipe','pipe'],env:{...workerEnvironment(),RHWP_PDF_BROWSER_WS:server.wsEndpoint()},
       });
       child.on('error',()=>fail('문서 변환기를 시작하지 못했습니다.'));child.stdin.on('error',()=>{});child.stderr.resume();

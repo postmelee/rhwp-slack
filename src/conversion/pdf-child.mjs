@@ -3,10 +3,10 @@ import init, { HwpDocument } from '@rhwp/core';
 import { chromium } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import {writeSync} from 'node:fs';
-import { resolve, basename } from 'node:path';
+import { resolve } from 'node:path';
+import {routeFont} from './font-routes.mjs';
 import { validateInput, MAX_PAGES, MAX_FILE_BYTES } from '../shared/errors.ts';
 import { createPrintPage } from '../../.cache/studio-source/rhwp-studio/src/command/print-pages.ts';
-import { FONT_RULE_CANVAS2D_WEBFONT_RULES } from '../../.cache/studio-source/rhwp-studio/src/core/generated/font-rule-projections/webfont-supply.ts';
 console.log=console.info=console.warn=()=>{};
 let browser,doc,stage='input',started=performance.now();
 function metric(phase){try{writeSync(3,JSON.stringify({stage,phase,...(phase==='start'?{}:{durationMs:Math.round(performance.now()-started),rssBytes:process.memoryUsage().rss})})+'\n');}catch{}}
@@ -34,21 +34,15 @@ try {
     pages.push(createPrintPage(svg,info,i));
   }
   begin('fonts_prepare');
-  let fonts='';const seen=new Set();
-  for(const rule of FONT_RULE_CANVAS2D_WEBFONT_RULES) {
-    const f=rule.supply;if(!f||f.external||typeof f.sourceUrl!=='string'||!f.sourceUrl.startsWith('fonts/'))continue;
-    const key=JSON.stringify([f.fontFamily,f.sourceUrl]);if(seen.has(key))continue;seen.add(key);
-    const data=await readFile(resolve('.cache/studio-source/assets/fonts',basename(f.sourceUrl)));
-    fonts+=`@font-face{font-family:${JSON.stringify(f.fontFamily)};src:url(data:font/woff2;base64,${data.toString('base64')}) format("woff2");}\n`;
-  }
+  const {css:fonts,files:fontFiles}=JSON.parse(await readFile('.cache/conversion/fonts.json','utf8'));
   begin('browser_render');
   if(!process.env.RHWP_PDF_BROWSER_WS)throw new Error('Missing conversion supervisor');
   browser=await chromium.connect(process.env.RHWP_PDF_BROWSER_WS);
   const context=await browser.newContext({serviceWorkers:'block'});
-  await context.route('**/*',route=>route.abort());
+  await context.route('**/*',route=>routeFont(route,fontFiles,resolve('.cache/conversion/fonts')));
   const page=await context.newPage();
   begin('dom_prepare');
-  await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'"></head><body></body></html>`);
+  await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data: https://rhwp-fonts.invalid; script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'"></head><body></body></html>`);
   // Trusted pinned helper code via DevTools; document SVG never becomes script source.
   await page.evaluate((await readFile('.cache/conversion/print.js','utf8'))+';window.RhwpPrint=RhwpPrint;');
   begin('page_attach');
