@@ -62,3 +62,11 @@ test('bounded reuse recycles a long series without accumulating document state',
  }
  assert.ok(compiles>=2);assert.ok(reuses>0);await closeConversionRuntime();
 });
+
+
+test('built converter deadline terminates real rendering and the next request recovers',async()=>{
+ const {convertPdf,closeConversionRuntime}=await import('../../src/conversion/convert.mjs');await closeConversionRuntime();
+ const bytes=await readFile('tests/fixtures/viewer-two-pages.hwp');
+ await assert.rejects(convertPdf(bytes,{timeoutMs:1}),e=>e.code==='conversion_timeout');
+ assert.equal((await convertPdf(bytes)).subarray(0,5).toString(),'%PDF-');await closeConversionRuntime();
+});
