@@ -20,6 +20,7 @@ test('local tickets expire and concurrent conversion is rejected',async()=>{
     now=11;assert.equal(store.get(id),undefined);assert.equal((await fetch(origin+`/api/dev/documents/${id}/source`)).status,404);
   }finally{release();await new Promise(r=>server.close(r));}
 });
-test('converter deadline rejects and terminates the isolated process',async()=>{
-  await assert.rejects(convertPdf(Buffer.from('bad'),{timeoutMs:1}),/시간이 초과/);
+test('pre-cancelled conversion rejects without requiring built assets or a browser',async()=>{
+  const controller=new AbortController();controller.abort();
+  await assert.rejects(convertPdf(Buffer.from('bad'),{signal:controller.signal}),e=>e.code==='conversion_aborted');
 });

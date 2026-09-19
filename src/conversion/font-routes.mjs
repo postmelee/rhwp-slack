@@ -10,10 +10,10 @@ export function fontAsset(request,files){
   if(typeof file!=='string'||file!==url.slice('https://rhwp-fonts.invalid/'.length))return;
   return file;
 }
-export async function routeFont(route,files,directory){
+export async function routeFont(route,files,directory,cache){
   const file=fontAsset(route.request(),files);
   if(!file){await route.abort();return;}
   try{
-    await route.fulfill({status:200,contentType:'font/woff2',headers:{'Access-Control-Allow-Origin':'*'},body:await readFile(resolve(directory,file))});
+    await route.fulfill({status:200,contentType:'font/woff2',headers:{'Access-Control-Allow-Origin':'*'},body:cache?Buffer.from(cache[file]):await readFile(resolve(directory,file))});
   }catch{await route.abort().catch(()=>{});}
 }

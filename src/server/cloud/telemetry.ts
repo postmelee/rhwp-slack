@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import type {TaskContext,TaskSpec} from './tasks';
 import type {ConversionMetric} from '../../conversion/convert.mjs';
 const stages=new Set(['authorize','download','conversion','upload_pdf','upload_png','share_confirm','card_post','card_update','source_prepare']);
-const errors=new Set(['access_denied','source_changed','session_expired','rate_limited','slack_unavailable','slack_rejected','upload_uncertain','size_limit','card_pending','conversion_timeout','conversion_start','conversion_child','conversion_output','conversion_aborted','task_deadline','task_attempts']);
+const errors=new Set(['access_denied','source_changed','session_expired','rate_limited','slack_unavailable','slack_rejected','upload_uncertain','size_limit','card_pending','conversion_timeout','conversion_start','conversion_child','conversion_output','conversion_aborted','conversion_busy','task_deadline','task_attempts']);
 export function errorCode(error:unknown):string {
   const e=error as {code?:unknown;name?:unknown}|undefined;
   if(typeof e?.code==='string'&&errors.has(e.code))return e.code;

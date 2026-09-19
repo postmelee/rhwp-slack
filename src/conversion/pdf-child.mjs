@@ -1,16 +1,15 @@
-// One short-lived process per conversion. The parent enforces time/output limits.
+// One fresh thread per document inside a credential-free conversion process.
 import init, { HwpDocument } from '@rhwp/core';
 import { chromium } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
-import {writeSync} from 'node:fs';
+import {workerData,parentPort} from 'node:worker_threads';
 import {once} from 'node:events';
 import { resolve } from 'node:path';
 import {routeFont} from './font-routes.mjs';
-import { validateInput, MAX_PAGES, MAX_FILE_BYTES } from '../shared/errors.ts';
+import { validateInput, MAX_PAGES } from '../shared/errors.ts';
 import { createPrintPage } from '../../.cache/studio-source/rhwp-studio/src/command/print-pages.ts';
 console.log=console.info=console.warn=()=>{};
-let browser,doc,stage='input',started=performance.now();
-function metric(phase){try{writeSync(3,JSON.stringify({stage,phase,...(phase==='start'?{}:{durationMs:Math.round(performance.now()-started),rssBytes:process.memoryUsage().rss})})+'\n');}catch{}}
+let browser,context,doc,stage='input',started=performance.now();
+function metric(phase){try{parentPort.postMessage({stage,phase,...(phase==='start'?{}:{durationMs:Math.round(performance.now()-started),rssBytes:process.memoryUsage().rss})});}catch{}}
 function begin(next){metric('finish');stage=next;started=performance.now();metric('start');}
 metric('start');
 async function output(bytes){if(!process.stdout.write(bytes))await once(process.stdout,'drain');}
@@ -18,15 +17,12 @@ async function frame(info,bytes){
   const json=Buffer.from(JSON.stringify(info)),length=Buffer.alloc(4);length.writeUInt32BE(json.length);
   await output(length);await output(json);if(bytes)await output(bytes);
 }
-const [mode='pdf',first='0',last='0']=process.argv.slice(2);
-const start=Number(first),end=Number(last);
+const {mode,start,end,module,fontManifest,fontBytes,print,browserWs}=workerData;
 if(!['pdf','preview','images'].includes(mode)||(mode!=='pdf'&&(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<1||end<start||end>10)))throw new Error('range');
 try {
-  const chunks=[];let size=0;
-  for await (const chunk of process.stdin) {size+=chunk.length;if(size>MAX_FILE_BYTES)throw new Error('size');chunks.push(chunk);}
-  const bytes=Buffer.concat(chunks);validateInput(bytes);
+  const bytes=workerData.bytes;validateInput(bytes);
   begin('wasm_init');
-  await init({module_or_path:await readFile('node_modules/@rhwp/core/rhwp_bg.wasm')});
+  await init({module_or_path:module});
   begin('parse');
   doc=new HwpDocument(bytes);
   const count=doc.pageCount();if(count<1||count>MAX_PAGES)throw new Error('pages');
@@ -42,17 +38,17 @@ try {
     pages.push(createPrintPage(svg,info,i));
   }
   begin('fonts_prepare');
-  const {css:fonts,files:fontFiles}=JSON.parse(await readFile('.cache/conversion/fonts.json','utf8'));
+  const {css:fonts,files:fontFiles}=fontManifest;
   begin('browser_render');
-  if(!process.env.RHWP_PDF_BROWSER_WS)throw new Error('Missing conversion supervisor');
-  browser=await chromium.connect(process.env.RHWP_PDF_BROWSER_WS);
-  const context=await browser.newContext({serviceWorkers:'block'});
-  await context.route('**/*',route=>routeFont(route,fontFiles,resolve('.cache/conversion/fonts')));
+  if(!browserWs)throw new Error('Missing conversion supervisor');
+  browser=await chromium.connect(browserWs);
+  context=await browser.newContext({serviceWorkers:'block'});
+  await context.route('**/*',route=>routeFont(route,fontFiles,resolve('.cache/conversion/fonts'),fontBytes));
   const page=await context.newPage();
   begin('dom_prepare');
   await page.setContent(`<html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data: https://rhwp-fonts.invalid; script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'"></head><body></body></html>`);
   // Trusted pinned helper code via DevTools; document SVG never becomes script source.
-  await page.evaluate((await readFile('.cache/conversion/print.js','utf8'))+';window.RhwpPrint=RhwpPrint;');
+  await page.evaluate(print+';window.RhwpPrint=RhwpPrint;');
   begin('page_attach');
   await page.evaluate(({pages,fonts})=>{
     const style=document.createElement('style');style.textContent=fonts;document.head.append(style);
@@ -75,10 +71,9 @@ try {
   begin('pdf');
   const pdf=mode==='images'?Buffer.alloc(0):await page.pdf({preferCSSPageSize:true,printBackground:true,displayHeaderFooter:false});
   if(pdf.length>50*1024*1024)throw new Error('pdf-size');
-  if(mode==='pdf'){begin('output');await output(pdf);}
-  else {
-    await frame({type:'document',pageCount:count});
-    if(mode==='preview')await frame({type:'pdf',bytes:pdf.length},pdf);
+  await frame({type:'document',pageCount:count});
+  if(mode!=='images')await frame({type:'pdf',bytes:pdf.length},pdf);
+  if(mode!=='pdf') {
     begin('png');
     let total=0;
     for(let i=0;i<start-1;i++)await page.locator('.page').nth(i).evaluate(el=>{const rect=el.getBoundingClientRect();el.style.zoom=String(Math.min(1,800/rect.width,1200/rect.height));});
@@ -90,8 +85,8 @@ try {
       await frame({type:'png',page:number,bytes:png.length},png);
     }
     begin('output');
-    await frame({type:'end'});
+    // The supervisor sends end after this thread has exited.
   }
   metric('finish');
 } catch { metric('failed');process.exitCode=1; }
-finally {doc?.free();await browser?.close();}
+finally {try{doc?.free();}finally{await context?.close();await browser?.close();}}
