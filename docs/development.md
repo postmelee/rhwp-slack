@@ -4,7 +4,7 @@
 
 현재 앱은 실제 Bolt HTTP receiver, 명령·파일 선택, Work Object 카드, 일회성 편집 세션, PDF 공유와 편집본 새 파일 저장 adapter를 제공합니다. 실제 테스트 앱 설치·비공개 채널의 명령·업로드·인증 다운로드·웹 Studio 편집과 저장을 확인했습니다. 데스크톱 Studio 열기와 PDF 첨부의 기본 뷰어 표시도 확인했습니다. 직접 입력/저장은 사용자가 정상 동작을 확인했습니다. 실제 권한 회수 등 미실행 시나리오는 별도 검증 대상이며 로컬 자동 검사는 합성 Slack API를 사용합니다.
 
-`npm run dev`는 로컬 편집 시험용입니다. 기본 `/editor/`에는 테스트 입력이 없고 `?devtools=1`에서만 표시합니다. Slack 서버는 같은 origin에 production `/editor/`, `/studio/`와 인증 API를 제공합니다. `/api/dev/documents`는 Slack 서버에서 열리지 않습니다.
+`npm run dev`는 로컬 편집 시험용입니다. 기본 `/editor/`에는 테스트 입력이 없고 `?devtools=1`에서만 표시합니다. 기본 Slack 서버는 같은 origin에 production `/editor/`, `/studio/`와 인증 API를 제공합니다. 운영 C처럼 `EDITOR_ORIGIN`을 설정하면 프로그램만 Pages로 분리합니다. [정적 호스팅 설정](static-hosting.md)을 참고하세요. `/api/dev/documents`는 Slack 서버에서 열리지 않습니다.
 
 ## 설정 준비
 
@@ -14,7 +14,7 @@
 4. 앱의 Signing Secret, Bot User OAuth Token, App ID, Team ID를 로컬 `.env`에 입력합니다. `.env.example`을 복사해 사용하며 비밀값을 Git·이슈·채팅에 기록하지 않습니다.
 5. `SLACK_WORKSPACE_HOST`에는 URL이 아닌 `my-workspace.slack.com` 형태의 hostname, `SLACK_CHANNEL_IDS`에는 최초 활성화할 일반 채널 ID를 쉼표로 입력합니다. 기존 DB가 있으면 저장된 채널 설정이 우선합니다.
 6. `APP_ORIGIN`에 편집기·Studio·수신기를 함께 서비스할 HTTPS origin을 입력합니다. 경로·query 없이 `https://editor.example.com` 형태로 설정합니다. Origin은 요청 Host header에서 추정하지 않습니다.
-7. 앱 설정의 **Work Object Previews**에서 Work Objects와 file entity를 활성화하고, embeds 도메인 허용 목록에 APP_ORIGIN의 hostname을 등록합니다. SDK의 같은 origin 통신을 위해 **allow-same-origin**을 활성화합니다. 이 설정은 앱 관리 화면에서 확인해야 하며 manifest만으로 활성화했다고 간주하지 않습니다.
+7. 앱 설정의 **Work Object Previews**에서 Work Objects와 file entity를 활성화하고, embeds 도메인 허용 목록에 편집기 origin의 hostname을 등록합니다. `EDITOR_ORIGIN`을 설정했다면 그 hostname을, 기본 구성에서는 `APP_ORIGIN`의 hostname을 사용합니다. SDK의 같은 origin 통신을 위해 **allow-same-origin**을 활성화합니다. 이 설정은 앱 관리 화면에서 확인해야 하며 manifest만으로 활성화했다고 간주하지 않습니다.
 8. manifest에는 `file_shared`, `app_mention`, `app_home_opened`, `entity_details_requested`, `file_deleted`, `file_unshared` 이벤트가 있습니다. `app_mentions:read` 또는 상태 반응용 `reactions:write`를 추가한 기존 앱은 해당 권한 승인과 재설치가 필요합니다. `channels:history`/`groups:history` 권한은 사용하지 않습니다.
 9. 허용 채널에 bot을 초대하고 요청자도 해당 채널에 참여하게 합니다. 공개·비공개 채널 모두 이 조건이 필요합니다.
 

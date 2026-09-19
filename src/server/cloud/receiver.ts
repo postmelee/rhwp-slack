@@ -86,7 +86,7 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
   const e=object(event);if(body.team_id!==config.teamId||typeof body.event_id!=='string'||typeof e.file_id!=='string'||!ID.file.test(e.file_id))return;
   await events.enqueue(body.event_id,{kind:type,fileId:e.file_id});
  });
- receiver.router.use(editorRoutes(config.publicOrigin!,documents,documents));
+ receiver.router.use(editorRoutes(config.publicOrigin!,documents,documents,config.editorOrigin));
  receiver.router.get('/healthz',(_req,res)=>res.json({ok:true}));
  return {receiver,app,events,settings};
 }

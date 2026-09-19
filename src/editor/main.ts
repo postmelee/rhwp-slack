@@ -12,11 +12,18 @@ const ticket = __LOCAL_FILES__ ? new URLSearchParams(location.hash.slice(1)).get
 const editorTicket = new URLSearchParams(location.hash.slice(1)).get('ticket');
 // Remove credentials from the URL before any child frame is created.
 history.replaceState(null, '', location.pathname + location.search);
+// Deployment-owned HTML chooses the API; URL parameters and document data never do.
+const configuredApi=document.querySelector<HTMLMetaElement>('meta[name="rhwp-api-origin"]')?.content;
+const apiOrigin=configuredApi?new URL(configuredApi).origin:location.origin;
 let bearer: string | undefined;
 let startup:Startup|undefined;
+const mark=(step:string)=>performance.mark('rhwp:'+step);
+mark('host-start');
 async function api(path: string, init: RequestInit = {}): Promise<Response> {
-  const response = await fetch('/api/editor/' + path, {...init, credentials:'omit', cache:'no-store', referrerPolicy:'no-referrer', signal:AbortSignal.any([AbortSignal.timeout(90_000),...(startup?[startup.signal]:[])]), headers:{...init.headers, ...(bearer?{Authorization:'Bearer '+bearer}:{})}});
+  if(['exchange','document','source'].includes(path))mark(path+'-start');
+  const response = await fetch(apiOrigin+'/api/editor/' + path, {...init, credentials:'omit', cache:'no-store', referrerPolicy:'no-referrer', signal:AbortSignal.any([AbortSignal.timeout(90_000),...(startup?[startup.signal]:[])]), headers:{...init.headers, ...(bearer?{Authorization:'Bearer '+bearer}:{})}});
   if (!response.ok) throw new Error((await response.json().catch(()=>({}))).error || 'Slack 연결을 확인해 주세요.');
+  if(['exchange','document','source'].includes(path))mark(path+'-headers');
   return response;
 }
 let studio: RhwpEditor;
@@ -41,6 +48,7 @@ async function load(bytes: Uint8Array, name: string): Promise<void> {
   validateInput(bytes);
   busy = true;
   input.disabled = true;
+  mark('load-start');
   setStatus('문서를 여는 중입니다.', 'loading');
   try {
     const result = await (startup?startup.run(()=>studio.loadFile(bytes,name)):studio.loadFile(bytes,name));
@@ -50,7 +58,7 @@ async function load(bytes: Uint8Array, name: string): Promise<void> {
     }
     documentName = name.normalize('NFC');
     studio.element.title = `${documentName} · rhwp-studio 문서 편집기`;
-    setDirty(false);
+    setDirty(false);mark('document-ready');
   } finally {
     busy = false;
     input.disabled = false;
@@ -66,24 +74,28 @@ async function initialize():Promise<void>{
   setStatus('Slack 문서 접근 권한을 확인하고 있습니다.','loading');
   if (editorTicket) bearer = (await (await api('exchange', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ticket:editorTicket})})).json()).token;
   setStatus('rhwp 편집기를 준비하고 있습니다.','loading');
-  studio = await startup.run(()=>createStudio('#editor', {
-    studioUrl: new URL('/studio/?chrome=embed', location.origin).href,
+  mark('studio-start');
+  const studioReady = startup.run(()=>createStudio('#editor', {
+    studioUrl: new URL(__STUDIO_BASE__+'?chrome=embed', location.origin).href,
     plugins: ['hwpctrl'], requestTimeoutMs: 60_000, handshakeTimeoutMs: 10_000,
-  }),late=>late.destroy());
-  studio.element.title = 'rhwp-studio 문서 편집기';
-  setStatus(devtools ? '문서를 선택하세요' : 'Slack에서 문서 열기를 선택하세요.', 'empty');
+  }),late=>late.destroy()).then(instance=>{studio=instance;studio.element.title='rhwp-studio 문서 편집기';mark('studio-ready');});
+  // All rejections are observed immediately. Failure cancels requests and destroys even a late Studio.
+  const documentReady = bearer ? Promise.all([
+    api('document').then(async r=>{const value=await r.json();mark('metadata-ready');return value as {name:string};}),
+    api('source').then(async r=>{const value=await r.arrayBuffer();mark('source-ready');return value;}),
+  ]) : Promise.resolve(null);
+  const [,sourceDocument]=await Promise.all([studioReady,documentReady]);
+  if(!sourceDocument)setStatus(devtools ? '문서를 선택하세요' : 'Slack에서 문서 열기를 선택하세요.', 'empty');
   window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.source !== studio.element.contentWindow ||
         event.data?.type !== 'rhwp-slack:dirty' || typeof event.data.dirty !== 'boolean' ||
         busy || !documentName || document.body.dataset.state !== 'ready') return;
     setDirty(event.data.dirty);
   });
-  if (bearer) {
-    setStatus('Slack에서 문서를 가져오고 있습니다.', 'loading');
-    const meta = await (await api('document')).json();
-    const bytes = await (await api('source')).arrayBuffer();
+  if (sourceDocument) {
+    const [meta,bytes]=sourceDocument;
     await load(new Uint8Array(bytes), meta.name);
-    attachSave(studio, api);
+    attachSave(studio, api);mark('editor-ready');
   }
   if (__LOCAL_FILES__) {
     input.addEventListener('change', () => {

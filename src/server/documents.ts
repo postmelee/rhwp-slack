@@ -203,7 +203,7 @@ export class Documents {
   async present(id:string,actor:Actor,triggerId:string):Promise<void> {
     const card=await this.authorize(id,actor);if(!card.messageTs)throw new UserError('card_pending','카드 게시 결과를 확인 중입니다. 잠시 후 다시 열어 주세요.');await this.ensureSource(id,actor);
     const ticket=await this.sessions.issue(id,{...actor,threadTs:card.actor.threadTs});
-    await this.api.call('entity.presentDetails',{trigger_id:triggerId,metadata:this.metadata(card,`${this.config.publicOrigin}/editor/#ticket=${ticket}`)});
+    await this.api.call('entity.presentDetails',{trigger_id:triggerId,metadata:this.metadata(card,`${this.config.editorOrigin??this.config.publicOrigin}/editor/#ticket=${ticket}`)});
   }
   async invalidate(team:string,file:string):Promise<void> {
     for(const [id,c] of this.cards)if(c.actor.teamId===team&&(c.fileId===file||c.rootFileId===file)){this.cards.delete(id);this.options.state?.delete('cards',id);await this.sessions.invalidate(id);}

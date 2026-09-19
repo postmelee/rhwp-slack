@@ -103,13 +103,52 @@ node --import tsx scripts/migrate-cloud-state.ts \
 
 ### 2026-09-20 첫 이미지 게시·변환 환경 재사용 반영
 
-현재 실행 소스 `93943c7`, ingress `rhwp-ingress-00012-6hv`와 worker `rhwp-worker-00008-6t7`에 각각 100% 트래픽을 보낸다. CPU·메모리·min/max·동시 요청·PNG 업로드 동시 수 1·예산·권한·namespace는 유지했다. 이미지와 동일 사양 측정은 [Task #10 운영 수용 보고서](../mydocs/working/task_m010_10_stage5.md)에 기록했다.
+당시 실행 소스 `93943c7`, ingress `rhwp-ingress-00012-6hv`와 worker `rhwp-worker-00008-6t7`에 각각 100% 트래픽을 보냈다. CPU·메모리·min/max·동시 요청·PNG 업로드 동시 수 1·예산·권한·namespace는 유지했다. 이미지와 동일 사양 측정은 [Task #10 운영 수용 보고서](../mydocs/working/task_m010_10_stage5.md)에 기록했다.
 
 PDF 게시를 기다리지 않고 PNG를 게시하며, 살아 있는 worker의 브라우저·컴파일된 WASM·고정 자산을 재사용한다. 짧은 문서의 반복 요청은 개선됐지만 69페이지의 전체 첫 이미지 게시 시간은 약 45초로 비슷했다. cold/반복 조건과 Slack 업로드 지연을 구분해 판단한다.
 
 운영 합성 변환 2회, 인증된 편집기 연결·원본 전달, 수정본 저장과 같은 스레드의 PDF/PNG 완료를 확인했다. 공개 경로 점검은 `/editor/`·`/studio/`를 사용한다. `/healthz`는 Google Frontend에서 404를 반환했고, 공식 문서도 일부 `z`로 끝나는 [예약 URL 경로](https://docs.cloud.google.com/run/docs/known-issues#reserved-url-paths)를 피하도록 안내한다. 컨테이너 내부의 로컬 healthcheck와 구분한다.
 
 복구 대상은 ingress `rhwp-ingress-00011-l6z`, worker `rhwp-worker-00007-jbt`이다. 진행 중 작업을 확인하고 두 서비스의 트래픽을 되돌리되 Firestore namespace를 유지한다. 별도 성능 시험 worker는 검증 후 삭제했다.
+
+### 2026-09-20 편집기 프로그램 로딩 최적화 반영
+
+이 단계에서는 **B: 기존 Cloud Run 호스팅에서 최적화한 편집기**를 반영했다. 현재 운영은 아래 C 전환 절을 따른다. 실행 소스 `c6e609dcf3af0ff2d8f546ac91c3bc015f419121`, ingress `rhwp-ingress-task8-b2` 100%이며 worker `rhwp-worker-00008-6t7`은 유지했다. ingress 1CPU·1GiB·min1/max1·동시4, worker 2CPU·4GiB·min0/max1·동시1, 예산·권한·namespace를 바꾸지 않았다.
+
+프로그램 JS/WASM/글꼴은 버전 URL·압축·브라우저 캐시를 사용한다. 문서 정보 조회의 중복 원본 다운로드를 없애고, 티켓 교환 후 Studio 초기화와 권한이 확인된 원본 요청을 병렬로 진행한다. 문서·티켓·세션·저장 응답은 계속 no-store다. 캐시를 사용해도 편집기 인스턴스와 문서 상태는 새 창마다 별도로 만든다.
+
+같은 클라이언트에서 각 조건 3회 측정한 편집 준비 중앙값은 최초 10.818→5.610초, 동일 문서 재접속 10.396→4.557초, 다른 문서 재접속 12.094→4.059초였다. 서버 warm·브라우저 cache cold/warm 조건이며 Slack 카드 클릭부터의 전체 시간이나 서버 cold start를 뜻하지 않는다. [비교 조건과 수용 결과](../mydocs/working/task_m010_8_stage5.md).
+
+당시 Cloudflare Pages C는 비교 주소 `https://rhwp-slack-editor-lab.pages.dev`에만 남겼다. B 대비 일관된 추가 속도 이점이 없어 운영 `EDITOR_ORIGIN`은 설정하지 않았다. C의 API용 `editor-b` tag는 기본 트래픽 0%이며 별도 최소 인스턴스를 추가하지 않는다. 공개 프로그램만 배포하는 절차·CORS·자산 버전 계약은 [정적 호스팅 문서](static-hosting.md)를 따른다.
+
+B 초기 배포의 복구 대상은 ingress `rhwp-ingress-00012-6hv`였다. 현재 C의 즉시 복구 대상은 아래 `task8-b2`다. worker는 그대로 유지하며, ingress 트래픽만 이전 revision으로 되돌린다. Slack 주소·Firestore namespace·문서 기록은 변경하지 않는다. 복구 명령은 `gcloud run services update-traffic rhwp-ingress --project rhwp-slack-postmelee --region us-central1 --to-revisions rhwp-ingress-00012-6hv=100`이다. 열려 있던 구버전 창에서 자산을 찾지 못하면 Slack 카드에서 새 편집 창을 연다. 실제 운영 rollback을 실행한 것은 아니며 이전 revision·설정과 HTTP 버전 계약을 검증했다.
+
+### 2026-09-20 Pages C 운영 전환 (현재)
+
+현재 편집기 프로그램은 **Cloudflare Pages**, 인증·문서 전달·저장은 **Cloud Run**, PDF/PNG 변환은 기존 비공개 worker가 담당한다. C의 일관된 속도 우위가 확인된 것은 아니다. 공개 프로그램 전송을 Cloud Run에서 분리하는 비용 구조를 선택했으며 실제 월 절감액은 운영 관찰 대상이다.
+
+| 구성 | 현재 값 |
+|---|---|
+| Pages 고정 origin | `https://rhwp-slack-editor.pages.dev` |
+| Pages deployment | `30c658f9-ca1e-4584-9372-8a5a189cb452` |
+| Cloud Run APP_ORIGIN·Slack 수신 주소 | `https://rhwp-ingress-aaj47f2u5q-uc.a.run.app` 유지 |
+| ingress | `rhwp-ingress-task8-c1` 100%, `EDITOR_ORIGIN`은 위 Pages origin |
+| worker | `rhwp-worker-00008-6t7` 100% 유지 |
+| 실행 소스·이미지 | `c6e609d` · `sha256:cecce003ca327ca3cc8660bc1a7d02fd2e08db82b8a13890d702a8f5b2d61ebd` |
+
+Slack Work Object Previews의 embeds 허용 목록에 `rhwp-slack-editor.pages.dev`를 추가했다. OAuth scope·서버 사양·min/max·동시성·예산·Firestore namespace는 유지한다. Pages에는 공개 프로그램만 배포하며 API/문서/비밀값/Functions가 없다. 원본과 산출물은 Slack에 보관하고 권한·문서 연결 정보는 기존 API/Firestore가 처리한다.
+
+B→C→B→C 트래픽 전환, B와 C에서 기존 편집본 재진입, C 실제 Slack 웹/데스크톱 편집·저장·동일 스레드 PDF/PNG 완료를 확인했다. 증거·한계는 [Stage 6](../mydocs/working/task_m010_8_stage6.md)에 있다. `editor-b`와 `editor-c` tag에 별도 최소 인스턴스는 설정하지 않는다.
+
+C의 즉시 복구는 ingress 트래픽만 B2로 돌린다. worker·DB·Slack 수신 URL은 유지한다.
+
+```sh
+gcloud run services update-traffic rhwp-ingress --project rhwp-slack-postmelee --region us-central1 --to-revisions rhwp-ingress-task8-b2=100
+# C로 재전환
+gcloud run services update-traffic rhwp-ingress --project rhwp-slack-postmelee --region us-central1 --to-revisions rhwp-ingress-task8-c1=100
+```
+
+B로 복구하면 새로 연 편집기는 Cloud Run에서 제공된다. 이미 열려 있던 Pages 창은 Origin 검사가 거절될 수 있으므로 Slack 카드에서 다시 연다. 서버 복구는 브라우저의 미저장 변경을 보존하는 기능이 아니다. Pages 프로그램 갱신·복구는 [정적 호스팅 문서](static-hosting.md)를 따른다.
 
 ### 복구 주의
 

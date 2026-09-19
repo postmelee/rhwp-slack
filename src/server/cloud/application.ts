@@ -57,7 +57,7 @@ export class CloudApplication {
   }
   async present(id:string,actor:Actor,triggerId:string):Promise<void>{
     const card=await this.authorize(id,actor),ticket=await this.sessions.issue(id,actor);
-    await this.api.call('entity.presentDetails',{trigger_id:triggerId,metadata:documentMetadata(card,this.config.publicOrigin!,`${this.config.publicOrigin}/editor/#ticket=${ticket}`)});
+    await this.api.call('entity.presentDetails',{trigger_id:triggerId,metadata:documentMetadata(card,this.config.publicOrigin!,`${this.config.editorOrigin??this.config.publicOrigin}/editor/#ticket=${ticket}`)});
   }
   async matchesUrl(id:string,url:unknown):Promise<boolean>{
     const card=await this.store.get<CloudCard>('cards',id);

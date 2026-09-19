@@ -1,13 +1,14 @@
 import { defineConfig } from 'vite';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {staticVersion} from '../scripts/static-version.mjs';
 const root = resolve('.cache/studio-source/rhwp-studio');
 const replaceOnce = (code: string, from: string, to: string): string => {
   if (code.split(from).length !== 2) throw new Error(`Studio overlay anchor changed: ${from}`);
   return code.replace(from, to);
 };
 export default defineConfig({
-  root, base: '/studio/', publicDir: resolve('.cache/studio-public'),
+  root, base: '/static/'+staticVersion()+'/studio/', publicDir: resolve('.cache/studio-public'),
   define: { __APP_VERSION__: JSON.stringify('0.8.6'), __RHWP_DISABLE_EXTERNAL_WEBFONTS__: true, __RHWP_HWPCTRL__: true },
   resolve: { alias: {
     '@': resolve(root,'src'),

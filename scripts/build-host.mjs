@@ -7,7 +7,7 @@ for (const folder of ['viewer', 'dev-viewer']) rmSync(resolve('dist', folder), {
 const surface='editor';
 await build({
   configFile:'vite.config.ts', mode:dev?'development':'production',
-  root:`src/${surface}`, base:`/${surface}/`,
+  root:`src/${surface}`, ...(dev?{base:`/${surface}/`}:{}),
   build:{outDir:resolve(`dist/${dev?'dev-':''}${surface}`),emptyOutDir:true},
 });
 // Bundle the pinned upstream print DOM helpers for the isolated converter.
@@ -18,3 +18,5 @@ await build({configFile:false,publicDir:false,build:{
 
 // Run after the print bundle, which clears this build directory.
 await import('./build-conversion.mjs');
+
+await import('./build-static.mjs');
