@@ -50,7 +50,7 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
   const preparations=new Preparations(config,api,{download:options.download,now:options.now,notify,state,registered:job=>reactions.register(job.id,job.actor),started:async job=>{void reactions.start(job.id);}});
   const documents=config.publicOrigin?new Documents(config,api,preparations,{...options,state,complete:card=>reactions.finish(card.id,card.pdf==='ready'&&card.imageState==='ready')}):undefined;
   const saves=documents?new Saves(documents,options.now,state):undefined;
-  if(documents&&saves)receiver.router.use(editorRoutes(config.publicOrigin!,documents,saves));
+  if(documents&&saves)receiver.router.use(editorRoutes(config.publicOrigin!,documents,saves,config.editorOrigin));
   const actor=(team:unknown,user:unknown,channel:unknown):Actor=>{
     if(typeof team!=='string'||typeof user!=='string'||typeof channel!=='string')denied();
     const result={teamId:team,userId:user,channelId:channel};assertActor(config,result);return result;
