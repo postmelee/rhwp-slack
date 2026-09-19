@@ -26,13 +26,13 @@ Studio는 자체 호스팅 SDK iframe입니다. 호스트가 인증 API에서 �
 
 | 경로 | 입력·인증 | 결과 |
 | --- | --- | --- |
-| POST `/api/editor/exchange` | JSON ticket, APP_ORIGIN과 일치하는 Origin | 메모리 bearer token |
+| POST `/api/editor/exchange` | JSON ticket, APP_ORIGIN 또는 지정된 EDITOR_ORIGIN과 일치하는 Origin | 메모리 bearer token |
 | GET `/api/editor/document` | Authorization Bearer | 파일명·형식 |
 | GET `/api/editor/source` | Authorization Bearer | 권한 확인 후 원본 bytes |
 | POST `/api/editor/save` | Bearer, Origin, octet-stream, X-Save-Request-Id(UUID v4), X-Document-Format | 새 파일 저장 영수증과 PDF 상태 |
 | GET `/api/editor/saves/:requestId` | 동일 세션 Bearer | 그 저장 요청의 결과 |
 
-POST는 정확한 Origin을 요구합니다. GET은 bearer로 인증하고 Origin이 있으면 일치 여부를 검사합니다. query token·cookie·CORS 우회 경로를 제공하지 않습니다. 모든 API는 no-store/no-referrer를 적용합니다. production 정적 자산은 문서를 포함하지 않으며 CSP frame-ancestors는 자체 host와 Slack 조상을 허용합니다. 중첩 Studio SDK를 위해 Slack embeds의 allow-same-origin 설정이 필요합니다.
+POST는 정확한 Origin을 요구합니다. GET은 bearer로 인증하고 Origin이 있으면 일치 여부를 검사합니다. query token·cookie 인증을 제공하지 않습니다. 별도 정적 호스팅은 지정한 단일 EDITOR_ORIGIN의 CORS만 허용합니다. 모든 API는 no-store/no-referrer를 적용합니다. production 정적 자산은 문서를 포함하지 않으며 CSP frame-ancestors는 자체 host와 Slack 조상을 허용합니다. 중첩 Studio SDK를 위해 Slack embeds의 allow-same-origin 설정이 필요합니다.
 
 ## ticket·세션·접근
 
@@ -69,3 +69,7 @@ Cloud worker는 같은 파서·print DOM에서 PDF를 먼저 생성하고 페이
 
 
 변환 환경은 서버 인스턴스 내에서 재사용합니다. 컴파일된 WASM과 고정 자산만 child에 보관하고 문서별 thread·WASM 메모리·browser context는 종료합니다. 실행 포함 대기 요청은 4개, 실제 변환은 1개입니다. 성공 20회·직전 측정 child RSS 768MiB 초과·자산 버전 변경 시 다음 작업 전에 교체하며 idle 5분 또는 오류/취소/제한시간 초과 시 폐기합니다. 메모리 수치는 browser 전체를 포함하지 않으며 컨테이너 4GiB 제한과 함께 사용합니다. Cloud Run이 idle CPU를 멈추면 idle timer 실행도 지연될 수 있습니다. 재사용은 계속 살아 있는 인스턴스에 한정되며 새 인스턴스/배포에서는 다시 준비합니다.
+
+## 편집기 로딩과 정적 호스팅
+
+프로그램 자산은 버전별 HTTP 캐시로 재사용하고, Studio 초기화와 인증된 metadata/source 조회를 병렬로 실행합니다. metadata는 원본을 내려받지 않습니다. 선택적인 Pages 분리·정확한 Origin·배포와 rollback 절차는 [정적 호스팅 문서](static-hosting.md)를 따릅니다. 문서·API 응답은 계속 no-store이고 복구/최근 문서 기능을 활성화하지 않습니다.
