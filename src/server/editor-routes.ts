@@ -34,7 +34,7 @@ export function editorRoutes(origin:string,documents:EditorDocuments,saves:Edito
         const match=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization??'');if(!match)denied();
         const s=await documents.sessions.require(match[1]);
         if(path==='/api/editor/document'&&req.method==='GET'){
-          const card=await documents.authorize(s.cardId,s.actor);await documents.ensureSource(s.cardId,s.actor);json({name:card.name,format:/\.hwpx$/i.test(card.name)?'hwpx':'hwp'});return;
+          const card=await documents.authorize(s.cardId,s.actor);json({name:card.name,format:/\.hwpx$/i.test(card.name)?'hwpx':'hwp'});return;
         }
         if(path==='/api/editor/source'&&req.method==='GET'){
           const bytes=await documents.ensureSource(s.cardId,s.actor);

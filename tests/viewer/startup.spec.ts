@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {readFileSync} from 'node:fs';
 const origin='http://127.0.0.1:4174',ticket='t'.repeat(43),bearer='s'.repeat(43);
 test('direct external opening guides the user to the Slack card without loading an empty editor',async({page})=>{
  await page.goto(origin+'/editor/');await expect(page.locator('#reopen')).toContainText('rhwp에서 편집');
@@ -8,6 +9,8 @@ test('a stalled iframe has a deadline and cannot replace recovery guidance with 
  await page.clock.install();
  let release!:()=>void;const gate=new Promise<void>(r=>release=r);
  await page.route(origin+'/api/editor/exchange',route=>route.fulfill({json:{token:bearer}}));
+ await page.route(origin+'/api/editor/document',route=>route.fulfill({json:{name:'문서.hwp'}}));
+ await page.route(origin+'/api/editor/source',route=>route.fulfill({body:readFileSync('tests/fixtures/viewer-two-pages.hwp')}));
  await page.route('**/studio/**',async route=>{await gate;await route.fulfill({contentType:'text/html',body:'<!doctype html><title>late</title>'}).catch(()=>{});});
  try{
   await page.goto(origin+'/editor/#ticket='+ticket,{waitUntil:'domcontentloaded'});
@@ -29,4 +32,19 @@ test('source transfer failure removes the editor and offers a fresh Slack entry'
  await expect(page.locator('#status')).toContainText('문서를 가져오지 못했습니다.',{timeout:60_000});
  await expect(page.locator('#editor iframe')).toHaveCount(0);await expect(page.locator('#reopen')).toBeVisible();
  expect(new URL(page.url()).hash).toBe('');
+});
+
+test('source starts while Studio is blocked, once per open, then loads after both complete',async({page})=>{
+ let release!:()=>void;const gate=new Promise<void>(r=>release=r);let downloads=0;
+ await page.route(origin+'/api/editor/exchange',route=>route.fulfill({json:{token:bearer}}));
+ await page.route(origin+'/api/editor/document',route=>route.fulfill({json:{name:'문서.hwp'}}));
+ await page.route(origin+'/api/editor/source',route=>{downloads++;return route.fulfill({body:readFileSync('tests/fixtures/viewer-two-pages.hwp')});});
+ await page.route('**/studio/?*',async route=>{await gate;await route.continue();});
+ try{
+  await page.goto(origin+'/editor/#ticket='+ticket,{waitUntil:'domcontentloaded'});
+  await expect.poll(()=>downloads).toBe(1);await expect(page.locator('#slack-save')).toHaveCount(0);
+  release();await expect(page.locator('#slack-save button')).toBeVisible({timeout:60_000});expect(downloads).toBe(1);
+  const marks=await page.evaluate(()=>performance.getEntriesByType('mark').filter(e=>e.name.startsWith('rhwp:')).map(e=>({name:e.name,ms:e.startTime})));
+  expect(marks.find(e=>e.name==='rhwp:source-ready')!.ms).toBeLessThan(marks.find(e=>e.name==='rhwp:studio-ready')!.ms);
+ }finally{release();}
 });
