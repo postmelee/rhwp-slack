@@ -5,12 +5,12 @@ GitHub Issue: [#8](https://github.com/postmelee/rhwp-slack/issues/8)
 
 ## 작업 요약
 
-- 대상 이슈 #8, 5개 Stage와 Stage 4.1로 구현·비교·운영 수용을 진행했다.
+- 대상 이슈 #8, 6개 Stage와 Stage 4.1로 구현·비교·운영 수용을 진행했다.
 - 정적 프로그램에 버전 캐시와 압축을 적용하고, 중복 원본 다운로드를 제거하며 Studio 초기화와 문서 요청을 병렬화했다.
-- **기존 Cloud Run을 최적화한 B를 운영에 반영했다.** Pages C는 일관된 추가 성능 이점이 없어 비교 환경으로 유지한다.
+- **운영은 C: Pages 프로그램 + Cloud Run API로 전환했다.** B/C의 속도 차이가 작아 프로그램 전송 비용 분리를 선택했다. 실제 월 절감액은 미측정이다.
 - 서버 사양·변환 worker·엔진·권한·예산을 유지했다. 실제 Slack 웹/데스크톱에서 내부 편집·같은 스레드 저장·PDF/PNG 완료를 확인했다.
 
-실행 소스: `c6e609dcf3af0ff2d8f546ac91c3bc015f419121`. 이후 커밋은 문서다. 운영 ingress `rhwp-ingress-task8-b2`, worker `rhwp-worker-00008-6t7`; 각 100%. 전체 조건·원시 수치·cost 지표·receipt 경로는 [Stage 5](../working/task_m010_8_stage5.md)에 있다.
+실행 소스: `c6e609dcf3af0ff2d8f546ac91c3bc015f419121`. 이후 커밋은 문서다. 운영 ingress `rhwp-ingress-task8-c1`, worker `rhwp-worker-00008-6t7`; 각 100%. 비교 수치는 [Stage 5](../working/task_m010_8_stage5.md), 최종 C 배포·실제 Slack·복구 증거는 [Stage 6](../working/task_m010_8_stage6.md)에 있다.
 
 ## 변경 파일 목록과 영향 범위
 
@@ -21,7 +21,7 @@ GitHub Issue: [#8](https://github.com/postmelee/rhwp-slack/issues/8)
 | `src/editor/main.ts`, `src/server/editor-routes.ts` | 중복 원본 다운로드 제거·병렬 준비·실패 취소·mark | 편집기 초기 로딩 |
 | `config.ts`, `documents.ts`, `editor-policy.ts`, `scripts/export-pages.mjs` | 고정 API origin·정확한 CORS·CSP·Pages export | 선택적 정적 호스팅 분리 |
 | `tests/security/*`, `tests/viewer/*`, `scripts/benchmark-editor.mjs` | 캐시·권한·새 창·병렬·교차 origin·계측 | 회귀와 성능 측정 |
-| `.env.example`, `docs/architecture.md`, `docs/static-hosting.md`, `docs/cloud-run.md` | 배포·인증/문서 처리·현재 B·복구 절차 | 제품 운영 문서 |
+| `.env.example`, `docs/architecture.md`, `docs/static-hosting.md`, `docs/cloud-run.md` | 배포·인증/문서 처리·현재 C·복구 절차 | 제품 운영 문서 |
 | `mydocs/plans`, `mydocs/working`, 본 보고서·오늘할일 | 승인된 범위와 검증 증거 연결 | 작업 기록 |
 
 ## 문서 위치 검증
@@ -55,13 +55,13 @@ B 비교 revision의 22분 관찰 창에서 활성 billable time 60.9초·인터
 | 수용 기준 | 결과 |
 |---|---|
 | 선행 #2/#10과 기준 A 고정 | OK — #11 merge cef52f1, 운영 소스/이미지/revision을 Stage 1에 고정 |
-| A/B/C 비교와 판정 | OK(측정 범위 한정) — 27/27 준비·전송·API/초기화 기록. B 선택, C lab 유지 |
-| 실제 Slack 웹/데스크톱 | OK — 내부 열기·편집·같은 원본 스레드 수정본 4/5·PDF/PNG 완료. 웹의 Slack 기본 PDF 뷰어도 확인 |
+| A/B/C 비교와 판정 | OK(측정 범위 한정) — 27/27 준비·전송·API/초기화 기록. 성능 비교 후 프로그램 전송 비용 분리를 위해 C 선택 |
+| 실제 Slack 웹/데스크톱 | OK — 내부 열기·편집·같은 원본 스레드 수정본 4/5(B) 및 7/8(C)·PDF/PNG 완료. Slack 기본 PDF 뷰어는 B 단계에서 확인 |
 | HWPX·긴 HWP | OK — 2/69페이지 편집기 열기와 실제 PDF/PNG 작업 attempt 1 완료 |
 | 보안 경계 | OK — 기존 권한/티켓/사용자·workspace 격리 회귀 + 정확한 Origin 거부 |
 | 공개 프로그램만 캐시 | OK — 새 창 문서 없음·JS/WASM/WOFF2 재사용·비공개 no-store·manifest 밖 404 |
-| 버전 갱신·복구 | 부분 검증 — legacy 재검증/다른 버전 거부/기존 카드 재진입/이전 revision 설정 확인. 운영 트래픽 rollback 실험 미실행 |
-| 비용·병목·운영 결정 | OK(추정 범위 명시) — B/C 혼합 서버 지표와 전송 비교, 월 순청구 미측정, B 운영 선택 |
+| 버전 갱신·복구 | OK(범위 명시) — legacy 재검증/다른 버전 거부 회귀, B→C→B→C 실제 트래픽 전환·기존 편집본 재진입 |
+| 비용·병목·운영 결정 | OK(추정 범위 명시) — B/C 혼합 서버 지표와 전송 비교, 월 순청구 미측정, C 운영 선택 |
 
 ### 자동·원격 검증
 
@@ -70,7 +70,7 @@ B 비교 revision의 22분 관찰 창에서 활성 billable time 60.9초·인터
 - typecheck, unit 9, Slack 81, security 30 통과.
 - viewer 25개 기대 결과 충족(기존 엔진 mixed-format undo의 기대 실패 정책 포함), conversion 9 통과.
 - canonical Dockerfile smoke/release, 네트워크 격리 합성 Slack, 운영과 같은 2CPU/4GiB 서버 PDF 통과.
-- Stage 5·최종 보고서 변경은 문서뿐이며 제품 코드에 이전 결과를 적용해도 소스 차이가 없다. 최종 PR head의 자동 CI 상태는 PR Checks가 정본이다.
+- Stage 5–6·최종 보고서 변경은 문서뿐이며 제품 코드에 이전 결과를 적용해도 소스 차이가 없다. 최종 PR head의 자동 CI 상태는 PR Checks가 정본이다.
 
 배포 이미지는 로컬 canonical AMD64 release 앱 산출물을 기존 운영 OS/의존성 이미지 위에 복사한 것이다. native Linux CI는 같은 소스를 별도로 검증했다. Mac ARM AMD64 에뮬레이션 smoke의 Go panic을 통과로 취급하지 않았다.
 
@@ -82,12 +82,13 @@ B 비교 revision의 22분 관찰 창에서 활성 billable time 60.9초·인터
 - [Stage 4.1](../working/task_m010_8_stage4.1.md): API origin·CORS/CSP·Pages exporter·교차 origin 저장.
 - [Stage 4](../working/task_m010_8_stage4.md): 실제 Pages 배포·identity 일치·원격 HTTP·Linux CI.
 - [Stage 5](../working/task_m010_8_stage5.md): 비교·비용·운영 B·실제 Slack·복구 범위.
+- [Stage 6](../working/task_m010_8_stage6.md): 운영 C·Slack 웹/데스크톱 편집·저장·B/C 복구 실증.
 
 ## 잔여 위험과 후속 작업
 
 ### 잔여 위험
 
-- 운영 rollback 실험과 C의 실제 Slack embeds는 미실행이다. C를 운영에 연결하기 전 후자는 필요하다.
+- C 운영 전환과 실제 Slack embeds·복구 실험을 완료했다. 새 운영 Pages hostname의 n=3 성능 측정은 반복하지 않았고 비교표는 Stage 5의 lab 측정이다.
 - 서버 cold·Slack 카드 클릭부터의 전체 시간·개별 글꼴·월 순청구·69페이지 전수 품질은 이번 검증으로 확정하지 않는다.
 - 데스크톱 UI 자동 타이핑 제어가 불안정해 실제 붙여넣기·저장으로 검증했다. 웹 키보드 입력은 성공했다.
 - 브라우저 캐시가 제거되면 최초 비용이 다시 발생한다. 프로그램 재사용이 문서 영구 저장이나 WASM 실행 인스턴스 공유를 뜻하지 않는다.
@@ -96,10 +97,10 @@ B 비교 revision의 22분 관찰 창에서 활성 billable time 60.9초·인터
 ### 후속 작업 후보
 
 - 인증된 원본 전달/API 단계의 병목을 더 세분화하고 실제 워크스페이스에서 관찰한다.
-- 필요한 유지보수 창에 운영 revision rollback/재전환을 검증한다.
+- 이후 엔진/프로그램 버전 갱신마다 자산 identity와 해당 배포의 수용·복구를 다시 검증한다.
 - 재검토가 끝나면 Pages lab·`editor-b` 비교 tag의 보존 필요성을 판단한다.
 - 월 순청구·사용량은 기존 운영 관찰 #3에서 추적한다. 서버 증설·Marketplace #4는 본 PR 범위 밖이다.
 
 ## 작업지시자 승인 요청
 
-같은 스레드의 #8 구현·계속 진행·원격 push/Linux CI 승인으로 Open PR 게시까지 진행한다. 이번 변경은 **리뷰 대기**이며 #8 병합·이슈 close는 하지 않았다. 구버전/복구 수용의 부분 검증은 이슈에서 미완료로 남겨 리뷰어가 판단할 수 있게 한다.
+같은 스레드의 #8 구현·계속 진행·원격 push/Linux CI 승인으로 Open PR 게시까지 진행한다. 이번 변경은 **리뷰 대기**이며 #8 병합·이슈 close는 하지 않았다. 구버전 HTTP 회귀와 이번 B/C 복구 실증의 범위·한계를 구분해 리뷰어가 판단할 수 있게 한다.

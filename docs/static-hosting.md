@@ -1,5 +1,14 @@
 # 편집기 프로그램 캐시와 정적 호스팅
 
+## 현재 운영 구성 (2026-09-20)
+
+- 프로그램: `https://rhwp-slack-editor.pages.dev`, Pages 프로젝트 `rhwp-slack-editor`.
+- API: `https://rhwp-ingress-aaj47f2u5q-uc.a.run.app`. `APP_ORIGIN`은 이 주소를 유지하고 `EDITOR_ORIGIN`에 위 Pages 주소를 설정한다.
+- Slack embeds 허용 도메인에는 정확한 `rhwp-slack-editor.pages.dev` hostname을 등록한다.
+- 운영 deployment는 `30c658f9-ca1e-4584-9372-8a5a189cb452`, 프로그램 소스는 `c6e609d`다. 배포 도구가 기록한 `1803d1c`는 문서 변경까지 포함한 Git head이며 실행 프로그램 버전과 구분한다.
+- `rhwp-slack-editor-lab.pages.dev`는 이전 비교용이다. 운영 API와 연결된 고정 주소를 새 배포에서도 유지한다.
+- 현재 리비전과 실행 검증·복구 명령은 [Cloud Run 운영 문서](cloud-run.md)에 있다.
+
 ## 기본 구성
 
 `APP_ORIGIN`의 Cloud Run 서버가 `/editor/`, `/studio/` 및 인증 API를 제공한다. `EDITOR_ORIGIN`이 없으면 이 구성을 유지한다.
@@ -40,7 +49,7 @@ Exporter는 [Pages 파일 한도](https://developers.cloudflare.com/pages/platfo
 
 1. 동일한 소스·pin·lockfile로 컨테이너와 Pages 자산을 만들고 identity SHA-256이 같은지 확인한다.
 2. 운영 트래픽 0%의 Cloud Run tag에서 API와 Pages C를 검증한다. 기존 운영 revision/worker/사양/예산을 유지한다. 테스트 tag에 별도의 min instance를 추가하지 않는다.
-3. 실제 Slack 웹/데스크톱 embed 허용 도메인과 CSP ancestor를 확인한다. 외부 브라우저 단독 성공은 Slack 내장 편집 성공의 증거가 아니다.
+3. 실제 Slack 웹/데스크톱의 embed 허용 목록에 정확한 EDITOR_ORIGIN hostname을 등록하고 CSP ancestor를 확인한다. 외부 브라우저 단독 성공은 Slack 내장 편집 성공의 증거가 아니다.
 4. 새 session의 edit/save, 만료·재사용 ticket·권한 회수·다른 origin·틀린 세션 및 같은 스레드 PDF/PNG를 확인한다.
 5. 비교 tag의 `APP_ORIGIN`을 운영 배포에 그대로 복사하지 않는다. 운영용 새 revision은 실제 Slack 수신 주소를 `APP_ORIGIN`으로 복원한 후 전환한다. B/C 실측과 운영 복잡성을 보고 선택한다. C가 실익이 없으면 `EDITOR_ORIGIN`을 제거하고 기본 호스팅을 유지한다. `APP_ORIGIN`은 Slack 수신 URL/문서 연결 원본이므로 Pages 주소로 바꾸지 않는다.
 6. 복구 시 ingress 이미지/revision과 Pages deployment를 맞춰 되돌린다. 이미 열려 있던 구버전이 아직 받지 못한 파일을 새 배포에서 찾을 수 없으면 Slack 카드에서 새로 연다. 인증 ticket을 URL query나 고정 링크로 바꿔 복구하지 않는다.

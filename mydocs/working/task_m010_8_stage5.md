@@ -3,6 +3,8 @@
 GitHub Issue: [#8](https://github.com/postmelee/rhwp-slack/issues/8)
 구현계획서: [task_m010_8_impl.md](../plans/task_m010_8_impl.md)
 Stage: 5
+
+> 이 보고서는 B 수용 시점의 기록이다. 이후 승인한 C 운영 전환·실제 Slack 검증·rollback 결과는 [Stage 6](task_m010_8_stage6.md)을 따른다.
 검증일: 2026-09-20 KST (원격 측정 시각은 UTC)
 
 ## 단계 목적
