@@ -97,9 +97,19 @@ node --import tsx scripts/migrate-cloud-state.ts \
 
 ### 2026-09-18 동일 사양 성능 개선 반영
 
-실행 소스 b079981, ingress `rhwp-ingress-00011-l6z`와 worker `rhwp-worker-00007-jbt`에 각각 100% 트래픽을 보낸다. 사양·예산·권한·namespace는 그대로다. 실제 Slack에서 PDF·이미지 보기와 Studio 수정·같은 스레드 저장을 확인했다. 이미지 digest와 검증 조건은 [최종 보고서](../mydocs/report/task_m010_2_report.md)에 기록했다.
+당시 실행 소스 b079981을 ingress `rhwp-ingress-00011-l6z`와 worker `rhwp-worker-00007-jbt`에 반영했다. 사양·예산·권한·namespace는 그대로다. 실제 Slack에서 PDF·이미지 보기와 Studio 수정·같은 스레드 저장을 확인했다. 이미지 digest와 검증 조건은 [최종 보고서](../mydocs/report/task_m010_2_report.md)에 기록했다.
 
 이 배포의 복구 대상은 ingress `rhwp-ingress-00009-btj`, worker `rhwp-worker-00006-m9v`이다. 진행 중 작업과 큐를 확인한 뒤 두 서비스의 트래픽을 이전 리비전으로 되돌리고, 같은 Firestore namespace를 유지한다. 이전 코드의 재시도 UI는 다르므로 미완료 작업을 점검한다.
+
+### 2026-09-20 첫 이미지 게시·변환 환경 재사용 반영
+
+현재 실행 소스 `93943c7`, ingress `rhwp-ingress-00012-6hv`와 worker `rhwp-worker-00008-6t7`에 각각 100% 트래픽을 보낸다. CPU·메모리·min/max·동시 요청·PNG 업로드 동시 수 1·예산·권한·namespace는 유지했다. 이미지와 동일 사양 측정은 [Task #10 운영 수용 보고서](../mydocs/working/task_m010_10_stage5.md)에 기록했다.
+
+PDF 게시를 기다리지 않고 PNG를 게시하며, 살아 있는 worker의 브라우저·컴파일된 WASM·고정 자산을 재사용한다. 짧은 문서의 반복 요청은 개선됐지만 69페이지의 전체 첫 이미지 게시 시간은 약 45초로 비슷했다. cold/반복 조건과 Slack 업로드 지연을 구분해 판단한다.
+
+운영 합성 변환 2회, 인증된 편집기 연결·원본 전달, 수정본 저장과 같은 스레드의 PDF/PNG 완료를 확인했다. 공개 경로 점검은 `/editor/`·`/studio/`를 사용한다. `/healthz`는 Google Frontend에서 404를 반환했고, 공식 문서도 일부 `z`로 끝나는 [예약 URL 경로](https://docs.cloud.google.com/run/docs/known-issues#reserved-url-paths)를 피하도록 안내한다. 컨테이너 내부의 로컬 healthcheck와 구분한다.
+
+복구 대상은 ingress `rhwp-ingress-00011-l6z`, worker `rhwp-worker-00007-jbt`이다. 진행 중 작업을 확인하고 두 서비스의 트래픽을 되돌리되 Firestore namespace를 유지한다. 별도 성능 시험 worker는 검증 후 삭제했다.
 
 ### 복구 주의
 
