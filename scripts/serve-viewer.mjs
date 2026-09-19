@@ -27,6 +27,7 @@ createServer(async (req,res) => {
       res.setHeader('Content-Type','text/html');
       res.end('<!doctype html><html><head><title>Slack sandbox test</title></head><body style="margin:0"><iframe title="문서 편집기" sandbox="allow-scripts allow-same-origin" src="/editor/" style="width:100vw;height:100vh;border:0"></iframe></body></html>'); return;
     }
+    if(path.startsWith('/static/')){const {staticAssets}=await import('../src/server/static-assets.ts');await staticAssets()(req,res,path);return;}
     if (!path.startsWith('/studio/') && !path.startsWith('/editor/')) { res.writeHead(404).end(); return; }
     const mount = path.startsWith('/studio/') ? resolve('dist/studio') : resolve(dev?'dist/dev-editor':'dist/editor');
     const file = resolve(mount, decodeURIComponent(path.slice(8) || 'index.html'));

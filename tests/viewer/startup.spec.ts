@@ -8,7 +8,7 @@ test('a stalled iframe has a deadline and cannot replace recovery guidance with 
  await page.clock.install();
  let release!:()=>void;const gate=new Promise<void>(r=>release=r);
  await page.route(origin+'/api/editor/exchange',route=>route.fulfill({json:{token:bearer}}));
- await page.route(origin+'/studio/**',async route=>{await gate;await route.fulfill({contentType:'text/html',body:'<!doctype html><title>late</title>'}).catch(()=>{});});
+ await page.route('**/studio/**',async route=>{await gate;await route.fulfill({contentType:'text/html',body:'<!doctype html><title>late</title>'}).catch(()=>{});});
  try{
   await page.goto(origin+'/editor/#ticket='+ticket,{waitUntil:'domcontentloaded'});
   await expect(page.locator('#editor iframe')).toHaveCount(1);await expect(page.locator('#status')).toContainText('편집기를 준비');

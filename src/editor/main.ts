@@ -67,7 +67,7 @@ async function initialize():Promise<void>{
   if (editorTicket) bearer = (await (await api('exchange', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ticket:editorTicket})})).json()).token;
   setStatus('rhwp 편집기를 준비하고 있습니다.','loading');
   studio = await startup.run(()=>createStudio('#editor', {
-    studioUrl: new URL('/studio/?chrome=embed', location.origin).href,
+    studioUrl: new URL(__STUDIO_BASE__+'?chrome=embed', location.origin).href,
     plugins: ['hwpctrl'], requestTimeoutMs: 60_000, handshakeTimeoutMs: 10_000,
   }),late=>late.destroy());
   studio.element.title = 'rhwp-studio 문서 편집기';
