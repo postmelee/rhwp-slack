@@ -40,11 +40,21 @@ jobs:
           --shm-size=256m --memory=4g --cpus=2 --pids-limit=256
           --cap-drop=ALL --security-opt=no-new-privileges
           rhwp-slack:smoke node scripts/container-smoke.mjs --server-only
+      - name: Prepare synthetic evidence directory
+        run: install -d -m 0777 container-evidence
       - name: Test isolated runtime with synthetic Slack
         run: >-
           docker run --rm --init --network none --read-only
           --tmpfs /tmp:rw,nosuid,nodev,size=512m,mode=1777
           --shm-size=256m --memory=4g --cpus=2 --pids-limit=256
           --cap-drop=ALL --security-opt=no-new-privileges
+          --mount type=bind,source=${{ github.workspace }}/container-evidence,target=/evidence
+          --env RHWP_SMOKE_EVIDENCE=/evidence
           rhwp-slack:smoke
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: container-synthetic-evidence
+          path: container-evidence/
+          retention-days: 7
       - run: docker build --target release -t rhwp-slack:release .
