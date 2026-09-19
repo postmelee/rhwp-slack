@@ -34,7 +34,7 @@ B/C의 58개 JS/WASM/글꼴 등 identity 파일은 SHA-256 전수 일치한다. 
 - B/C 각각 브라우저 신규/반복/다른 문서 3회씩 9/9 편집 준비 성공. A 포함 상세 비교는 Stage 5에 정리한다. 서버 warm 조건이며 B의 측정 구간 `cloud_ready`는 한 번이었다.
 - [Linux CI 35459270890](https://github.com/postmelee/rhwp-slack/actions/runs/35459270890): c6e609d의 viewer/container 모두 성공. canonical Dockerfile 빌드, 2CPU/4GiB 서버 PDF, 격리 runtime/합성 Slack, release 빌드 통과.
 - Mac ARM의 AMD64 에뮬레이션 smoke에서는 esbuild Go 프로세스가 비정상 주소/할당 panic으로 실패했다. 이를 코드 통과로 처리하지 않았고 위 native Linux 결과로 배포 플랫폼 검증을 완료했다.
-- 배포 이미지의 OS/Node/의존성은 기존 운영 이미지 기반이다. 성공한 canonical Linux 빌드의 앱 산출물만 계층으로 복사했다. lockfile/Studio pin은 기준과 같으며 큰 OS 계층 업로드 연결 끊김을 피했다. 소스·자산 일치와 실제 GCP 실행은 별도로 검증했다.
+- 배포 이미지의 OS/Node/의존성은 기존 운영 이미지 기반이다. 로컬의 canonical Dockerfile로 빌드한 AMD64 release에서 앱 산출물만 계층으로 복사했다. native Linux CI는 동일 소스를 별도로 빌드·검증했으며, 배포 이미지를 CI에서 다운로드한 것은 아니다. lockfile/Studio pin은 기준과 같으며 큰 OS 계층 업로드 연결 끊김을 피했다. 소스·자산 일치와 실제 GCP 실행은 별도로 검증했다.
 
 ## 잔여 위험
 
