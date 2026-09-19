@@ -73,3 +73,11 @@ Cloud worker는 같은 파서·print DOM에서 PDF를 먼저 생성하고 페이
 ## 편집기 로딩과 정적 호스팅
 
 프로그램 자산은 버전별 HTTP 캐시로 재사용하고, Studio 초기화와 인증된 metadata/source 조회를 병렬로 실행합니다. metadata는 원본을 내려받지 않습니다. 선택적인 Pages 분리·정확한 Origin·배포와 rollback 절차는 [정적 호스팅 문서](static-hosting.md)를 따릅니다. 문서·API 응답은 계속 no-store이고 복구/최근 문서 기능을 활성화하지 않습니다.
+
+## 편집 API 시간 측정과 원본 조회
+
+`/api/editor/` 요청마다 무작위 `runId`를 만들고 고정 operation(`exchange`, `document`, `source`, `save`, `save_status`, `preflight`, `other`)으로 시작/종료를 기록합니다. 같은 context의 Slack 메서드·Firestore get/list/atomic·권한 확인·다운로드는 고정 stage 이름으로 측정합니다. URL·쿼리·헤더·본문·파일명·사용자/워크스페이스/채널/파일 ID·DB 키/내용·오류 원문은 계측에 전달하지 않습니다. 계측 sink 실패는 요청 결과를 바꾸지 않습니다.
+
+API 시간은 서버 handler가 끝날 때까지이며 사용자 기기의 전체 다운로드 시간이 아닙니다. 종료 RSS는 프로세스 전체 값입니다. 중첩 stage 시간은 겹치므로 합산하지 않습니다. Slack 메서드 시간과 Firestore 논리 연산 시간에는 내부 대기·재시도가 포함되며 각각 실제 HTTP 전송 횟수·Firestore 과금 read 수를 뜻하지 않습니다. trace 밖의 호출에는 상세 기록을 만들지 않습니다.
+
+Cloud Run의 `ensureSource`는 같은 함수 호출의 최초 권한 확인이 반환한 파일 정보를 다운로드에 재사용합니다. 다운로드 뒤에는 카드·채널 정책·요청자 멤버십·파일 공유·수정본의 최초 원본 접근을 새로 확인하고 내용 해시를 대조합니다. 요청 간 권한이나 원본 bytes를 캐시하지 않습니다. 합성 호출 수 비교와 실제 클라우드 시간/요금 측정의 범위는 [Task #13 보고서](../mydocs/report/task_m010_13_report.md)를 따릅니다.
