@@ -120,7 +120,7 @@ HWPX·69페이지 작업은 요청 제출→완료 관찰까지 각각 44,137ms�
 |---|---|
 | `npm run typecheck`, `npm test` | 통과, unit 9 |
 | `npm run test:slack`, `npm run test:security` | Slack 81·security 30 통과 |
-| `npm run test:viewer` | viewer 25 통과·기존 upstream mixed-format undo 기대 실패 1, conversion 9 통과 |
+| `npm run test:viewer` | viewer 25개 기대 결과 충족(기존 upstream mixed-format undo의 기대 실패 정책 포함), conversion 9 통과 |
 | canonical Linux Docker smoke/release | 빌드·2CPU/4GiB PDF·네트워크 격리 합성 Slack runtime 통과 |
 | 권한/캐시/Origin | 매 요청 권한 회수·티켓 만료/재사용·사용자/워크스페이스 격리·정확한 Origin·비공개 no-store 유지 |
 | 새 창·이전 버전 | 새 편집기는 문서 없음; JS/WASM/WOFF2 캐시 재사용; legacy HTML 재검증, 없는 버전 404 no-store |
