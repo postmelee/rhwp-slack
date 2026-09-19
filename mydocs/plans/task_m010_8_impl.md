@@ -123,3 +123,14 @@ Linux CI, 실제 Slack 웹/데스크톱, 비용/전송/편집 시간·보안·�
 ## 승인 요청 사항
 
 같은 스레드의 #8 진행 승인으로 위 합의된 범위의 단계 작업을 진행한다. 범위·예산·권한 확대는 포함하지 않는다.
+
+## Stage 6 — Pages C 운영 전환 (2026-09-20 추가 승인)
+
+작업지시자가 비용·공개 배포 관점의 C 권장안을 확인한 뒤 “C 방식으로 전환할 수 있어?”로 실행을 요청했다. Stage 5의 B 선택을 이 후속 단계에서 C로 전환한다. 별도 기능 이슈나 브랜치를 만들지 않고 열린 #8 / PR #12에 반영한다.
+
+1. 기존 B 운영 revision·worker·Pages lab을 복구 기준으로 보존한다. 이미 검증한 동일 이미지·프로그램 namespace로 운영 Pages 프로젝트 `rhwp-slack-editor`를 준비한다. API 주소는 운영 Cloud Run이다.
+2. Slack embed에 정확한 Pages hostname을 추가하고 기존 domain·sandbox 권한을 보존한다. ingress 새 revision에 EDITOR_ORIGIN만 설정한다. 서버 사양·예산·Slack 수신 URL·worker는 유지한다.
+3. HTTP/인증/CORS/자산·독립 브라우저 검사 후 실제 Slack 웹/데스크톱의 내부 편집·같은 스레드 저장·PDF/PNG를 확인한다. B→C→B→C 전환과 기존 카드 재진입을 검증해 복구 항목을 보완한다.
+4. 결과·최종 선택·복구 명령을 `mydocs/working/task_m010_8_stage6.md`, 기존 최종 보고서·`docs/cloud-run.md`·`docs/static-hosting.md`·오늘할일 및 PR/이슈에 갱신한다. 문서 위치는 기존 계획과 같다.
+
+전환 실패 시 B 리비전으로 복구한다. 문서/티켓/세션/토큰은 Pages 정적 산출물에 포함하지 않는다. 기존 사용자 승인 범위로 진행하며 새 권한·비용 설정을 추가하지 않는다.
