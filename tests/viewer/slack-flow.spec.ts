@@ -5,20 +5,24 @@ import {EditorApi} from '../slack/editor-support';
 import {config,actor,bytes} from '../slack/support';
 import {object} from '../../src/server/errors';
 test('production HTTP ticket → real Studio edit → isolated validation → Slack upload adapter → real revision PDF',async({page},testInfo)=>{
+  const phase=async<T>(name:string,run:()=>Promise<T>):Promise<T>=>test.step(name,async()=>{
+    const started=performance.now();console.log(JSON.stringify({event:'smoke_phase_started',phase:name}));
+    try{const result=await run();console.log(JSON.stringify({event:'smoke_phase_finished',phase:name,ok:true,durationMs:Math.round(performance.now()-started)}));return result;}
+    catch(error){console.log(JSON.stringify({event:'smoke_phase_finished',phase:name,ok:false,durationMs:Math.round(performance.now()-started)}));throw error;}
+  });
   const api=new EditorApi(),uploaded=new Map<string,Buffer>();
   const runtime=createSlackReceiver({...config,publicOrigin:'http://127.0.0.1:4176'},api,{botId:'BBOT',botUserId:'UBOT'},
     {download:async()=>bytes,fetcher:async(url,options)=>{uploaded.set(new URL(String(url)).pathname.split('/').pop()!,Buffer.from(options!.body as Uint8Array));return new Response('ok');}});
   await runtime.receiver.start({host:'127.0.0.1',port:4176});
   try{
-    const {id}=runtime.preparations.submit(actor,'FTEST','open','browser');await runtime.preparations.idle();
+    const {id}=runtime.preparations.submit(actor,'FTEST','open','browser');await phase('prepare-original',()=>runtime.preparations.idle());
     await runtime.documents!.present(id,actor,'browser.trigger');
     const metadata=object(api.calls.find(c=>c.method==='entity.presentDetails')!.args.metadata);
     const preview=object(object(object(metadata.entity_payload).attributes).full_size_preview);
-    await page.goto(String(preview.preview_url));await expect(page.locator('#slack-save button')).toBeVisible({timeout:60_000});
+    await phase('open-original',async()=>{await page.goto(String(preview.preview_url));await expect(page.locator('#slack-save button')).toBeVisible({timeout:60_000});});
     const input=page.frameLocator('#editor iframe').getByLabel('문서 편집 입력',{exact:true});await input.focus();await input.pressSequentially('Saved revision ');
-    await expect(page).toHaveTitle(/^\* /);await page.locator('#slack-save button').click();await expect(page).toHaveTitle('문서.hwp · rhwp',{timeout:60_000});
-    await expect(page.locator('#slack-save p')).toHaveText('편집본과 PDF를 Slack에 저장했습니다.',{timeout:60_000});
-    await runtime.documents!.pdf.idle();
+    await phase('save-revision',async()=>{await expect(page).toHaveTitle(/^\* /);await page.locator('#slack-save button').click();await expect(page).toHaveTitle('문서.hwp · rhwp',{timeout:60_000});});
+    await phase('revision-pdf',async()=>{await expect(page.locator('#slack-save p')).toHaveText('편집본과 PDF를 Slack에 저장했습니다.',{timeout:60_000});await runtime.documents!.pdf.idle();});
     const completions=api.calls.filter(c=>c.method==='files.completeUploadExternal');expect(completions).toHaveLength(7);
     for(const call of completions){expect(call.args.channel_id).toBeUndefined();expect(call.args.thread_ts).toBeUndefined();}
     const posts=api.calls.filter(c=>c.method==='chat.postMessage');expect(posts).toHaveLength(2);expect(posts[1].args.thread_ts).toBe('123.456');
@@ -33,13 +37,15 @@ test('production HTTP ticket → real Studio edit → isolated validation → Sl
     await runtime.documents!.present(revisionId,actor,'revision.trigger');
     const latest=api.calls.filter(c=>c.method==='entity.presentDetails').at(-1)!;
     const revisionPreview=object(object(object(object(latest.args.metadata).entity_payload).attributes).full_size_preview);
+    await phase('reopen-revision',async()=>{
     await page.goto('about:blank'); // Opening another Work Object creates a fresh embed.
     await page.goto(String(revisionPreview.preview_url));
     await expect(page.locator('#slack-save button')).toBeVisible({timeout:60_000});
     await expect(page).toHaveTitle('문서_편집본_1.hwp · rhwp');
+    });
     const pngFile=[...api.files.values()].find(f=>String(f.name).endsWith('_편집본_1_01페이지.png'))!;
     const png=uploaded.get(String(pngFile.id))!;expect(png.subarray(0,8).toString('hex')).toBe('89504e470d0a1a0a');writeFileSync(testInfo.outputPath('slack-edited-thumbnail.png'),png);
     expect(runtime.documents!.source(id)).toEqual(bytes);expect(readFileSync('tests/fixtures/viewer-two-pages.hwp')).toEqual(bytes);
     await page.setViewportSize({width:669,height:863});await page.screenshot({path:testInfo.outputPath('slack-production-flow.png')});
-  }finally{await runtime.receiver.stop();await runtime.close();}
+  }finally{await phase('stop-receiver',()=>runtime.receiver.stop());await phase('close-runtime',()=>runtime.close());}
 });
