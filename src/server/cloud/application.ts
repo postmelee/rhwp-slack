@@ -8,7 +8,7 @@ import {DurableTasks,MAX_TASK_ATTEMPTS,type TaskSpec,type TaskContext} from './t
 import {withLease,type LeaseContext} from './lease';
 import type {Config} from '../config';
 import {ID} from '../config';
-import {authorizeFile,type Actor} from '../access';
+import {authorizeFile,type Actor,type SourceFile} from '../access';
 import type {SlackApi} from '../slack-api';
 import type {Card} from '../documents';
 import type {Session} from '../sessions';
@@ -39,17 +39,20 @@ export class CloudApplication {
     if(actor.teamId!==this.config.teamId||!ID.user.test(actor.userId)||!ID.channel.test(actor.channelId)||await this.mode(actor.channelId)==='off')denied();
     return {...this.config,channelIds:new Set([actor.channelId])};
   }
-  async authorize(id:string,actor:Actor):Promise<CloudCard>{return measured('authorize',()=>this.authorizeUnmeasured(id,actor));}
-  private async authorizeUnmeasured(id:string,actor:Actor):Promise<CloudCard>{
+  async authorize(id:string,actor:Actor):Promise<CloudCard>{return (await this.authorizedSource(id,actor)).card;}
+  private async authorizedSource(id:string,actor:Actor):Promise<{card:CloudCard;source:SourceFile}>{
+    return measured('authorize',()=>this.authorizeUnmeasured(id,actor));
+  }
+  private async authorizeUnmeasured(id:string,actor:Actor):Promise<{card:CloudCard;source:SourceFile}>{
     const config=await this.accessConfig(actor),card=await this.store.get<CloudCard>('cards',id);
     if(!card||card.removed||card.actor.teamId!==actor.teamId||card.actor.channelId!==actor.channelId)denied();
     const source=await authorizeFile(this.api,config,actor,card.fileId);
     if(card.rootFileId!==card.fileId)await authorizeFile(this.api,config,actor,card.rootFileId);
-    if(source.name!==card.name||source.size!==card.size)denied();return card;
+    if(source.name!==card.name||source.size!==card.size)denied();return {card,source};
   }
   async ensureSource(id:string,actor:Actor,outer?:AbortSignal):Promise<Buffer>{
-    const card=await this.authorize(id,actor),config=await this.accessConfig(actor);
-    const source=await authorizeFile(this.api,config,actor,card.fileId),signal=AbortSignal.any([AbortSignal.timeout(30_000),...(outer?[outer]:[])]);
+    // Reuse only the file info validated in this call; never cache permissions between requests.
+    const {source}=await this.authorizedSource(id,actor),signal=AbortSignal.any([AbortSignal.timeout(30_000),...(outer?[outer]:[])]);
     const bytes=await measured('download',()=>(this.options.download??downloadFile)(source,actor,this.config.botToken,signal));
     const fresh=await this.authorize(id,actor);
     if(fresh.contentHash&&hash(bytes)!==fresh.contentHash)throw new UserError('source_changed','원본 내용이 변경되었습니다. 다시 요청하세요.');
