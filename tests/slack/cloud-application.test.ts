@@ -27,6 +27,45 @@ test('replacement workers build one thread card and persist file IDs without doc
   const session=await f.make().sessions.exchange(await f.make().sessions.issue(id,actor));assert.deepEqual(await f.make().ensureSource((await f.make().sessions.require(session)).cardId,actor),bytes);
  }finally{f.close();}
 });
+test('source download reuses only this request authorization and rechecks both source and revision root afterwards',async()=>{
+ for(const revision of [false,true]){
+  const f=fixture();try{
+   const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:source-count');await f.drain();
+   if(revision)await f.store.atomic<any,void>('cards',id,card=>({value:{...card,fileId:'FREVISION',rootFileId:'FTEST'},result:undefined}));
+   let downloads=0;
+   const app=f.make({download:async source=>{downloads++;assert.equal(source.id,revision?'FREVISION':'FTEST');return bytes;}});
+   for(let attempt=0;attempt<2;attempt++){
+    f.api.calls.length=0;assert.deepEqual(await app.ensureSource(id,actor),bytes);
+    for(const method of ['conversations.info','conversations.members','files.info'])assert.equal(f.api.calls.filter(c=>c.method===method).length,revision?4:2);
+    if(revision)assert.equal(f.api.calls.filter(c=>c.method==='files.info'&&c.args.file==='FTEST').length,2);
+   }
+   assert.equal(downloads,2); // No cross-request document or permission cache.
+  }finally{f.close();}
+ }
+});
+test('revocation during transfer and changed document bytes still prevent source delivery',async()=>{
+ for(const scenario of ['membership','root','hash','removed'] as const){
+  const f=fixture();try{
+   const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:source-revoke');await f.drain();
+   if(scenario==='root')await f.store.atomic<any,void>('cards',id,card=>({value:{...card,fileId:'FREVISION',rootFileId:'FTEST'},result:undefined}));
+   let transferred=false;
+   f.api.handler=async(method,args)=>{
+    if(transferred&&scenario==='membership'&&method==='conversations.members')return {ok:true,members:[],response_metadata:{next_cursor:''}};
+    const result=f.api.response(method,args);
+    if(transferred&&scenario==='root'&&method==='files.info'&&args.file==='FTEST')return {...result,file:{...(result.file as object),shares:{}}};
+    return result;
+   };
+   const app=f.make({download:async()=>{
+    transferred=true;
+    if(scenario==='removed')await f.make().invalidate('FTEST');
+    if(scenario==='hash'){const changed=Buffer.from(bytes);changed[changed.length-1]^=1;return changed;}
+    return bytes;
+   }});
+   await assert.rejects(app.ensureSource(id,actor),{code:scenario==='hash'?'source_changed':'access_denied'});
+   assert.equal(transferred,true);
+  }finally{f.close();}
+ }
+});
 test('saving survives a queue outage and retries the same request without duplicating revisions',async()=>{
  const f=fixture();try{
   const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:save');await f.drain();

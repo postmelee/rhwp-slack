@@ -21,7 +21,9 @@ test('editor exchange/read/save/status enforce origin, session and current file 
     const response=await exchange(server.publicOrigin);assert.equal(response.status,200);const token=(await response.json() as {token:string}).token;
     assert.equal((await exchange(server.publicOrigin)).status,403);
     assert.equal((await fetch(server.origin+'/api/editor/source')).status,403);
-    const headers={Authorization:`Bearer ${token}`};const source=await fetch(server.origin+'/api/editor/source',{headers});assert.equal(source.status,200);assert.equal(source.headers.get('cache-control'),'no-store');assert.deepEqual(Buffer.from(await source.arrayBuffer()),bytes);
+    let downloads=0;const ensureSource=server.documents!.ensureSource.bind(server.documents);server.documents!.ensureSource=async(...args)=>{downloads++;return ensureSource(...args);};
+    const headers={Authorization:`Bearer ${token}`};const meta=await fetch(server.origin+'/api/editor/document',{headers});assert.equal(meta.status,200);assert.equal(meta.headers.get('cache-control'),'no-store');assert.equal(downloads,0);
+    const source=await fetch(server.origin+'/api/editor/source',{headers});assert.equal(source.status,200);assert.equal(source.headers.get('cache-control'),'no-store');assert.deepEqual(Buffer.from(await source.arrayBuffer()),bytes);assert.equal(downloads,1);
     const api=server.api;api.handler=async(method,args)=>method==='conversations.members'?{ok:true,members:[],response_metadata:{next_cursor:''}}:api.response(method,args);
     for(const path of ['source','document','saves/'+randomUUID()])assert.equal((await fetch(server.origin+'/api/editor/'+path,{headers})).status,403);
     const save=await fetch(server.origin+'/api/editor/save',{method:'POST',headers:{...headers,Origin:server.publicOrigin,'Content-Type':'application/octet-stream','X-Save-Request-Id':randomUUID(),'X-Document-Format':'hwp'},body:bytes});assert.equal(save.status,403);

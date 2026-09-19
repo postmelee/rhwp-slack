@@ -23,6 +23,7 @@ RUN npm run build && npm run build:dev \
 FROM dependencies AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 HOME=/tmp NODE_COMPILE_CACHE=/app/.node-compile-cache NODE_COMPILE_CACHE_PORTABLE=1
 COPY --from=build /app/dist/cloud ./dist/cloud
+COPY --from=build /app/dist/static-manifest.json ./dist/static-manifest.json
 COPY --from=build /app/dist/editor ./dist/editor
 COPY --from=build /app/dist/studio ./dist/studio
 COPY --from=build /app/.cache/conversion ./.cache/conversion
