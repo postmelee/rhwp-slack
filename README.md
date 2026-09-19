@@ -2,7 +2,7 @@
 
 Slack에 올린 HWP/HWPX를 PDF·페이지 이미지로 확인하고, rhwp-studio에서 편집한 문서를 같은 스레드에 저장하는 봇입니다.
 
-**현재 한 워크스페이스에서 시험 운영 중입니다.** 외부 워크스페이스용 Add to Slack 설치형 베타는 준비 중이며, 아직 설치 링크를 제공하지 않습니다. Marketplace에도 제출하지 않았습니다.
+**현재 한 워크스페이스에서 시험 운영 중입니다.** 외부 워크스페이스용 Add to Slack 설치형 베타는 [#16](https://github.com/postmelee/rhwp-slack/issues/16)에서 준비 중이며, 아직 설치 링크를 제공하지 않습니다. Marketplace에도 제출하지 않았습니다.
 
 ## 사용과 설치
 
@@ -16,7 +16,7 @@ Slack에 올린 HWP/HWPX를 PDF·페이지 이미지로 확인하고, rhwp-studi
 - [조직용 Cloud Run + Pages 자체 호스팅](docs/self-hosting.md)
 - [Marketplace 준비와 외부 편집 지원 조건](docs/marketplace.md)
 
-외부 배포 앱의 Slack 내부 편집은 Work Objects embeds 초대 승인이 필요합니다. 베타에서는 브라우저 편집 경로를 제공하는 방향으로 준비합니다. 현재 비공개 저장소는 초대받은 사람만 읽을 수 있으며, 소스/이미지 배포 방식과 라이선스는 공개 전에 확정합니다.
+일반 사용자는 하나의 rhwp 배포 앱을 Add to Slack으로 설치하는 방향입니다. Manifest로 조직별 앱을 만드는 절차는 자체 호스팅용입니다. 외부 배포 앱의 Slack 내부 편집은 Work Objects embeds 초대 승인이 필요합니다. 베타에서는 브라우저 편집 경로를 제공하는 방향으로 준비합니다. 현재 비공개 저장소는 초대받은 사람만 읽을 수 있으며, 소스/이미지 배포 방식과 라이선스는 공개 전에 확정합니다.
 
 ## 무엇을 할 수 있나요?
 
