@@ -8,6 +8,7 @@ export interface EditorDocuments {sessions:SessionAccess;authorize:Documents['au
 export interface EditorSaves {save(s:Session,id:string,format:string,bytes:Buffer):Promise<Receipt>;status(s:Session,id:string):Promise<Receipt>;}
 import {UserError,userMessage,object,denied} from './errors';
 import {MAX_FILE_BYTES} from '../shared/errors';
+import {traceEditor,type EditorOperation} from './cloud/telemetry';
 async function read(req:IncomingMessage,limit:number):Promise<Buffer>{
   if(Number(req.headers['content-length']??0)>limit)throw new UserError('size','파일이 너무 큽니다.');
   const chunks:Buffer[]=[];let size=0;const timer=setTimeout(()=>req.destroy(),30_000);
@@ -15,7 +16,7 @@ async function read(req:IncomingMessage,limit:number):Promise<Buffer>{
 }
 export function editorRoutes(origin:string,documents:EditorDocuments,saves:EditorSaves,editorOrigin?:string) {
   let reading=0;const serveStatic=staticAssets();
-  return async(req:IncomingMessage,res:ServerResponse,next:()=>void):Promise<void>=>{
+  const handle=async(req:IncomingMessage,res:ServerResponse,next:()=>void):Promise<void>=>{
     const path=new URL(req.url??'/',origin).pathname;
     if(req.method==='GET'&&/^\/documents\/[0-9a-f-]{36}$/.test(path)){res.writeHead(302,{Location:'/editor/','Cache-Control':'no-store','Referrer-Policy':'no-referrer'}).end();return;}
     if(!path.startsWith('/api/editor/')&&!['/','/viewer','/viewer/','/editor'].includes(path)&&!path.startsWith('/static/')&&!path.startsWith('/studio/')&&!path.startsWith('/editor/')){next();return;}
@@ -70,5 +71,12 @@ export function editorRoutes(origin:string,documents:EditorDocuments,saves:Edito
       if(['/','/viewer','/viewer/','/editor'].includes(path)){res.writeHead(302,{Location:'/editor/'}).end();return;}
       await serveStatic(req,res,path);
     }catch(error){if(!res.headersSent)json({error:userMessage(error)},error instanceof UserError?(error.code==='access_denied'||error.code==='session_expired'?403:error.code==='save_conflict'?409:400):500);else res.end();}
+  };
+  return async(req:IncomingMessage,res:ServerResponse,next:()=>void):Promise<void>=>{
+    const path=new URL(req.url??'/',origin).pathname;
+    if(!path.startsWith('/api/editor/'))return handle(req,res,next);
+    const operations:Record<string,EditorOperation>={'/api/editor/exchange':'exchange','/api/editor/document':'document','/api/editor/source':'source','/api/editor/save':'save'};
+    const operation:EditorOperation=req.method==='OPTIONS'?'preflight':operations[path]??(path.startsWith('/api/editor/saves/')?'save_status':'other');
+    return traceEditor(operation,()=>handle(req,res,next),()=>res.statusCode);
   };
 }

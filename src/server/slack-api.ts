@@ -1,5 +1,6 @@
 import {setTimeout as delay} from 'node:timers/promises';
 import {UserError, object} from './errors';
+import {measuredSlack} from './cloud/telemetry';
 export type Method = 'views.publish' | 'reactions.add' | 'reactions.remove' | 'auth.test' | 'conversations.info' | 'conversations.members' | 'files.info' | 'chat.postEphemeral' | 'views.open' | 'chat.postMessage' | 'chat.update' | 'entity.presentDetails' | 'files.getUploadURLExternal' | 'files.completeUploadExternal';
 export interface SlackApi {call(method: Method, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>>;}
 const queryMethods = new Set<Method>(['conversations.info','conversations.members','files.info']);
@@ -23,6 +24,9 @@ export async function readBounded(response: Response, limit: number): Promise<Bu
 export class HttpSlackApi implements SlackApi {
   constructor(private token: string, private fetcher: typeof fetch = fetch) {}
   async call(method: Method, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    return measuredSlack(method,()=>this.callUnmeasured(method,args,signal));
+  }
+  private async callUnmeasured(method: Method, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
     const deadline=AbortSignal.any([AbortSignal.timeout(30_000), ...(signal?[signal]:[])]);
     for (let attempt=0; ; attempt++) {
       deadline.throwIfAborted();
