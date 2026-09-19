@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {Firestore,Timestamp,type CollectionReference,type DocumentData} from '@google-cloud/firestore';
 import {encodeMetadata,expiry,recordName,type Change,type MetadataStore} from './metadata';
+import {measured} from './telemetry';
 /** Firestore transactions are the authority; no instance-local record cache. */
 export class FirestoreMetadata implements MetadataStore {
   private root:string;
@@ -16,8 +17,11 @@ export class FirestoreMetadata implements MetadataStore {
     if(row.expiresAt&&(!(row.expiresAt instanceof Timestamp)||row.expiresAt.toMillis()<=this.now()))return;
     return JSON.parse(row.json) as T;
   }
-  async get<T>(kind:string,key:string):Promise<T|undefined>{return this.decode<T>((await this.ref(kind,key).get()).data(),key);}
+  async get<T>(kind:string,key:string):Promise<T|undefined>{return measured('metadata_get',async()=>this.decode<T>((await this.ref(kind,key).get()).data(),key));}
   async list<T>(kind:string,limit=1000):Promise<[string,T][]> {
+    return measured('metadata_list',()=>this.listUnmeasured<T>(kind,limit));
+  }
+  private async listUnmeasured<T>(kind:string,limit:number):Promise<[string,T][]> {
     if(!Number.isSafeInteger(limit)||limit<1||limit>10_000)throw new Error('Invalid query limit');
     const rows=await this.records(kind).limit(limit+1).get();
     if(rows.size>limit)throw new Error('Metadata query limit exceeded');
@@ -26,6 +30,9 @@ export class FirestoreMetadata implements MetadataStore {
     return result;
   }
   async atomic<T,R>(kind:string,key:string,change:(current:T|undefined)=>Change<T,R>):Promise<R>{
+    return measured('metadata_atomic',()=>this.atomicUnmeasured(kind,key,change));
+  }
+  private async atomicUnmeasured<T,R>(kind:string,key:string,change:(current:T|undefined)=>Change<T,R>):Promise<R>{
     const ref=this.ref(kind,key);
     return this.db.runTransaction(async transaction=>{
       const row=await transaction.get(ref);const next=change(this.decode<T>(row.data(),key));expiry(next.expiresAt);
