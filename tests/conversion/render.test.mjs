@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {AsyncLocalStorage} from 'node:async_hooks';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {convertPreview,convertPageImages} from '../../src/conversion/convert.mjs';
@@ -81,4 +82,15 @@ test('deadline during active output discards the runtime before a recovery reque
  assert.equal(outputStarted,true,'deadline must exercise active output, not queue cancellation');
  const recovered=[];assert.equal((await convertPdf(bytes,{onMetric:m=>recovered.push(m)})).subarray(0,5).toString(),'%PDF-');
  assert.equal(recovered.filter(m=>m.stage==='wasm_compile'&&m.phase==='finish').length,1);await closeConversionRuntime();
+});
+
+
+test('reused child metrics retain the current request context',async()=>{
+ const {convertPdf,closeConversionRuntime}=await import('../../src/conversion/convert.mjs');await closeConversionRuntime();
+ const bytes=await readFile('tests/fixtures/viewer-two-pages.hwp'),context=new AsyncLocalStorage(),events=[];
+ for(const request of ['first','second'])await context.run(request,()=>convertPdf(bytes,{onMetric:metric=>events.push({request,observed:context.getStore(),...metric})}));
+ for(const event of events)assert.equal(event.observed,event.request,event.stage);
+ assert.equal(events.filter(e=>e.stage==='wasm_compile'&&e.phase==='finish').length,1);
+ assert.equal(events.filter(e=>e.stage==='wasm_init'&&e.phase==='finish').length,2);
+ assert.equal(events.filter(e=>e.stage==='runtime_reuse').length,1);await closeConversionRuntime();
 });

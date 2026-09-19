@@ -1,4 +1,5 @@
 import {spawn} from 'node:child_process';
+import {AsyncResource} from 'node:async_hooks';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {workerEnvironment} from './worker-env.mjs';
@@ -89,7 +90,8 @@ async function runConversion(bytes,{timeoutMs,onMetric,signal,onPdf,onPage},mode
   if(signal?.aborted)throw new ConversionError('conversion_aborted','문서 변환이 취소되었습니다.');
   if(timeoutMs<=0)throw new ConversionError('conversion_timeout','문서 변환 시간이 초과되었습니다.','queue');
   let stage='runtime_start';
-  const metric=value=>{const clean=validMetric(value);if(!clean)return;if(clean.phase==='start')stage=clean.stage;try{onMetric?.(clean);}catch{}};
+  // Persistent child IPC was created by an earlier request; bind diagnostics to this caller.
+  const metric=AsyncResource.bind(value=>{const clean=validMetric(value);if(!clean)return;if(clean.phase==='start')stage=clean.stage;try{onMetric?.(clean);}catch{}});
   let cacheKey;
   try{cacheKey=JSON.parse(await readFile('.cache/conversion/runtime.json','utf8')).cacheKey;
     if(typeof cacheKey!=='string'||!/^[a-f0-9]{64}$/.test(cacheKey))throw new Error();
