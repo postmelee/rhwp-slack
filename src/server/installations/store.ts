@@ -46,6 +46,10 @@ export class Installations {
       const result={...this.public(value),botToken};valid(result);return result;
     }catch{throw new InstallationError();}
   }
+  async active(team:string,generation:string):Promise<boolean>{
+    const record=await this.store.get<Record>('installations',this.key(team));
+    return record?.appId===this.appId&&record.teamId===team&&record.status==='active'&&record.generation===generation;
+  }
   /** A delayed old-generation callback must not deactivate a newer installation. */
   async revoke(team:string,generation:string):Promise<boolean>{
     return this.store.atomic<Record,boolean>('installations',this.key(team),current=>{

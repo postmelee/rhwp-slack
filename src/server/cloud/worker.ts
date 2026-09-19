@@ -1,7 +1,7 @@
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {OAuth2Client} from 'google-auth-library';
 import {DurableTasks,TaskBusy,type TaskSpec,type TaskContext} from './tasks';
-export function workerServer(tasks:DurableTasks,run:(spec:TaskSpec,context:TaskContext)=>Promise<void>,options:{audience:string;serviceAccount:string;verify?:(token:string)=>Promise<boolean>}){
+export function workerServer(tasks:Pick<DurableTasks,'execute'>,run:(spec:TaskSpec,context:TaskContext)=>Promise<void>,options:{audience:string;serviceAccount:string;verify?:(token:string)=>Promise<boolean>}){
  const oauth=new OAuth2Client();
  const verify=options.verify??(async(token:string)=>{const ticket=await oauth.verifyIdToken({idToken:token,audience:options.audience});const p=ticket.getPayload();return p?.email===options.serviceAccount&&p.email_verified===true;});
  return createServer(async(req:IncomingMessage,res:ServerResponse)=>{
