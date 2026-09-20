@@ -58,7 +58,7 @@ Exporter는 [Pages 파일 한도](https://developers.cloudflare.com/pages/platfo
 
 ## 공개 홈페이지를 포함하는 배포
 
-외부 앱은 별도 Pages 프로젝트 `rhwp-slack`를 사용하도록 준비한다. `/`는 홈페이지, `/guide/`·`/privacy/`·`/support/`는 안내, `/editor/`는 기존 편집기다. 기존 내부 프로젝트 `rhwp-slack-editor`와 API를 공유하거나 덮어쓰지 않는다.
+외부 앱은 별도 Pages 프로젝트 `rhwp-slack`를 사용한다. `/`는 홈페이지, `/guide/`·`/privacy/`·`/support/`는 안내, `/editor/`는 기존 편집기다. 기존 내부 프로젝트 `rhwp-slack-editor`와 API를 공유하거나 덮어쓰지 않는다.
 
 ```sh
 node scripts/export-pages.mjs https://YOUR-INGRESS.a.run.app --public-site
