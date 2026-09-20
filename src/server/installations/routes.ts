@@ -20,7 +20,7 @@ export function installationRoutes(oauth:InstallOAuth){
     }
     try{
       if(url.pathname==='/install'){
-        const start=await oauth.start();res.setHeader('Set-Cookie',cookie(start.binding,600));res.writeHead(303,{Location:start.url}).end();return;
+        const start=await oauth.start();res.setHeader('Set-Cookie',cookie(start.binding,600));res.writeHead(302,{Location:start.url}).end();return;
       }
       res.setHeader('Set-Cookie',cookie('',0));
       if(['state','code','error'].some(key=>url.searchParams.getAll(key).length>1))throw new Error('Duplicate parameter');
