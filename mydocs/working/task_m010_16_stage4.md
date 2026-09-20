@@ -64,3 +64,20 @@ Chrome 로그인·test 초대 후 `/rhwp settings`에서 자동 감지를 활성
 기존 실패 카드의 재시도 버튼으로 동일 PDF 파일 ID가 ready로 복구되고 PNG 2장도 ready가 됐다. Chrome에서 OpenID 재승인 후 실제 Pages Studio에 2페이지 문서가 열렸고, 첫 문단에 `External beta saved revision` 텍스트를 입력했다. 앞선 ERR_BLOCKED_BY_CLIENT는 이 새 로그인 흐름에서 재현되지 않았다.
 
 실제 저장에서는 새 카드가 같은 스레드에 게시됐지만 HWP 공유가 되지 않아 접근 거부가 발생했다. fake Slack이 chat.postMessage의 file_ids도 첨부로 처리한 가정이 실제와 달랐다. fake를 실제 동작대로 chat.update만 첨부하도록 수정하고, browser revision 게시 직후 부모 문서 권한으로 chat.update를 호출해 HWP를 공유한다. 공유 확인 중에는 부모 권한을 검사하고, 완료 후 새 편집본 권한도 검사한다. 저장 receipt의 동일 요청 재시도로 복구하며 새 파일/카드를 다시 만들지 않는다.
+
+
+### 2026-09-20 첫 외부 workspace 최종 기능 수용
+
+- 런타임 소스 `324501f`. Cloud Build `a49a5343-6db0-466a-b071-91b9c7e97c9c`, image `sha256:89542396fd45f16d89fe5f90cfec607f6b1cdccfc05ef0e28eb3a28267eca46d`.
+- 베타 ingress `rhwp-beta-ingress-00004-vdx`, worker `rhwp-beta-worker-00005-vkb`, 각각 100% 반영. 기존 내부 서비스 revision/traffic, 공개/비공개 경계 및 사양 유지 확인.
+- 원본 합성 HWP의 PDF/PNG 2장 ready, 원래 PDF 파일 ID 유지. Slack 기본 PDF 뷰어에서 두 페이지와 표/한글을 직접 확인.
+- 실제 Slack OpenID 로그인으로 Pages Studio 진입, `External beta verified save` 입력 후 `viewer-two-pages_편집본_2.hwp` 저장. 동일 원본 스레드에 HWP/PDF/PNG 2장이 붙고, 편집기는 `편집본과 PDF를 Slack에 저장했습니다`로 완료.
+- 해당 PDF를 Slack 기본 뷰어에서 열어 입력 문구를 확인했다. 편집본의 `rhwp에서 편집`으로 새 Studio를 열어 문구·2페이지·표 보존과 변경 없음 상태를 확인했다.
+- 검증 스레드: https://alhanguel.slack.com/archives/C0C2ZCX509K/p1789871499898289
+- 첫 실패 저장 요청은 배포 대기 중 10분 비활성 세션 제한이 지나 실제 창에서 복구하지 못했다. 제한을 완화하지 않고 새 인증 후 새 요청으로 검증했다. 첫 실패 댓글은 계속 준비 중으로 오해하지 않도록 테스트 실패 기록으로 표시했다. 같은 요청의 중단/복구·중복 방지는 로컬 회귀만 통과했으며 실제 성공으로 승격하지 않는다.
+
+### CI 종료 지연 증거
+
+`324501f` push 실행 35485405929는 viewer 4분3초/container 5분12초 통과. PR 실행 35485407789 첫 시도는 viewer 통과, container smoke의 편집·저장·revision 재열기까지 통과했지만 `stop-receiver`가 82,167ms 걸려 90초 test timeout에 걸렸다. 실패 artifact(trace/PDF/HWP/screenshot/cgroup)와 로그를 별도로 보존했다. OOM/oom_kill은 0이다. 실패 job 재실행은 4분10초 통과했으나 최초 종료 지연의 원인 해결 증거로 간주하지 않는다. #17 후속 조사에서 이 종료 단계 증거를 사용한다. timeout 값이나 검증 기준은 변경하지 않았다.
+
+첫 외부 workspace의 기능 경로는 확인했지만 같은 베타 앱의 두 workspace·다른 실제 사용자·설치 삭제/재설치·실제 HWPX 수용은 남아 있다. 기존 내부 앱의 성공은 베타 앱의 두 번째 설치 검증으로 세지 않는다. 공개 베타/Marketplace 완료나 PR merge로 표시하지 않는다.
