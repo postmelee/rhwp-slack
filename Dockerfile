@@ -18,7 +18,7 @@ COPY studio ./studio
 COPY scripts ./scripts
 COPY tsconfig*.json vite.config.ts ./
 RUN npm run build && npm run build:dev \
-    && node_modules/.bin/esbuild src/server/cloud/main.ts --bundle --platform=node --format=cjs '--external:@google-cloud/*' --external:google-auth-library --external:@playwright/test '--external:@rhwp/*' --outfile=dist/cloud/main.cjs
+    && node_modules/.bin/esbuild src/server/cloud/main.ts src/server/cloud/distributed.ts --bundle --platform=node --format=cjs '--external:@google-cloud/*' --external:google-auth-library --external:@playwright/test '--external:@rhwp/*' --external:jose --outdir=dist/cloud --out-extension:.js=.cjs
 
 FROM dependencies AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 HOME=/tmp NODE_COMPILE_CACHE=/app/.node-compile-cache NODE_COMPILE_CACHE_PORTABLE=1
@@ -32,6 +32,7 @@ COPY scripts/healthcheck.mjs scripts/slack-preflight.ts ./scripts/
 RUN mkdir -p /app/data /app/.node-compile-cache && chown node:node /app/data /app/.node-compile-cache && chmod 700 /app/data /app/.node-compile-cache
 USER node
 RUN node dist/cloud/main.cjs --warm-code
+RUN node dist/cloud/distributed.cjs --warm-code
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["node", "scripts/healthcheck.mjs"]
 CMD ["node", "--import", "tsx", "src/server/main.ts"]
