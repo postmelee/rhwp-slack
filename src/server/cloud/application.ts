@@ -15,7 +15,7 @@ import type {Session} from '../sessions';
 import type {Receipt} from '../saves';
 import {downloadFile} from '../download';
 import {Uploads,savedAttempt,type UploadAttempt} from '../uploads';
-import {documentMetadata,documentMessage,documentGallery,browserEditorUrl} from '../document-message';
+import {documentMetadata,documentMessage,browserEditorUrl} from '../document-message';
 import {UserError,denied} from '../errors';
 import {validateDocument} from '../validate-document';
 import {validateInput} from '../../shared/errors';
@@ -145,7 +145,7 @@ export class CloudApplication {
   private async update(card:CloudCard,actor:Actor,context:LeaseContext):Promise<void>{return measured('card_update',()=>this.updateUnmeasured(card,actor,context));}
   private async updateUnmeasured(card:CloudCard,actor:Actor,context:LeaseContext):Promise<void>{
     await this.write(card,context);await this.authorize(card.id,actor);
-    await this.guarded(context).call('chat.update',{...documentMessage(card,this.config.publicOrigin!,this.config.editorMode),ts:card.messageTs,...(documentGallery(card).length?{file_ids:documentGallery(card).map(p=>p.fileId)}:{})});
+    await this.guarded(context).call('chat.update',{...documentMessage(card,this.config.publicOrigin!,this.config.editorMode),ts:card.messageTs});
   }
   private async confirm(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext):Promise<void>{return measured('share_confirm',()=>this.confirmUnmeasured(card,fileId,actor,context));}
   private async confirmUnmeasured(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext):Promise<void>{
@@ -155,7 +155,7 @@ export class CloudApplication {
       if(await uploads.sharedMessage(fileId,{...card.actor,threadTs:card.parentTs},card.messageTs))return;
       if(i<5)await delay(200*2**i,undefined,{signal:context.signal});
     }
-    throw new Error('File share is not confirmed');
+    throw new UserError('share_pending','파일 공유 결과를 확인 중입니다.');
   }
   async execute(spec:TaskSpec,task:TaskContext):Promise<void>{
     if(task.terminalFailure){await this.failed(spec,task,task.terminalFailure,true);return;}

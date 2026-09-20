@@ -19,11 +19,21 @@ export function browserSignInRoutes(signin:Pick<EditorSignIn,'callback'|'start'|
         const start=await signin.start(url.searchParams.get('workspace')!,url.searchParams.get('document')!);
         res.setHeader('Set-Cookie',cookie(start.binding,600));res.writeHead(303,{Location:start.url}).end();return;
       }
-      if(url.pathname!=='/browser/callback'||req.method!=='POST'||req.headers['content-type']?.split(';')[0]!=='application/x-www-form-urlencoded')throw new Error('Invalid callback');
+      if(url.pathname!=='/browser/callback'||!['GET','POST'].includes(req.method??''))throw new Error('Invalid callback');
       res.setHeader('Set-Cookie',cookie('',0));
-      const chunks:Buffer[]=[];let size=0;const timer=setTimeout(()=>req.destroy(),10_000);
-      try{for await(const chunk of req){const b=Buffer.from(chunk);size+=b.length;if(size>8192)throw new Error('Body too large');chunks.push(b);}}finally{clearTimeout(timer);}
-      const p=new URLSearchParams(Buffer.concat(chunks).toString());if(['state','code','error'].some(key=>p.getAll(key).length>1))throw new Error('Duplicate parameter');
+      let p:URLSearchParams;
+      // Slack also returns authorization codes by query redirect after its login flow.
+      // Both transports go through the same one-use state, browser binding and JWT checks.
+      if(req.method==='GET'){
+        if(Buffer.byteLength(url.search)>8192)throw new Error('Query too large');
+        p=url.searchParams;
+      }else{
+        if(url.search||req.headers['content-type']?.split(';')[0]!=='application/x-www-form-urlencoded')throw new Error('Invalid callback');
+        const chunks:Buffer[]=[];let size=0;const timer=setTimeout(()=>req.destroy(),10_000);
+        try{for await(const chunk of req){const b=Buffer.from(chunk);size+=b.length;if(size>8192)throw new Error('Body too large');chunks.push(b);}}finally{clearTimeout(timer);}
+        p=new URLSearchParams(Buffer.concat(chunks).toString());
+      }
+      if(['state','code','error'].some(key=>p.getAll(key).length>1)||!p.get('state')||(!p.get('code')&&!p.get('error')))throw new Error('Invalid parameter');
       const redirect=await signin.finish({state:p.get('state')??'',binding:binding(req.headers.cookie??''),code:p.get('code')??undefined,error:p.get('error')??undefined});
       if(!redirect){res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8'}).end('문서 로그인을 취소했습니다.');return;}
       res.writeHead(303,{Location:redirect}).end();

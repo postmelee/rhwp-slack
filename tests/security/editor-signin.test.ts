@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {createServer} from 'node:http';
+import {browserSignInRoutes} from '../../src/server/installations/browser-routes';
 import assert from 'node:assert/strict';
 import {generateKeyPair,exportJWK,createLocalJWKSet,SignJWT} from 'jose';
 import {mkdtempSync,rmSync} from 'node:fs';
@@ -40,4 +42,20 @@ test('external beta message has authenticated browser action without embed metad
   const card={id:cardId,name:'문서.hwp',actor:{teamId:'TTEST',channelId:'CTEST',userId:'UTEST'},pdf:'pending',fileId:'FTEST'} as any;
   const beta=documentMessage(card,'https://api.example.com','browser');assert.equal(beta.metadata,undefined);const actions=(beta.blocks as any[]).flatMap(b=>b.type==='actions'?b.elements:[]),button=actions.find(a=>a.action_id==='rhwp_browser_edit');assert.equal(button.text.text,'rhwp에서 편집');assert.ok(button.url.includes('/browser/open?workspace=TTEST&document='));assert.equal(button.url.includes('ticket'),false);
   assert.ok(documentMessage(card,'https://api.example.com').metadata);
+});
+
+test('both callback transports enforce real state binding, one-use consumption and signed identity',async()=>{
+  for(const method of ['GET','POST']){
+    const f=await fixture(),route=browserSignInRoutes(f.service);
+    const server=createServer((req,res)=>{void route(req,res,()=>res.writeHead(404).end());});
+    await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const addr=server.address();assert.ok(addr&&typeof addr!=='string');
+    const url=`http://127.0.0.1:${addr.port}/browser/callback`;
+    try{
+      const input=await f.start(),params=new URLSearchParams({state:input.state,code:input.code}).toString();
+      const send=(binding?:string)=>fetch(url+(method==='GET'?'?'+params:''),{method,redirect:'manual',headers:{'Content-Type':'application/x-www-form-urlencoded',...(binding?{Cookie:'__Host-rhwp-signin-state='+binding}:{})},...(method==='POST'?{body:params}:{})});
+      assert.equal((await send()).status,400);assert.equal((await send('x'.repeat(43))).status,400);assert.equal(f.issued,0);
+      const response=await send(input.binding);assert.equal(response.status,303);assert.equal(f.issued,1);assert.equal(f.user,'UREADER');assert.equal(response.headers.get('Referrer-Policy'),'no-referrer');assert.equal(response.headers.get('Cache-Control'),'no-store');
+      assert.equal((await send(input.binding)).status,400);assert.equal(f.issued,1);
+    }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));f.close();}
+  }
 });

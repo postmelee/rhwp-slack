@@ -44,3 +44,14 @@ Linux CI와 별도 후보 배포·API 경계 검증은 아래와 같이 완료�
 사용자가 설치 완료를 알린 뒤, 서버에서 `T0B3KRJ67LG`의 active 설치와 요청한 8개 bot scope를 확인했다. Slack이 반환한 canonical workspace 주소는 사용자가 처음 적은 alhangeul과 철자가 다른 `alhanguel.slack.com`이다. 암호화된 저장 토큰을 메모리에서 복호화해 `auth.test`의 team/bot user 일치도 확인했다. 토큰 원문을 로그나 파일에 출력하지 않았다.
 
 `test` 채널(`C0C2ZCX509K`)은 존재하며 첫 조회 시 봇은 아직 참여하지 않았다. Chrome에도 해당 workspace 로그인이 없어 사용자에게 로그인·채널 초대를 요청했다. 실제 파일 변환·편집·저장 수용은 미완료이며, 설치 성공과 구분한다.
+
+
+### 외부 수용에서 발견한 결함과 수정
+
+Chrome 로그인·test 초대 후 `/rhwp settings`에서 자동 감지를 활성화하고 `viewer-two-pages.hwp` 합성 문서를 게시했다. PNG 2장은 생성됐으나 PDF는 세 번 재시도 뒤 실패했다. 저장 기록상 PDF 변환·업로드는 완료되어 있었으며, browser mode가 Work Objects metadata를 생략하면서 PDF의 실제 메시지 공유도 빠졌다. ready 이전 공유 확인이 끝날 수 없는 순환을 제거하도록 browser message의 `file_ids`에 업로드된 PDF를 포함했다. 편집본 HWP의 최초 게시에도 같은 누락이 있어 함께 고쳤다. 내부 embed metadata 경로는 유지한다.
+
+사용자 OpenID 코드 입력 후 callback은 실제 Cloud Run 요청에서 GET/400(2026-09-20T02:33:36Z)으로 확인됐다. form_post 전용 수신을 GET query 및 POST form 수신으로 확장하되, 둘 다 동일한 일회용 state·브라우저 쿠키 결속·JWT 서명/issuer/audience/nonce·workspace·문서 권한 검사로 보낸다. 혼합 query/body, 중복 파라미터, 8KiB 초과, 미지원 method는 거부한다. Chrome의 ERR_BLOCKED_BY_CLIENT 표시 자체의 원인은 아직 별도로 미확정이다.
+
+추가로 distributed worker에서 빠진 `traceTask`를 연결했다. 단계별 시간과 허용 목록 오류 코드만 기록하며 문서명·토큰·OAuth code를 애플리케이션 로그에 남기지 않는다. 파일 공유 확인 실패는 `share_pending`으로 구분한다.
+
+검증: typecheck, security 52, Slack 87 통과. GET/POST 각각 실제 state 저장소와 서명된 합성 JWT로 쿠키 누락/위조·재사용 거부 및 정상 ticket 발급을 검사했다. browser mode의 PDF 공유와 편집본 HWP/PDF 동일 스레드 저장을 회귀 검사했다. 기본 sandbox에서는 로컬 listen EPERM으로 실행이 막혀 허용된 환경에서 재실행했다. 수정 버전의 실제 배포·수용은 후속 기록과 구분한다.

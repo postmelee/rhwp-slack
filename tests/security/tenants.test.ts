@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test,{mock} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -62,4 +62,15 @@ test('Slack signature is verified before installation lookup; cross-app and conf
     assert.equal((await signed(origin,new URLSearchParams(command({team_id:'TONE',text:'help'})))).status,200);assert.equal(lookups,1);
     assert.equal((await signed(origin,new URLSearchParams(command({team_id:'TTWO',text:'help'})))).status,200);assert.equal(lookups,2);
   }finally{await runtime.receiver.stop();f.close();}
+});
+
+test('active tenant deliveries enter the redacted task trace',async()=>{
+ const f=await fixture(),rows:Record<string,unknown>[]=[];
+ const log=mock.method(console,'log',(line:string)=>{rows.push(JSON.parse(line));});
+ try{
+  const a=await f.tenants.resolve('TONE');await a.tasks.enqueue('trace',{teamId:'TONE',cardId:'missing-private-card',kind:'prepare'});
+  await assert.rejects(f.tenants.execute(f.published.at(-1)!));
+  assert.ok(rows.some(r=>r.event==='task_started'));assert.ok(rows.some(r=>r.event==='task_finished'&&r.ok===false));
+  const text=JSON.stringify(rows);for(const secret of ['TONE','xoxb-','missing-private-card'])assert.equal(text.includes(secret),false);
+ }finally{log.mock.restore();f.close();}
 });

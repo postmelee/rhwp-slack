@@ -15,7 +15,7 @@ async function serve(route:(req:IncomingMessage,res:ServerResponse,next:()=>void
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const address=server.address();assert.ok(address&&typeof address!=='string');
   return {url:`http://127.0.0.1:${address.port}`,close:()=>new Promise<void>(resolve=>server.close(()=>resolve()))};
 }
-test('browser callback uses a cross-site POST cookie and rejects duplicate parameters and unsupported methods',async()=>{
+test('browser callback accepts query and form transports with identical inputs, rejects mixing and duplicate parameters',async()=>{
   let calls=0;
   const signin:Pick<EditorSignIn,'callback'|'start'|'finish'>={callback:'https://api.example.com/browser/callback',async start(){return {binding:'b'.repeat(43),url:'https://slack.com/openid/connect/authorize'};},async finish(input){calls++;assert.equal(input.binding,'b'.repeat(43));assert.equal(input.state,'state');return 'https://studio.example.com/editor/#ticket=synthetic';}};
   const server=await serve(browserSignInRoutes(signin));try{
@@ -24,6 +24,10 @@ test('browser callback uses a cross-site POST cookie and rejects duplicate param
     assert.equal((await fetch(server.url+'/browser/callback?state=state')).status,400);
     assert.equal((await fetch(server.url+'/browser/callback',{method:'POST',headers,body:'state=state&state=other&code=test'})).status,400);assert.equal(calls,0);
     const response=await fetch(server.url+'/browser/callback',{method:'POST',headers,body:'state=state&code=test',redirect:'manual'});assert.equal(response.status,303);assert.match(response.headers.get('set-cookie')!,/Max-Age=0/);assert.equal(calls,1);
+    const query=await fetch(server.url+'/browser/callback?state=state&code=test',{headers:{Cookie:headers.Cookie},redirect:'manual'});assert.equal(query.status,303);assert.equal(calls,2);
+    for(const path of ['/browser/callback?state=state&state=other&code=test','/browser/callback?state=state&code=a&code=b','/browser/callback?state=state&code='+('a'.repeat(8192))])assert.equal((await fetch(server.url+path,{headers,redirect:'manual'})).status,400);
+    assert.equal((await fetch(server.url+'/browser/callback?state=other',{method:'POST',headers,body:'state=state&code=test'})).status,400);
+    assert.equal((await fetch(server.url+'/browser/callback',{method:'PUT',headers,body:'state=state&code=test'})).status,400);assert.equal(calls,2);
   }finally{await server.close();}
 });
 test('workspace header cannot exchange or use another workspace credential; CORS does not bypass authentication',async()=>{

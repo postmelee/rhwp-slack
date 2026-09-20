@@ -5,6 +5,7 @@ import {HttpSlackApi} from '../slack-api';
 import type {MetadataStore,Change} from '../cloud/metadata';
 import {DurableTasks,type TaskPublisher,type TaskSpec,type TaskContext} from '../cloud/tasks';
 import {CloudApplication} from '../cloud/application';
+import {traceTask} from '../cloud/telemetry';
 import {CloudEvents} from '../cloud/events';
 import {Installations,type Installation} from './store';
 
@@ -52,7 +53,7 @@ export class Tenants {
     const tenant=await this.resolve(route.teamId,route.generation);
     await tenant.tasks.execute(route.logicalId,(spec,context)=>{
       if(spec.teamId!==route.teamId)throw new Error('Task tenant mismatch');
-      return spec.kind==='event'?tenant.events.execute(spec,context):tenant.documents.execute(spec,context);
+      return traceTask(spec,context,()=>spec.kind==='event'?tenant.events.execute(spec,context):tenant.documents.execute(spec,context));
     });
   }
 }
