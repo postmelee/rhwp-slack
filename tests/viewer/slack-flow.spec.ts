@@ -47,5 +47,11 @@ test('production HTTP ticket → real Studio edit → isolated validation → Sl
     const png=uploaded.get(String(pngFile.id))!;expect(png.subarray(0,8).toString('hex')).toBe('89504e470d0a1a0a');writeFileSync(testInfo.outputPath('slack-edited-thumbnail.png'),png);
     expect(runtime.documents!.source(id)).toEqual(bytes);expect(readFileSync('tests/fixtures/viewer-two-pages.hwp')).toEqual(bytes);
     await page.setViewportSize({width:669,height:863});await page.screenshot({path:testInfo.outputPath('slack-production-flow.png')});
-  }finally{await phase('stop-receiver',()=>runtime.receiver.stop());await phase('close-runtime',()=>runtime.close());}
+  }finally{
+    // Chromium can retain speculative TCP connections with no HTTP request. Bolt's
+    // server.close() waits for those connections; release the client owner first.
+    try{await phase('close-browser-context',()=>page.context().close());}
+    finally{try{await phase('stop-receiver',()=>runtime.receiver.stop());}
+      finally{await phase('close-runtime',()=>runtime.close());}}
+  }
 });
