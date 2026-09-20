@@ -74,6 +74,7 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
    if(c.type!=='message'||typeof a.value!=='string'||(b.channel&&object(b.channel).id!==actor.channelId))denied();await (actionId==='rhwp_more_pages'?documents.morePages(a.value,actor,ts(c.message_ts)):documents.retryPreview(a.value,actor,ts(c.message_ts)));
   }catch(error){if(actor)await notice(actor,error);}await ack();
  });
+ app.action('rhwp_browser_edit',async({ack})=>{await ack();});
  app.event('entity_details_requested',async({body,event})=>{
   let actor:Actor|undefined;try{const e=object(event);actor=await who(body.team_id,e.user,e.channel);const ref=object(e.external_ref);
    if(ref.type!=='document'||typeof ref.id!=='string')denied();if(!await documents.matchesUrl(ref.id,e.entity_url))return;

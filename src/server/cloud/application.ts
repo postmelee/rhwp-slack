@@ -15,7 +15,7 @@ import type {Session} from '../sessions';
 import type {Receipt} from '../saves';
 import {downloadFile} from '../download';
 import {Uploads,savedAttempt,type UploadAttempt} from '../uploads';
-import {documentMetadata,documentMessage,documentGallery} from '../document-message';
+import {documentMetadata,documentMessage,browserEditorUrl} from '../document-message';
 import {UserError,denied} from '../errors';
 import {validateDocument} from '../validate-document';
 import {validateInput} from '../../shared/errors';
@@ -59,7 +59,9 @@ export class CloudApplication {
     return bytes; // No cross-request document cache.
   }
   async present(id:string,actor:Actor,triggerId:string):Promise<void>{
-    const card=await this.authorize(id,actor),ticket=await this.sessions.issue(id,actor);
+    const card=await this.authorize(id,actor);
+    if(this.config.editorMode==='browser'){await this.api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text:'<'+browserEditorUrl(card,this.config.publicOrigin!)+'|rhwp에서 편집> · Slack 계정으로 로그인해 주세요.'});return;}
+    const ticket=await this.sessions.issue(id,actor);
     await this.api.call('entity.presentDetails',{trigger_id:triggerId,metadata:documentMetadata(card,this.config.publicOrigin!,`${this.config.editorOrigin??this.config.publicOrigin}/editor/#ticket=${ticket}`)});
   }
   async matchesUrl(id:string,url:unknown):Promise<boolean>{
@@ -136,24 +138,24 @@ export class CloudApplication {
       card.messageTs=ts;card.actor.threadTs??=ts;await this.write(card,context);return;
     }
     card.posting=true;await this.write(card,context);await this.authorize(card.id,card.actor);
-    const posted=await api.call('chat.postMessage',{...documentMessage(card,this.config.publicOrigin!),client_msg_id:card.id,...(card.parentTs?{thread_ts:card.parentTs}:{})});
+    const posted=await api.call('chat.postMessage',{...documentMessage(card,this.config.publicOrigin!,this.config.editorMode),client_msg_id:card.id,...(card.parentTs?{thread_ts:card.parentTs}:{})});
     if(typeof posted.ts!=='string'||!/^\d+\.\d+$/.test(posted.ts))throw new Error('Missing message receipt');
     card.messageTs=posted.ts;card.actor.threadTs??=posted.ts;await this.write(card,context);milestone('first_card');
   }
   private async update(card:CloudCard,actor:Actor,context:LeaseContext):Promise<void>{return measured('card_update',()=>this.updateUnmeasured(card,actor,context));}
   private async updateUnmeasured(card:CloudCard,actor:Actor,context:LeaseContext):Promise<void>{
     await this.write(card,context);await this.authorize(card.id,actor);
-    await this.guarded(context).call('chat.update',{...documentMessage(card,this.config.publicOrigin!),ts:card.messageTs,...(documentGallery(card).length?{file_ids:documentGallery(card).map(p=>p.fileId)}:{})});
+    await this.guarded(context).call('chat.update',{...documentMessage(card,this.config.publicOrigin!,this.config.editorMode),ts:card.messageTs});
   }
-  private async confirm(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext):Promise<void>{return measured('share_confirm',()=>this.confirmUnmeasured(card,fileId,actor,context));}
-  private async confirmUnmeasured(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext):Promise<void>{
+  private async confirm(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext,authorizationId=card.id):Promise<void>{return measured('share_confirm',()=>this.confirmUnmeasured(card,fileId,actor,context,authorizationId));}
+  private async confirmUnmeasured(card:CloudCard,fileId:string,actor:Actor,context:LeaseContext,authorizationId:string):Promise<void>{
     const uploads=this.uploads(card,context);
     for(let i=0;i<6;i++){
-      await this.authorize(card.id,actor);
+      await this.authorize(authorizationId,actor);
       if(await uploads.sharedMessage(fileId,{...card.actor,threadTs:card.parentTs},card.messageTs))return;
       if(i<5)await delay(200*2**i,undefined,{signal:context.signal});
     }
-    throw new Error('File share is not confirmed');
+    throw new UserError('share_pending','파일 공유 결과를 확인 중입니다.');
   }
   async execute(spec:TaskSpec,task:TaskContext):Promise<void>{
     if(task.terminalFailure){await this.failed(spec,task,task.terminalFailure,true);return;}
@@ -310,10 +312,17 @@ export class CloudApplication {
       // The revision is private until posted; check the parent until the new file has been shared.
       await this.locked(operation.cardId,async(card,lease)=>{
         if(!card.messageTs&&!card.posting){card.posting=true;await this.write(card,lease);await this.authorize(parent.id,session.actor);
-          const r=await this.guarded(lease).call('chat.postMessage',{...documentMessage(card,this.config.publicOrigin!),client_msg_id:card.id,thread_ts:card.parentTs});
+          const r=await this.guarded(lease).call('chat.postMessage',{...documentMessage(card,this.config.publicOrigin!,this.config.editorMode),client_msg_id:card.id,thread_ts:card.parentTs});
           if(typeof r.ts==='string'){card.messageTs=r.ts;await this.write(card,lease);}}
         if(!card.messageTs){const ts=await uploads.sharedMessage(f.id,{...card.actor,threadTs:card.parentTs});if(!ts)throw new UserError('upload_uncertain','저장 결과를 확인 중입니다. 같은 저장 요청으로 다시 확인하세요.');card.messageTs=ts;await this.write(card,lease);}
-        await this.confirm(card,f.id,session.actor,lease);
+        if(this.config.editorMode==='browser'){
+          // Slack chat.postMessage does not attach file_ids. Add the private revision
+          // through chat.update before checking its own channel shares.
+          await this.authorize(parent.id,session.actor);
+          await this.guarded(lease).call('chat.update',{...documentMessage(card,this.config.publicOrigin!,this.config.editorMode),ts:card.messageTs});
+        }
+        await this.confirm(card,f.id,session.actor,lease,parent.id);
+        await this.authorize(card.id,session.actor);
       });
       operation.receipt={...operation.receipt,saved:true,fileId:f.id,url:f.url,pdf:'pending'};await checkpoint();
       await this.tasks.enqueue('preview:'+operation.cardId,{teamId:session.actor.teamId,cardId:operation.cardId,kind:'preview'});

@@ -30,6 +30,7 @@
     "@rhwp/editor": "0.8.6",
     "@slack/bolt": "5.1.0",
     "google-auth-library": "11.1.0",
+    "jose": "6.2.12",
     "tsx": "4.23.13"
   },
   "devDependencies": {

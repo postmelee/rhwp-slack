@@ -10,10 +10,10 @@ import {DurableTasks} from '../../src/server/cloud/tasks';
 import {CloudApplication} from '../../src/server/cloud/application';
 import {EditorApi} from './editor-support';
 import {actor,config,bytes} from './support';
-function fixture(concurrency:1|2=1){
+function fixture(concurrency:1|2=1,editorMode:'embed'|'browser'='embed'){
  const dir=mkdtempSync(join(tmpdir(),'rhwp-cloud-app-')),state=new State(join(dir,'metadata.sqlite'),'TTEST'),store=new SqliteMetadata(state),api=new EditorApi();
  const pending:string[]=[];let failPublish=false,failUpload=false;const tasks=new DurableTasks(store,{async publish(id,notBefore){if(failPublish)throw new Error('queue unavailable');if(notBefore===undefined)pending.push(id);}});
- const make=(options:NonNullable<ConstructorParameters<typeof CloudApplication>[4]>={})=>new CloudApplication({...config,imageUploadConcurrency:concurrency,publicOrigin:'https://cloud.example.com'},api,store,tasks,{download:async()=>bytes,fetcher:async(url)=>{assert.ok(String(url).startsWith('https://files.slack.com/upload/v1/'));if(failUpload)throw new Error('upload down');return new Response('ok');},convert:async()=>({pdf:Buffer.from('%PDF-synthetic'),pageCount:12,pages:[1,2,3].map(page=>({page,png:Buffer.from('png')}))}),images:async()=>({pageCount:12,pages:Array.from({length:10},(_,i)=>({page:i+1,png:Buffer.from('png')}))}),...options});
+ const make=(options:NonNullable<ConstructorParameters<typeof CloudApplication>[4]>={})=>new CloudApplication({...config,editorMode,imageUploadConcurrency:concurrency,publicOrigin:'https://cloud.example.com'},api,store,tasks,{download:async()=>bytes,fetcher:async(url)=>{assert.ok(String(url).startsWith('https://files.slack.com/upload/v1/'));if(failUpload)throw new Error('upload down');return new Response('ok');},convert:async()=>({pdf:Buffer.from('%PDF-synthetic'),pageCount:12,pages:[1,2,3].map(page=>({page,png:Buffer.from('png')}))}),images:async()=>({pageCount:12,pages:Array.from({length:10},(_,i)=>({page:i+1,png:Buffer.from('png')}))}),...options});
  return {store,api,tasks,make,pending,setPublishFailure(v:boolean){failPublish=v;},setUploadFailure(v:boolean){failUpload=v;},async drain(){while(pending.length){const id=pending.shift()!;await tasks.execute(id,(spec,ctx)=>make().execute(spec,ctx));}},close(){state.close();rmSync(dir,{recursive:true,force:true});}};
 }
 test('replacement workers build one thread card and persist file IDs without document bytes or upload URLs',async()=>{
@@ -197,4 +197,21 @@ test('first PNG uploads while PDF transfer is blocked, and failure drains both b
    }else assert.equal(card.imageState,'ready');
   }finally{releasePdf();f.close();}
  }
+});
+
+test('browser beta shares PDF before ready and saved HWP in the same thread without Work Objects metadata',async()=>{
+ const f=fixture(1,'browser');try{
+  const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:browser');await f.drain();
+  const card=await f.make().authorize(id,actor);assert.equal(card.pdf,'ready');assert.equal(card.imageState,'ready');
+  const original=f.api.messages.get(card.messageTs!)!;assert.equal(original.metadata,undefined);
+  assert.deepEqual((original.files as {id:string}[]).map(v=>v.id).sort(),[card.pdfFileId,...card.images!.map(v=>v.fileId)].sort());
+  const app=f.make(),bearer=await app.sessions.exchange(await app.sessions.issue(id,actor)),session=await app.sessions.require(bearer);
+  const request=randomUUID();let failShare=true;
+  f.api.handler=async(method,args)=>{if(method==='chat.update'&&failShare){failShare=false;throw new Error('sharing interrupted');}return f.api.response(method,args);};
+  await assert.rejects(app.save(session,request,'hwp',bytes),/sharing interrupted/);
+  const saved=await app.save(session,request,'hwp',bytes);assert.equal(saved.saved,true);await f.drain();
+  const revisions=(await f.store.list<any>('cards')).map(([,c])=>c).filter(c=>c.parentId===id);assert.equal(revisions.length,1);assert.equal(revisions[0].pdf,'ready');
+  const revision=f.api.messages.get(revisions[0].messageTs)!;assert.equal(revision.thread_ts,'100.001');assert.equal(revision.metadata,undefined);
+  assert.ok((revision.files as {id:string}[]).some(v=>v.id===saved.fileId));assert.ok(f.api.calls.some(c=>c.method==='chat.update'&&c.args.ts===revisions[0].messageTs&&(c.args.file_ids as string[])?.includes(saved.fileId!)));assert.equal(f.api.calls.filter(c=>c.method==='chat.postMessage').length,2);
+ }finally{f.close();}
 });

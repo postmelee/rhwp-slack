@@ -55,7 +55,7 @@ export class Settings {
     const blocks:Record<string,unknown>[]=[
       {type:'header',text:{type:'plain_text',text:'rhwp · Slack에서 한글 문서 보기와 편집'}},
       {type:'section',text:{type:'mrkdwn',text:'파일이 공유된 메시지의 스레드에 PDF와 페이지 이미지를 준비합니다. PDF 링크로 열람하고, rhwp 문서 카드로 편집하세요. 수정본도 같은 스레드에 저장됩니다.'}},
-      {type:'section',text:{type:'mrkdwn',text:'*사용 방법*\n• 자동 감지 채널: HWP/HWPX 파일을 올리세요.\n• 멘션 모드: 파일과 함께 @rhwp를 멘션하세요.\n• 기존 파일: 메시지 메뉴 → 한글 문서 열기\n• 명령 도움말: `/rhwp help`'}},
+      {type:'section',text:{type:'mrkdwn',text:'*사용 방법*\n• 자동 감지 채널: HWP/HWPX 파일을 올리세요.\n• 멘션 모드: 파일과 함께 이 앱을 멘션하세요.\n• 기존 파일: 메시지 메뉴 → 한글 문서 열기\n• 명령 도움말: `/rhwp help`'}},
       {type:'context',elements:[{type:'plain_text',text:'⏳ 처리 중 · ✅ 미리보기 준비 완료 · ⚠️ 준비 실패 또는 일부 실패'}]},
     ];
     if(admin){

@@ -5,6 +5,21 @@ test('direct external opening guides the user to the Slack card without loading 
  await page.goto(origin+'/editor/');await expect(page.locator('#reopen')).toContainText('rhwp에서 편집');
  await expect(page.locator('#editor iframe')).toHaveCount(0);await expect(page.locator('#slack-save')).toHaveCount(0);
 });
+test('browser beta passes workspace only to authenticated API requests and clears the login fragment',async({page})=>{
+ const seen:string[]=[];
+ await page.route(origin+'/api/editor/**',async route=>{
+  expect(route.request().headers()['x-rhwp-workspace']).toBe('TSECOND');
+  const path=new URL(route.request().url()).pathname;seen.push(path);
+  if(path.endsWith('/exchange'))await route.fulfill({json:{token:bearer}});
+  else {expect(route.request().headers().authorization).toBe('Bearer '+bearer);
+   if(path.endsWith('/document'))await route.fulfill({json:{name:'문서.hwp',format:'hwp'}});
+   else await route.fulfill({body:readFileSync('tests/fixtures/viewer-two-pages.hwp')});
+  }
+ });
+ await page.goto(origin+'/editor/#ticket='+ticket+'&workspace=TSECOND');
+ await expect(page.locator('#slack-save button')).toBeVisible({timeout:60_000});
+ expect(new URL(page.url()).hash).toBe('');expect(seen.sort()).toEqual(['/api/editor/document','/api/editor/exchange','/api/editor/source']);
+});
 test('a stalled iframe has a deadline and cannot replace recovery guidance with a late result',async({page})=>{
  await page.clock.install();
  let release!:()=>void;const gate=new Promise<void>(r=>release=r);

@@ -1,7 +1,7 @@
 export interface Config {
   signingSecret: string; botToken: string; appId: string; teamId: string;
   imageUploadConcurrency?:1|2; statePath?:string; adminIds?:ReadonlySet<string>; reactions?:boolean;
-  editorOrigin?:string;
+  editorOrigin?:string; editorMode?:'embed'|'browser';
   host?: '127.0.0.1'|'0.0.0.0'; publicOrigin?: string; workspaceHost: string; channelIds: ReadonlySet<string>; port: number;
 }
 export const ID = {team:/^T[A-Z0-9]{2,}$/, app:/^A[A-Z0-9]{2,}$/, user:/^[UW][A-Z0-9]{2,}$/, channel:/^[CG][A-Z0-9]{2,}$/, file:/^F[A-Z0-9]{2,}$/};

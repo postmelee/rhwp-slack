@@ -7,7 +7,7 @@ const stages=new Set(['authorize','download','conversion','upload_pdf','upload_p
 for(const stage of ['metadata_get','metadata_list','metadata_atomic','slack_auth_test','slack_conversations_info','slack_conversations_members','slack_files_info','slack_views_publish','slack_reactions_add','slack_reactions_remove','slack_chat_postEphemeral','slack_views_open','slack_chat_postMessage','slack_chat_update','slack_entity_presentDetails','slack_files_getUploadURLExternal','slack_files_completeUploadExternal'])stages.add(stage);
 const editorOperations=new Set(['exchange','document','source','save','save_status','preflight','other']);
 export type EditorOperation='exchange'|'document'|'source'|'save'|'save_status'|'preflight'|'other';
-const errors=new Set(['access_denied','source_changed','session_expired','rate_limited','slack_unavailable','slack_rejected','upload_uncertain','size_limit','card_pending','conversion_timeout','conversion_start','conversion_child','conversion_output','conversion_aborted','conversion_busy','task_deadline','task_attempts']);
+const errors=new Set(['access_denied','source_changed','session_expired','rate_limited','slack_unavailable','slack_rejected','upload_uncertain','size_limit','card_pending','share_pending','conversion_timeout','conversion_start','conversion_child','conversion_output','conversion_aborted','conversion_busy','task_deadline','task_attempts']);
 export function errorCode(error:unknown):string {
   const e=error as {code?:unknown;name?:unknown}|undefined;
   if(typeof e?.code==='string'&&errors.has(e.code))return e.code;
