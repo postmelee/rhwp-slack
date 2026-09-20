@@ -1,6 +1,6 @@
 # 외부 워크스페이스 베타 구성 — 검증 중
 
-별도 `rhwp beta` 앱과 후보 서버를 배포하고 외부 설치를 활성화했다. 현재 `alhanguel.slack.com`의 `test` 채널에서 합성 HWP 자동 감지·PDF/PNG 게시·Slack 내부 PDF 보기·브라우저 편집·같은 스레드 저장·편집본 재열기를 실제 확인했다. 두 워크스페이스 검증과 공개 베타·Marketplace 준비가 완료된 상태는 아니다. 기존 내부 앱은 계속 유지한다.
+별도 `rhwp beta` 앱과 후보 서버를 배포하고 외부 설치를 활성화했다. 현재 `alhanguel.slack.com`의 `test` 채널에서 합성 HWP 자동 감지·PDF/PNG 게시·Slack 내부 PDF 보기·브라우저 편집·같은 스레드 저장·편집본 재열기를 실제 확인했다. 같은 앱을 rhwphq의 비공개 rhwp-slack-test에도 설치해 합성 HWPX의 변환·편집·동일 스레드 저장·재열기를 확인했다. 두 workspace는 같은 운영자 계정으로 검증했으며 공개 베타·Marketplace 전체 준비 완료를 뜻하지 않는다. 기존 내부 앱은 계속 유지한다.
 
 검증용 설치 시작: [Add to Slack](https://rhwp-beta-ingress-aaj47f2u5q-uc.a.run.app/install). Slack 설정 화면이 자동 생성한 직접 OAuth 링크 대신 이 시작 주소를 사용한다. 이 경로가 일회용 state와 브라우저 쿠키를 설정하고, bot 설치와 OpenID 로그인의 권한 요청을 분리한다.
 
