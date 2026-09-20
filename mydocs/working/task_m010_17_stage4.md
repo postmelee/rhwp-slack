@@ -11,3 +11,7 @@ PR #19 실행 35486142804는 reopen-revision 890ms 뒤 stop-receiver 82,332ms로
 ## Stage 5 로컬 결과
 
 Node24.21.0 typecheck 통과. 수정한 실제 Studio 편집/저장/PDF/재열기 smoke 3회 연속 모두 통과(총18.9초). context 종료 245/233/248ms, receiver 종료는 세 번 모두 1ms 미만. 로컬에서는 이미 준비된 동일 dist와 의존성을 재사용했으며 최종 Linux CI는 소스에서 별도 빌드한다.
+
+## Stage 6 Linux 결과
+
+9ebd7e9의 push 실행 35490296410 viewer/container 모두 통과. viewer context562ms·receiver0ms, 운영 제한 container context572ms·receiver3ms. 재실행 없이 첫 실행 통과. 서버 사양과 90초 제한 유지. 과거 실패82,332ms와 동일 환경 유형의 수정후3ms를 비교하며, 서로 다른 runner이므로 순수 벤치마크로 해석하지 않는다.
