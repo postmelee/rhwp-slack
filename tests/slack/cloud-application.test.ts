@@ -206,9 +206,12 @@ test('browser beta shares PDF before ready and saved HWP in the same thread with
   const original=f.api.messages.get(card.messageTs!)!;assert.equal(original.metadata,undefined);
   assert.deepEqual((original.files as {id:string}[]).map(v=>v.id).sort(),[card.pdfFileId,...card.images!.map(v=>v.fileId)].sort());
   const app=f.make(),bearer=await app.sessions.exchange(await app.sessions.issue(id,actor)),session=await app.sessions.require(bearer);
-  const saved=await app.save(session,randomUUID(),'hwp',bytes);assert.equal(saved.saved,true);await f.drain();
+  const request=randomUUID();let failShare=true;
+  f.api.handler=async(method,args)=>{if(method==='chat.update'&&failShare){failShare=false;throw new Error('sharing interrupted');}return f.api.response(method,args);};
+  await assert.rejects(app.save(session,request,'hwp',bytes),/sharing interrupted/);
+  const saved=await app.save(session,request,'hwp',bytes);assert.equal(saved.saved,true);await f.drain();
   const revisions=(await f.store.list<any>('cards')).map(([,c])=>c).filter(c=>c.parentId===id);assert.equal(revisions.length,1);assert.equal(revisions[0].pdf,'ready');
   const revision=f.api.messages.get(revisions[0].messageTs)!;assert.equal(revision.thread_ts,'100.001');assert.equal(revision.metadata,undefined);
-  assert.ok((revision.files as {id:string}[]).some(v=>v.id===saved.fileId));assert.equal(f.api.calls.filter(c=>c.method==='chat.postMessage').length,2);
+  assert.ok((revision.files as {id:string}[]).some(v=>v.id===saved.fileId));assert.ok(f.api.calls.some(c=>c.method==='chat.update'&&c.args.ts===revisions[0].messageTs&&(c.args.file_ids as string[])?.includes(saved.fileId!)));assert.equal(f.api.calls.filter(c=>c.method==='chat.postMessage').length,2);
  }finally{f.close();}
 });

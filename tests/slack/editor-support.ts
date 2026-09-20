@@ -19,7 +19,8 @@ export class EditorApi extends FakeApi {
         for(const value of Object.values(object))visit(value);
       };
       visit(args.metadata);
-      if(Array.isArray(args.file_ids)){
+      // Actual Slack only attaches these IDs on chat.update, not chat.postMessage.
+      if(method==='chat.update'&&Array.isArray(args.file_ids)){
         for(const id of args.file_ids)visit({slack_file:{id}});
         message.files=[...new Set([...(message.files as {id:string}[]??[]).map(f=>f.id),...args.file_ids])].map(id=>({id}));
       }

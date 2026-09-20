@@ -55,3 +55,12 @@ Chrome 로그인·test 초대 후 `/rhwp settings`에서 자동 감지를 활성
 추가로 distributed worker에서 빠진 `traceTask`를 연결했다. 단계별 시간과 허용 목록 오류 코드만 기록하며 문서명·토큰·OAuth code를 애플리케이션 로그에 남기지 않는다. 파일 공유 확인 실패는 `share_pending`으로 구분한다.
 
 검증: typecheck, security 52, Slack 87 통과. GET/POST 각각 실제 state 저장소와 서명된 합성 JWT로 쿠키 누락/위조·재사용 거부 및 정상 ticket 발급을 검사했다. browser mode의 PDF 공유와 편집본 HWP/PDF 동일 스레드 저장을 회귀 검사했다. 기본 sandbox에서는 로컬 listen EPERM으로 실행이 막혀 허용된 환경에서 재실행했다. 수정 버전의 실제 배포·수용은 후속 기록과 구분한다.
+
+
+### 수정 후보 실제 재검증
+
+`652b7a9` Linux CI push/PR의 viewer·container 모두 통과했다(35484783650, 35484785895). Cloud Build `12331613-c450-4ed4-9ffc-4b185e5bed6f` 성공 후 베타 worker 00004-6cv/ingress 00003-6ns로 반영했다. Pages namespace는 동일하며 재배포하지 않았다. 기존 운영 revision/traffic 유지 및 beta 공개 ingress/비공개 worker를 다시 확인했다.
+
+기존 실패 카드의 재시도 버튼으로 동일 PDF 파일 ID가 ready로 복구되고 PNG 2장도 ready가 됐다. Chrome에서 OpenID 재승인 후 실제 Pages Studio에 2페이지 문서가 열렸고, 첫 문단에 `External beta saved revision` 텍스트를 입력했다. 앞선 ERR_BLOCKED_BY_CLIENT는 이 새 로그인 흐름에서 재현되지 않았다.
+
+실제 저장에서는 새 카드가 같은 스레드에 게시됐지만 HWP 공유가 되지 않아 접근 거부가 발생했다. fake Slack이 chat.postMessage의 file_ids도 첨부로 처리한 가정이 실제와 달랐다. fake를 실제 동작대로 chat.update만 첨부하도록 수정하고, browser revision 게시 직후 부모 문서 권한으로 chat.update를 호출해 HWP를 공유한다. 공유 확인 중에는 부모 권한을 검사하고, 완료 후 새 편집본 권한도 검사한다. 저장 receipt의 동일 요청 재시도로 복구하며 새 파일/카드를 다시 만들지 않는다.
