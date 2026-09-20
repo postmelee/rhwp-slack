@@ -7,3 +7,7 @@ Pages exporter의 --public-site 옵션은 명시한 6개 정적 파일만 추가
 검증: 타입 검사 통과, 단위10개 통과, 실제 pinned Studio 빌드 성공. 공개/기본 export 차이, secret/원본 파일 제외, 내부 링크 대상 존재, 잘못된 API origin 거부를 검사했다. 1280×900과390×844에서4페이지 가로 넘침 없음·설치 대상 검증, 데스크톱·모바일 홈페이지를 직접 시각 확인했다. 증적 /private/tmp/rhwp-site-review/desktop.png, mobile.png.
 
 배포 전이다. 후보 주소 rhwp-slack.pages.dev는 생성 시 가용성을 확인한다. 기존 rhwp-slack-editor Pages/API/Slack 앱을 덮어쓰지 않는다. 사이트의 세션 만료 안내는 현재 기능 상태에 맞췄으며 #23 수용 후 갱신한다.
+
+## Linux 컨테이너 검사 보정
+
+9607091의 viewer job은 통과했지만 smoke 이미지가 새 public-site 단위 검사의 exporter·site 입력을 포함하지 않아 MODULE_NOT_FOUND로 실패했다. smoke 단계에만 두 exporter script와 site를 포함하고 Docker context allowlist를 추가했다. release runtime에는 site를 추가하지 않는다. 검사를 건너뛰거나 기준을 완화하지 않는다.
