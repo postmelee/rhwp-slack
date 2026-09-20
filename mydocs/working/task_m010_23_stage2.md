@@ -7,3 +7,5 @@
 검증 runtime: 9607091 / image sha256:8d033521e12cbcdd7b21ce0bc3785ff5c299c28bf20bc2af1db9c425da409ced. Pages 프로그램 fb123639846d0d2a6359dcfcd15f5ebef5a628a16271afdcee5d5f057f637c05. Chrome·rhwphq 합성 문서로 검증했으며 Safari/모바일 및 실제 다른 사용자의 로그인·회수는 후속 수용이다.
 
 원본 thread 1789884873.358349의 reply 1789888696.014969에 편집본4(HWPX F0C2YQ4Q37V), PDF F0C3043CSGM, PNG F0C34TZRGEN/F0C34U08M6W가 생성됐다. Slack 웹을 다시 열어 확인했으며 편집창도 “편집본과 PDF를 Slack에 저장했습니다”·clean으로 표시됐다. 기존 내부 앱도 같은 채널에 활성화돼 별도 반응한 것은 공개 앱의 중복 저장으로 계산하지 않는다.
+
+Slack 기본 이미지 뷰어로 PNG 첫 페이지를 확대해 `Reconnect preserved`, `Public origin verified`, `Second workspace verified` 문구와 기존 표가 함께 남아 있음을 직접 확인했다.
