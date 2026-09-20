@@ -14,7 +14,7 @@ export function documentGallery(card:Card){
     const gap=sorted.findIndex((image,index)=>image.page!==index+1);
     return gap<0?sorted:sorted.slice(0,gap);
   }
-export function documentMessage(card:Card,origin:string):Record<string,unknown>{
+export function documentMessage(card:Card,origin:string,editorMode:'embed'|'browser'='embed'):Record<string,unknown>{
     const images=documentGallery(card);
     const detail=card.pageCount?card.pageCount+'페이지':'페이지 확인 중';
     const pdf=card.pdf==='ready'&&card.pdfUrl?' · <'+card.pdfUrl+'|PDF로 보기>':card.pdf==='failed'?' · PDF 준비 실패':' · PDF 준비 중';
@@ -26,5 +26,8 @@ export function documentMessage(card:Card,origin:string):Record<string,unknown>{
       blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_more_pages',value:card.id,text:{type:'plain_text',text:card.imageState==='failed'?'이미지 다시 준비':'추가 페이지 이미지 보기 (최대 10페이지)'}}]});
     }
     if(card.pageCount&&card.pageCount>10&&images.length===10)blocks.push({type:'context',elements:[{type:'plain_text',text:'앞 10페이지를 표시했습니다. 전체 문서는 PDF로 볼 수 있습니다.'}]});
-    return {channel:card.actor.channelId,text:documentText(card)+' · '+detail,blocks,parse:'none',unfurl_links:false,unfurl_media:false,metadata:{entities:[documentMetadata(card,origin)]}};
+    if(editorMode==='browser')blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_browser_edit',text:{type:'plain_text',text:'rhwp에서 편집'},url:browserEditorUrl(card,origin)}]});
+    return {channel:card.actor.channelId,text:documentText(card)+' · '+detail,blocks,parse:'none',unfurl_links:false,unfurl_media:false,...(editorMode==='embed'?{metadata:{entities:[documentMetadata(card,origin)]}}:{})};
   }
+
+export function browserEditorUrl(card:Card,origin:string):string{return origin+'/browser/open?'+new URLSearchParams({workspace:card.actor.teamId,document:card.id}).toString();}

@@ -14,7 +14,7 @@ async function read(req:IncomingMessage,limit:number):Promise<Buffer>{
   const chunks:Buffer[]=[];let size=0;const timer=setTimeout(()=>req.destroy(),30_000);
   try{for await(const chunk of req){const b=Buffer.from(chunk);size+=b.length;if(size>limit)throw new UserError('size','파일이 너무 큽니다.');chunks.push(b);}return Buffer.concat(chunks);}finally{clearTimeout(timer);}
 }
-export function editorRoutes(origin:string,documents:EditorDocuments,saves:EditorSaves,editorOrigin?:string) {
+export function editorRoutes(origin:string,documents:EditorDocuments,saves:EditorSaves,editorOrigin?:string,workspaceRouting=false) {
   let reading=0;const serveStatic=staticAssets();
   const handle=async(req:IncomingMessage,res:ServerResponse,next:()=>void):Promise<void>=>{
     const path=new URL(req.url??'/',origin).pathname;
@@ -34,9 +34,9 @@ export function editorRoutes(origin:string,documents:EditorDocuments,saves:Edito
         if(req.method==='OPTIONS'){
           if(!['GET','POST'].includes(String(req.headers['access-control-request-method'])))denied();
           const headers=String(req.headers['access-control-request-headers']??'').toLowerCase().split(',').map(s=>s.trim()).filter(Boolean);
-          if(headers.some(h=>!['authorization','content-type','x-save-request-id','x-document-format'].includes(h)))denied();
+          if(headers.some(h=>!['authorization','content-type','x-save-request-id','x-document-format',...(workspaceRouting?['x-rhwp-workspace']:[])].includes(h)))denied();
           res.setHeader('Access-Control-Allow-Methods','GET, POST');
-          res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type, X-Save-Request-Id, X-Document-Format');
+          res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type, X-Save-Request-Id, X-Document-Format'+(workspaceRouting?', X-Rhwp-Workspace':''));
           res.writeHead(204).end();return;
         }
         if(path==='/api/editor/exchange'&&req.method==='POST'){

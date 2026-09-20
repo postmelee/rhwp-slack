@@ -39,7 +39,7 @@ export class Tenants {
         return {value:route,expiresAt:Date.now()+7*86400_000,result:undefined};
       });await o.publisher.publish(id,notBefore);
     }};
-    const config:Config={...o.config,teamId,botToken,workspaceHost:installation.workspaceHost,channelIds:new Set(),adminIds:new Set([installation.installerUserId])};
+    const config:Config={...o.config,editorMode:'browser',teamId,botToken,workspaceHost:installation.workspaceHost,channelIds:new Set(),adminIds:new Set([installation.installerUserId])};
     const tasks=new DurableTasks(store,publisher),documents=new CloudApplication(config,api,store,tasks,o.application),identity={botId:installation.botId,botUserId:installation.botUserId};
     return {installation,config,documents,tasks,identity,events:new CloudEvents(documents,identity.botUserId)};
   }

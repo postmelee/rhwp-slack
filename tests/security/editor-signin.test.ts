@@ -1,0 +1,43 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {generateKeyPair,exportJWK,createLocalJWKSet,SignJWT} from 'jose';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {State} from '../../src/server/state';
+import {SqliteMetadata} from '../../src/server/cloud/sqlite-metadata';
+import {OAuthStates} from '../../src/server/installations/state';
+import {EditorSignIn} from '../../src/server/installations/signin';
+import {InstallationError} from '../../src/server/installations/store';
+import type {Tenants} from '../../src/server/installations/tenants';
+import {documentMessage} from '../../src/server/document-message';
+const cardId='11111111-1111-4111-a111-111111111111';
+const keys=await generateKeyPair('RS256'),jwk={...await exportJWK(keys.publicKey),kid:'test',alg:'RS256',use:'sig'},verifyKey=createLocalJWKSet({keys:[jwk]});
+async function fixture(){
+  const dir=mkdtempSync(join(tmpdir(),'rhwp-signin-')),state=new State(join(dir,'registry.sqlite'),'TTEST'),states=new OAuthStates(new SqliteMetadata(state));
+  let claims:Record<string,unknown>={},allowed=true,active=true,nonce='',issued=0,authorizedUser='';
+  const tenants={async resolve(team:string,generation?:string){assert.equal(team,'TTEST');if(!active||(generation&&generation!=='g1'))throw new InstallationError();return {installation:{generation:'g1'},documents:{store:{async get(){return {id:cardId,actor:{channelId:'CTEST'}};}},async authorize(_id:string,actor:{userId:string}){authorizedUser=actor.userId;if(!allowed)throw new Error('no membership');},sessions:{async issue(){issued++;return 't'.repeat(43);}}}};}} as unknown as Tenants;
+  const service=new EditorSignIn({appId:'ATEST',clientId:'123.456',clientSecret:'synthetic-secret',origin:'https://api.example.com',editorOrigin:'https://studio.example.com'},states,tenants,async(url,init)=>{
+    assert.equal(String(url),'https://slack.com/api/openid.connect.token');assert.equal(new URLSearchParams(String(init?.body)).get('redirect_uri'),'https://api.example.com/browser/callback');
+    const jwt=await new SignJWT({nonce,'https://slack.com/team_id':'TTEST','https://slack.com/user_id':'UREADER',...claims}).setProtectedHeader({alg:'RS256',kid:'test'}).setIssuer(String(claims.iss??'https://slack.com')).setAudience(String(claims.aud??'123.456')).setSubject('UREADER').setIssuedAt().setExpirationTime(Number(claims.exp??Math.floor(Date.now()/1000)+300)).sign(keys.privateKey);
+    return Response.json({ok:true,id_token:jwt,access_token:'xoxp-synthetic-not-stored'});
+  },verifyKey);
+  return {service,states,setClaims(value:Record<string,unknown>){claims=value;},deny(){allowed=false;},revoke(){active=false;},get issued(){return issued;},get user(){return authorizedUser;},async start(){const start=await service.start('TTEST',cardId),u=new URL(start.url);nonce=u.searchParams.get('nonce')!;assert.equal(u.searchParams.get('scope'),'openid profile');assert.equal(u.searchParams.get('response_mode'),'form_post');return {state:u.searchParams.get('state')!,binding:start.binding,code:'synthetic-code'};},close(){state.close();rmSync(dir,{recursive:true,force:true});}};
+}
+test('signed OpenID identity, not installer identity, is checked against current document membership',async()=>{
+  const f=await fixture();try{const input=await f.start(),url=await f.service.finish(input);assert.equal(f.user,'UREADER');assert.equal(f.issued,1);assert.equal(new URL(url!).origin,'https://studio.example.com');assert.ok(url!.includes('workspace=TTEST'));await assert.rejects(f.service.finish(input),InstallationError);}finally{f.close();}
+});
+test('wrong issuer/audience/nonce/workspace, expired JWT and revoked installation cannot mint editor tickets',async()=>{
+  for(const claims of [{iss:'https://evil.example.com'},{aud:'other'},{nonce:'forged'},{'https://slack.com/team_id':'TOTHER'},{'https://slack.com/user_id':'UOTHER'},{exp:1}]){
+    const f=await fixture();try{const input=await f.start();f.setClaims(claims);await assert.rejects(f.service.finish(input),InstallationError);assert.equal(f.issued,0);}finally{f.close();}
+  }
+  const f=await fixture();try{const input=await f.start();f.revoke();await assert.rejects(f.service.finish(input),InstallationError);assert.equal(f.issued,0);}finally{f.close();}
+});
+test('valid Slack login without document membership is denied; cancellation issues nothing',async()=>{
+  const f=await fixture();try{const input=await f.start();f.deny();await assert.rejects(f.service.finish(input),InstallationError);assert.equal(f.issued,0);const cancel=await f.start();assert.equal(await f.service.finish({...cancel,error:'access_denied'}),undefined);assert.equal(f.issued,0);}finally{f.close();}
+});
+test('external beta message has authenticated browser action without embed metadata; internal default is preserved',()=>{
+  const card={id:cardId,name:'문서.hwp',actor:{teamId:'TTEST',channelId:'CTEST',userId:'UTEST'},pdf:'pending',fileId:'FTEST'} as any;
+  const beta=documentMessage(card,'https://api.example.com','browser');assert.equal(beta.metadata,undefined);const actions=(beta.blocks as any[]).flatMap(b=>b.type==='actions'?b.elements:[]),button=actions.find(a=>a.action_id==='rhwp_browser_edit');assert.equal(button.text.text,'rhwp에서 편집');assert.ok(button.url.includes('/browser/open?workspace=TTEST&document='));assert.equal(button.url.includes('ticket'),false);
+  assert.ok(documentMessage(card,'https://api.example.com').metadata);
+});

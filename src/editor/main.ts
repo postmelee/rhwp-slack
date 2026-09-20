@@ -10,6 +10,7 @@ const local = document.querySelector<HTMLElement>('#local')!;
 const devtools = __LOCAL_FILES__ && new URLSearchParams(location.search).get('devtools') === '1';
 const ticket = __LOCAL_FILES__ ? new URLSearchParams(location.hash.slice(1)).get('document') : null;
 const editorTicket = new URLSearchParams(location.hash.slice(1)).get('ticket');
+const workspace = new URLSearchParams(location.hash.slice(1)).get('workspace');
 // Remove credentials from the URL before any child frame is created.
 history.replaceState(null, '', location.pathname + location.search);
 // Deployment-owned HTML chooses the API; URL parameters and document data never do.
@@ -21,7 +22,7 @@ const mark=(step:string)=>performance.mark('rhwp:'+step);
 mark('host-start');
 async function api(path: string, init: RequestInit = {}): Promise<Response> {
   if(['exchange','document','source'].includes(path))mark(path+'-start');
-  const response = await fetch(apiOrigin+'/api/editor/' + path, {...init, credentials:'omit', cache:'no-store', referrerPolicy:'no-referrer', signal:AbortSignal.any([AbortSignal.timeout(90_000),...(startup?[startup.signal]:[])]), headers:{...init.headers, ...(bearer?{Authorization:'Bearer '+bearer}:{})}});
+  const response = await fetch(apiOrigin+'/api/editor/' + path, {...init, credentials:'omit', cache:'no-store', referrerPolicy:'no-referrer', signal:AbortSignal.any([AbortSignal.timeout(90_000),...(startup?[startup.signal]:[])]), headers:{...init.headers, ...(workspace?{'X-Rhwp-Workspace':workspace}:{}), ...(bearer?{Authorization:'Bearer '+bearer}:{})}});
   if (!response.ok) throw new Error((await response.json().catch(()=>({}))).error || 'Slack 연결을 확인해 주세요.');
   if(['exchange','document','source'].includes(path))mark(path+'-headers');
   return response;
