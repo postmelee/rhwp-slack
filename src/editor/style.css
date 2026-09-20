@@ -18,3 +18,5 @@ body[data-state=ready] #notice{position:absolute;left:0;top:0;transform:none;wid
 @media(prefers-color-scheme:dark){#slack-save{color:#eee;background:#292e35;border-color:#454c55}}
 
 #reopen{max-width:380px;margin:12px 0 0;line-height:1.6}
+
+#slack-save #reconnect-slack,#slack-save #download-edits{margin:6px 0 0 6px;background:#394b5b}

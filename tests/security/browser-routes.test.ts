@@ -45,7 +45,7 @@ test('workspace header cannot exchange or use another workspace credential; CORS
     assert.equal((await fetch(server.url+'/api/editor/exchange',{method:'POST',headers:{...headers('TONE'),Origin:'https://evil.example.com'},body})).status,403);
     const exchange=await fetch(server.url+'/api/editor/exchange',{method:'POST',headers:headers('TONE'),body});assert.equal(exchange.status,200);const {token}=await exchange.json() as {token:string};
     assert.equal((await fetch(server.url+'/api/editor/document',{headers:{...headers('TTWO'),Authorization:'Bearer '+token}})).status,403);
-    assert.equal((await fetch(server.url+'/api/editor/document',{headers:{...headers('TONE'),Authorization:'Bearer '+token}})).status,200);
+    const meta=await fetch(server.url+'/api/editor/document',{headers:{...headers('TONE'),Authorization:'Bearer '+token}});assert.equal(meta.status,200);assert.deepEqual((await meta.json() as any).identity,{cardId:'same-card',teamId:'TONE',channelId:'CONE',userId:'UREADER'});
     assert.equal((await fetch(server.url+'/api/editor/document',{headers:{Authorization:'Bearer '+token}})).status,403);
     const preflight=await fetch(server.url+'/api/editor/source',{method:'OPTIONS',headers:{Origin:studio,'Access-Control-Request-Method':'GET','Access-Control-Request-Headers':'authorization,x-rhwp-workspace'}});assert.equal(preflight.status,204);assert.equal(preflight.headers.get('Access-Control-Allow-Origin'),studio);
     assert.equal((await fetch(server.url+'/api/editor/exchange',{method:'POST',headers:headers('TONE'),body})).status,403);

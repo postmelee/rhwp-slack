@@ -15,8 +15,8 @@ export function browserSignInRoutes(signin:Pick<EditorSignIn,'callback'|'start'|
     const error=()=>{res.writeHead(400,{'Content-Type':'text/plain; charset=utf-8'}).end('문서를 열지 못했습니다. Slack에서 다시 문서 편집을 선택하고 같은 워크스페이스 계정으로 로그인해 주세요.');};
     try{
       if(url.pathname==='/browser/open'&&req.method==='GET'){
-        if(['workspace','document'].some(key=>url.searchParams.getAll(key).length!==1))throw new Error('Invalid parameter');
-        const start=await signin.start(url.searchParams.get('workspace')!,url.searchParams.get('document')!);
+        if(['workspace','document'].some(key=>url.searchParams.getAll(key).length!==1)||url.searchParams.getAll('reconnect').length>1)throw new Error('Invalid parameter');
+        const start=await signin.start(url.searchParams.get('workspace')!,url.searchParams.get('document')!,url.searchParams.get('reconnect')??undefined);
         res.setHeader('Set-Cookie',cookie(start.binding,600));res.writeHead(303,{Location:start.url}).end();return;
       }
       if(url.pathname!=='/browser/callback'||!['GET','POST'].includes(req.method??''))throw new Error('Invalid callback');

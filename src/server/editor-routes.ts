@@ -48,7 +48,7 @@ export function editorRoutes(origin:string,documents:EditorDocuments,saves:Edito
         const match=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization??'');if(!match)denied();
         const s=await documents.sessions.require(match[1]);
         if(path==='/api/editor/document'&&req.method==='GET'){
-          const card=await documents.authorize(s.cardId,s.actor);json({name:card.name,format:/\.hwpx$/i.test(card.name)?'hwpx':'hwp'});return;
+          const card=await documents.authorize(s.cardId,s.actor);json({name:card.name,format:/\.hwpx$/i.test(card.name)?'hwpx':'hwp',...(workspaceRouting?{identity:{cardId:s.cardId,...s.actor}}:{})});return;
         }
         if(path==='/api/editor/source'&&req.method==='GET'){
           const bytes=await documents.ensureSource(s.cardId,s.actor);
@@ -70,7 +70,7 @@ export function editorRoutes(origin:string,documents:EditorDocuments,saves:Edito
       if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405).end();return;}
       if(['/','/viewer','/viewer/','/editor'].includes(path)){res.writeHead(302,{Location:'/editor/'}).end();return;}
       await serveStatic(req,res,path);
-    }catch(error){if(!res.headersSent)json({error:userMessage(error)},error instanceof UserError?(error.code==='access_denied'||error.code==='session_expired'?403:error.code==='save_conflict'?409:400):500);else res.end();}
+    }catch(error){if(!res.headersSent)json({error:userMessage(error),...(error instanceof UserError?{code:error.code}:{})},error instanceof UserError?(error.code==='access_denied'||error.code==='session_expired'?403:error.code==='save_conflict'?409:400):500);else res.end();}
   };
   return async(req:IncomingMessage,res:ServerResponse,next:()=>void):Promise<void>=>{
     const path=new URL(req.url??'/',origin).pathname;

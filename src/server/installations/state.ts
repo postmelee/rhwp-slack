@@ -3,7 +3,7 @@ import type {MetadataStore} from '../cloud/metadata';
 import {InstallationError} from './store';
 const opaque=/^[A-Za-z0-9_-]{43}$/;
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
-interface State {bindingHash:string;purpose:'install'|'signin';until:number;context?:{teamId:string;cardId:string;generation:string;nonceHash:string};}
+interface State {bindingHash:string;purpose:'install'|'signin';until:number;context?:{teamId:string;cardId:string;generation:string;nonceHash:string;reconnect?:string};}
 export class OAuthStates {
   constructor(private store:MetadataStore,private now=Date.now){}
   async issue(purpose:State['purpose'],context?:State['context']):Promise<{state:string;binding:string}>{
