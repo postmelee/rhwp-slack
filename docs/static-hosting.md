@@ -55,3 +55,13 @@ Exporter는 [Pages 파일 한도](https://developers.cloudflare.com/pages/platfo
 6. 복구 시 ingress 이미지/revision과 Pages deployment를 맞춰 되돌린다. 이미 열려 있던 구버전이 아직 받지 못한 파일을 새 배포에서 찾을 수 없으면 Slack 카드에서 새로 연다. 인증 ticket을 URL query나 고정 링크로 바꿔 복구하지 않는다.
 
 프로그램 캐시가 줄이는 것은 주로 전송량·일부 요청 작업이다. ingress의 기존 상시 대기 비용, 인증/다운로드/저장 API와 worker 변환 비용이 없어지지는 않는다. 비용 추정과 실제 청구 집계는 별도로 기록한다.
+
+## 공개 홈페이지를 포함하는 배포
+
+외부 앱은 별도 Pages 프로젝트 `rhwp-slack`를 사용한다. `/`는 홈페이지, `/guide/`·`/privacy/`·`/support/`는 안내, `/editor/`는 기존 편집기다. 기존 내부 프로젝트 `rhwp-slack-editor`와 API를 공유하거나 덮어쓰지 않는다.
+
+```sh
+node scripts/export-pages.mjs https://YOUR-INGRESS.a.run.app --public-site
+```
+
+이 옵션이 없으면 기존 내부 배포 구성이 유지된다. 설치 링크는 지정한 API origin의 `/install`로 생성한다. `site/`의 명시적 파일만 배포하며, repository 전체를 Pages에 올리지 않는다. API CORS와 EDITOR_ORIGIN은 새 Pages 배포 검증 후 전환하고 이전 프로젝트는 복구용으로 보존한다.

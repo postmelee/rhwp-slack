@@ -4,10 +4,10 @@
 
 ## 현재 상태
 
-- 현재 앱: 단일 워크스페이스의 내부 운영. PR #12의 C 구성이 운영 중이며 통합 리뷰 대기.
+- 기존 내부 앱: C 구성 운영 유지. 외부 앱과 서비스 분리.
 - 외부 베타: **PDF·PNG는 Slack, 편집은 브라우저**로 준비하기로 사용자 결정.
-- OAuth 다중 설치·삭제와 설치형 베타: [#16](https://github.com/postmelee/rhwp-slack/issues/16)에서 구현 예정. Public Distribution 미활성화.
-- 조직 자체 호스팅: 기존 구성 기반 안내 초안. 새 조직에서 설치 재현은 미검증.
+- 외부 설치: #16/PR #19 병합, Public Distribution 활성화. 같은 앱의 실제 2개 workspace에서 HWP/HWPX 변환·브라우저 편집·같은 스레드 저장·재열기 확인.
+- 조직 자체 호스팅: 브라우저 편집 구성 안내 작성. 새 조직에서 설치 재현은 미검증.
 - Marketplace: 미제출, 승인되지 않음.
 
 ## 미등재 시험 배포
@@ -18,15 +18,15 @@ OAuth 설치 흐름과 설치별 토큰 관리를 구현하고 Manage Distributi
 
 | 항목 | 필요 작업 | 현재 |
 |---|---|---|
-| 설치 | OAuth/state, 설치별 토큰 보호/선택, 재설치·삭제/철회 | 미구현 |
-| 격리 | 파일·세션·큐·설정·관리자·작업량 제한을 workspace별로 분리 | 단일 workspace 구현, 다중 수용 필요 |
-| 외부 편집 | 브라우저에서 사용자/채널/파일 권한 확인 후 편집, 같은 스레드 저장 | 외부 베타 경로 구현 필요 |
+| 설치 | OAuth/state, 설치별 토큰 보호/선택, 재설치·삭제/철회 | 구현·자동 경계 검사, 실제 2개 workspace 설치 |
+| 격리 | 파일·세션·큐·설정·관리자·작업량 제한을 workspace별로 분리 | 설치별 분리·자동 보안 검사, 운영 장기 관찰 필요 |
+| 외부 편집 | 브라우저에서 사용자/채널/파일 권한 확인 후 편집, 같은 스레드 저장 | 두 workspace 합성 문서 수용 |
 | 내부 embeds | 외부 배포용 pilot 초대 승인 | 별도 신청·승인 필요 |
-| 공개 안내 | 설치·개인정보·처리/보관/삭제·지원 연락처·권한 사유 | 준비 필요 |
-| 설치 실적 | 심사 대상 앱의 활성 workspace 설치 최소10개 유지 | 미충족 |
+| 공개 안내 | 설치·개인정보·처리/보관/삭제·지원 연락처·권한 사유 | 공개 홈페이지 게시·앱 소개 저장, 심사 자료 추가 준비 |
+| 설치 실적 | 동일 앱의 활성 workspace·주간 활성 사용자 요건 충족 | 미충족 |
 | 심사 자료 | 실제 설치/미리보기/편집/삭제 시연, 심사자 테스트 절차 | 준비 필요 |
 
-2026년 9월 1일 공지에 따르면 2026년 7월부터 최소 **10개 활성 워크스페이스 설치**가 필요하고 심사 기간 내내 유지해야 한다. 과거 문서의 5개 기준을 사용하지 않는다. 여러 채널이나 구성원 수를 workspace 수로 계산하지 않는다. 조직이 각각 생성한 별도 앱 설치를 중앙 배포 앱의 설치 수에 합산하지 않는다. [공식 설치 요건](https://docs.slack.dev/changelog/2026/09/01/slack-marketplace-install-requirement/)
+2026-09-20 재확인한 [현재 심사 기준](https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/)에는 활성 workspace 설치와 주간 활성 사용자 각각 10개/10명 기준이 있으며, 활성 workspace는 최근 28일 사용한 sandbox가 아닌 곳이다. 준비된 테스트 workspace 2곳을 이 심사 실적으로 단정하지 않는다. 2026년 9월 1일 공지에 따르면 2026년 7월부터 최소 **10개 활성 워크스페이스 설치**가 필요하고 심사 기간 내내 유지해야 한다. 과거 문서의 5개 기준을 사용하지 않는다. 여러 채널이나 구성원 수를 workspace 수로 계산하지 않는다. 조직이 각각 생성한 별도 앱 설치를 중앙 배포 앱의 설치 수에 합산하지 않는다. [공식 설치 요건](https://docs.slack.dev/changelog/2026/09/01/slack-marketplace-install-requirement/)
 
 외부 앱의 Work Objects embeds는 초대제이며 일반 Marketplace 승인과 별개다. 중앙 베타가 미등재라는 이유로 내부 앱 예외가 적용된다고 가정하지 않는다. 사용자 선택에 따라 pilot을 기다리는 동안 브라우저 편집 경로를 구현한다. 현재 내부용 앱은 별도로 유지한다. [embeds 조건](https://docs.slack.dev/messaging/work-objects-embeds/)
 
@@ -43,3 +43,15 @@ README는 기능·설치·자료 처리 위치·제약의 진입점으로 사용
 3. #16에서 하나의 배포 앱의 OAuth·설치별 토큰/설정/문서 격리·외부 브라우저 인증·Add to Slack·두 workspace 수용을 구현/검증. 기존 내부 운영을 보존하는 검증 환경과 전환 절차를 사용하고 새 비밀값/배포 설정을 구체적으로 확정.
 4. #4에서 초대형 베타 모집·지원/정책 안내와 동일 앱의 활성 설치10곳 확보·유지를 추적한다. #16의 실제 조직 설치·삭제·권한 회수·비용/대기열 수용 결과를 연결한다. 자체 호스팅은 새 조직 환경에서 별도 재현.
 5. 활성 설치 요건과 [Marketplace 심사 기준](https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/)을 충족한 뒤 제출. 실제 제출/승인 상태는 증거와 함께 갱신.
+
+## 공개 소개 입력값
+
+- 짧은 소개: **Slack에서 한글 문서를 미리 보고 브라우저에서 편집**
+- 설치 안내: https://rhwp-slack.pages.dev/
+- 개인정보: https://rhwp-slack.pages.dev/privacy/
+- 지원: https://rhwp-slack.pages.dev/support/
+- 운영자/연락처: Taegyu Lee / meleeisdeveloping@gmail.com (공개 승인됨)
+- Direct install URL: https://rhwp-beta-ingress-aaj47f2u5q-uc.a.run.app/install — 실제 302 + state/cookie 응답 확인 후 직접 설치 설정 저장.
+- 가격 Free, 언어 Korean. 심사 연락처 전화번호는 사용자가 Slack 설정에 직접 입력하고 저장했다. 번호는 저장소에 보관하지 않는다. 스크린샷·최종 약관 동의·제출은 별도 준비한다.
+
+설정 입력이나 Install from Slack Marketplace 선택은 심사 제출·승인을 의미하지 않는다.

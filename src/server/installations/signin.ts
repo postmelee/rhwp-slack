@@ -17,10 +17,10 @@ export class EditorSignIn {
     for(const origin of [config.origin,config.editorOrigin]){const u=new URL(origin);if(u.protocol!=='https:'||u.origin!==origin)throw new InstallationError();}
     this.callback=config.origin+'/browser/callback';
   }
-  async start(teamId:string,cardId:string):Promise<{url:string;binding:string}>{
-    if(!ID.team.test(teamId)||!uuid.test(cardId))throw new InstallationError();
+  async start(teamId:string,cardId:string,reconnect?:string):Promise<{url:string;binding:string}>{
+    if(!ID.team.test(teamId)||!uuid.test(cardId)||(reconnect!==undefined&&!/^[A-Za-z0-9_-]{43}$/.test(reconnect)))throw new InstallationError();
     const tenant=await this.tenants.resolve(teamId),nonce=randomBytes(32).toString('base64url');
-    const {state,binding}=await this.states.issue('signin',{teamId,cardId,generation:tenant.installation.generation,nonceHash:hash(nonce)});
+    const {state,binding}=await this.states.issue('signin',{teamId,cardId,generation:tenant.installation.generation,nonceHash:hash(nonce),...(reconnect?{reconnect}:{})});
     const u=new URL('https://slack.com/openid/connect/authorize');u.search=new URLSearchParams({response_type:'code',response_mode:'form_post',scope:'openid profile',client_id:this.config.clientId,redirect_uri:this.callback,state,nonce,team:teamId}).toString();
     return {url:u.href,binding};
   }
@@ -40,7 +40,7 @@ export class EditorSignIn {
       const actor={teamId:state.context.teamId,userId:user,channelId:card.actor.channelId};
       await tenant.documents.authorize(card.id,actor);
       const ticket=await tenant.documents.sessions.issue(card.id,actor);
-      return this.config.editorOrigin+'/editor/#'+new URLSearchParams({ticket,workspace:actor.teamId}).toString();
+      return this.config.editorOrigin+'/editor/#'+new URLSearchParams({ticket,workspace:actor.teamId,...(state.context.reconnect?{reconnect:state.context.reconnect}:{})}).toString();
     }catch{throw new InstallationError();}
   }
 }

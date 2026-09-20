@@ -1,8 +1,8 @@
 import {readFileSync} from 'node:fs';
 const args=process.argv.slice(2),manifest=JSON.parse(readFileSync(new URL('../slack/manifest.json',import.meta.url),'utf8'));
-manifest.display_information.name='rhwp beta';
-manifest.display_information.description='HWP/HWPX의 PDF·이미지는 Slack에서, 편집은 브라우저에서';
-manifest.features.bot_user.display_name='rhwp-beta';
+manifest.display_information.name='rhwp';
+manifest.display_information.description='Slack에서 한글 문서를 미리 보고 브라우저에서 편집';
+manifest.features.bot_user.display_name='rhwp';
 // User OpenID scopes are granted in a separate sign-in flow, never the bot installation URL.
 manifest.oauth_config.scopes.user=['openid','profile'];
 manifest.settings.event_subscriptions.bot_events=manifest.settings.event_subscriptions.bot_events.filter(e=>e!=='entity_details_requested');

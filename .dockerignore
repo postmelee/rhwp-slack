@@ -15,3 +15,6 @@
 !tests/**
 !Dockerfile
 !LICENSE
+
+!site/
+!site/**

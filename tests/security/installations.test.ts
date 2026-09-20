@@ -95,7 +95,7 @@ test('installation HTTP routes use secure browser binding, reject duplicate call
       return {headers,status,body};
     };
     const start=await send('/install'),location=start.headers.get('location')!,cookie=start.headers.get('set-cookie')!,state=new URL(location).searchParams.get('state')!;
-    assert.equal(start.status,303);for(const attr of ['Secure','HttpOnly','SameSite=Lax','Path=/'])assert.ok(cookie.includes(attr));
+    assert.equal(start.status,302);assert.equal(new URL(location).origin,"https://slack.com");assert.equal(new URL(location).pathname,"/oauth/v2/authorize");for(const attr of ['Secure','HttpOnly','SameSite=Lax','Path=/'])assert.ok(cookie.includes(attr));
     const forged=await send('/oauth/callback?state='+state+'&code=secret');assert.equal(forged.status,400);assert.equal(calls.length,0);assert.equal(forged.body.includes('secret'),false);
     const duplicate=await send('/oauth/callback?state='+state+'&state=bad&code=secret',cookie.split(';')[0]);assert.equal(duplicate.status,400);assert.equal(calls.length,0);
     const success=await send('/oauth/callback?state='+state+'&code=synthetic',cookie.split(';')[0]);assert.equal(success.status,200);assert.ok(success.headers.get('set-cookie')?.includes('Max-Age=0'));assert.equal(success.headers.get('cache-control'),'no-store');assert.equal(success.body.includes(input.botToken),false);

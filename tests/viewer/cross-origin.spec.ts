@@ -24,9 +24,9 @@ test('separate static origin → API authorization → Studio edit → same-thre
   const {id}=runtime.preparations.submit(actor,'FTEST','open','cross-origin');await runtime.preparations.idle();await runtime.documents!.present(id,actor,'trigger');
   const event=api.calls.find(c=>c.method==='entity.presentDetails')!;const preview=object(object(object(object(event.args.metadata).entity_payload).attributes).full_size_preview);
   expect(String(preview.preview_url)).toMatch(/^http:\/\/127\.0\.0\.1:4180\/editor\/#ticket=/);
-  await page.goto(String(preview.preview_url));await expect(page.locator('#slack-save button')).toBeVisible({timeout:60_000});expect(new URL(page.url()).hash).toBe('');
+  await page.goto(String(preview.preview_url));await expect(page.locator('#save-to-slack')).toBeVisible({timeout:60_000});expect(new URL(page.url()).hash).toBe('');
   const input=page.frameLocator('#editor iframe').getByLabel('문서 편집 입력',{exact:true});await input.focus();await input.pressSequentially('Cross origin ');await expect(page).toHaveTitle(/^\* /);
-  await page.locator('#slack-save button').click();await expect(page.locator('#slack-save p')).toHaveText('편집본과 PDF를 Slack에 저장했습니다.',{timeout:60_000});
+  await page.locator('#save-to-slack').click();await expect(page.locator('#slack-save p')).toHaveText('편집본과 PDF를 Slack에 저장했습니다.',{timeout:60_000});
   const posts=api.calls.filter(c=>c.method==='chat.postMessage');expect(posts).toHaveLength(2);expect(posts[1].args.thread_ts).toBe('123.456');
   await Promise.all(staticRequests);expect(failures).toEqual([]);
  }finally{await runtime.receiver.stop();await runtime.close();await new Promise<void>((r,j)=>frontend.close(e=>e?j(e):r()));}

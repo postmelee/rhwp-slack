@@ -17,7 +17,7 @@ test('browser beta passes workspace only to authenticated API requests and clear
   }
  });
  await page.goto(origin+'/editor/#ticket='+ticket+'&workspace=TSECOND');
- await expect(page.locator('#slack-save button')).toBeVisible({timeout:60_000});
+ await expect(page.locator('#save-to-slack')).toBeVisible({timeout:60_000});
  expect(new URL(page.url()).hash).toBe('');expect(seen.sort()).toEqual(['/api/editor/document','/api/editor/exchange','/api/editor/source']);
 });
 test('a stalled iframe has a deadline and cannot replace recovery guidance with a late result',async({page})=>{
@@ -58,7 +58,7 @@ test('source starts while Studio is blocked, once per open, then loads after bot
  try{
   await page.goto(origin+'/editor/#ticket='+ticket,{waitUntil:'domcontentloaded'});
   await expect.poll(()=>downloads).toBe(1);await expect(page.locator('#slack-save')).toHaveCount(0);
-  release();await expect(page.locator('#slack-save button')).toBeVisible({timeout:60_000});expect(downloads).toBe(1);
+  release();await expect(page.locator('#save-to-slack')).toBeVisible({timeout:60_000});expect(downloads).toBe(1);
   const marks=await page.evaluate(()=>performance.getEntriesByType('mark').filter(e=>e.name.startsWith('rhwp:')).map(e=>({name:e.name,ms:e.startTime})));
   expect(marks.find(e=>e.name==='rhwp:source-ready')!.ms).toBeLessThan(marks.find(e=>e.name==='rhwp:studio-ready')!.ms);
  }finally{release();}

@@ -2,21 +2,21 @@
 
 Slack에 올린 HWP/HWPX를 PDF·페이지 이미지로 확인하고, rhwp-studio에서 편집한 문서를 같은 스레드에 저장하는 봇입니다.
 
-**현재 한 워크스페이스에서 시험 운영 중입니다.** 외부 워크스페이스용 Add to Slack 설치형 베타는 [#16](https://github.com/postmelee/rhwp-slack/issues/16)에서 준비 중이며, 아직 설치 링크를 제공하지 않습니다. Marketplace에도 제출하지 않았습니다.
+**[공개 베타 홈페이지에서 Slack에 추가할 수 있습니다.](https://rhwp-slack.pages.dev/)** 같은 앱을 두 워크스페이스에 설치해 미리보기·브라우저 편집·같은 스레드 저장·재열기를 확인했습니다. Marketplace에는 아직 제출하지 않았습니다. [검증 범위와 운영 상태](docs/external-beta.md)
 
 ## 사용과 설치
 
 | 사용 방식 | 미리보기 | 편집 | 준비 상태 |
 |---|---|---|---|
 | 현재 내부 운영 | Slack PDF·PNG 갤러리 | Slack 내부 rhwp-studio | 시험 운영 중 |
-| 외부 설치형 베타 | Slack PDF·PNG 갤러리 | 인증 후 브라우저 rhwp-studio | OAuth·워크스페이스 격리 구현 예정 |
-| 조직 자체 호스팅 | 조직 Slack의 PDF·PNG | 조직 소유 Slack 앱의 내부 편집 | 안내 초안, 새 조직에서 재현 검증 필요 |
+| 외부 설치형 베타 | Slack PDF·PNG 갤러리 | 인증 후 브라우저 rhwp-studio | 두 워크스페이스 수용 완료, 베타 운영 |
+| 조직 자체 호스팅 | 조직 Slack의 PDF·PNG | 조직 소유 앱의 브라우저 편집 | 관리자 안내 작성, 새 조직에서 재현 검증 필요 |
 
 - [설치 방식 선택](docs/installation.md)
 - [조직용 Cloud Run + Pages 자체 호스팅](docs/self-hosting.md)
 - [Marketplace 준비와 외부 편집 지원 조건](docs/marketplace.md)
 
-일반 사용자는 하나의 rhwp 배포 앱을 Add to Slack으로 설치하는 방향입니다. Manifest로 조직별 앱을 만드는 절차는 자체 호스팅용입니다. 외부 배포 앱의 Slack 내부 편집은 Work Objects embeds 초대 승인이 필요합니다. 베타에서는 브라우저 편집 경로를 제공하는 방향으로 준비합니다. 현재 비공개 저장소는 초대받은 사람만 읽을 수 있으며, 소스/이미지 배포 방식과 라이선스는 공개 전에 확정합니다.
+일반 사용자는 하나의 rhwp 배포 앱을 Add to Slack으로 설치하는 방향입니다. Manifest로 조직별 앱을 만드는 절차는 자체 호스팅용입니다. 외부 배포 앱의 Slack 내부 편집은 Work Objects embeds 초대 승인이 필요합니다. 베타에서는 Slack으로 로그인한 뒤 브라우저 편집 경로를 제공합니다. 현재 비공개 저장소는 초대받은 사람만 읽을 수 있으며, 소스/이미지 배포 방식과 라이선스는 공개 전에 확정합니다.
 
 ## 무엇을 할 수 있나요?
 
@@ -105,7 +105,7 @@ Linux에서는 `npm exec playwright install --with-deps chromium`으로 브라�
 - HWP3·암호화 파일은 지원 범위 밖입니다. 모든 Studio 기능과 한컴 출력의 동일성을 보장하지 않습니다.
 - 고정 엔진 0.8.6의 혼합 서식 undo 및 일부 HWPX 그림/설명 배치 문제는 [의존성·검증 기록](docs/dependencies.md)에 남아 있습니다.
 - 앱과 사용자가 접근 가능한 허용 채널의 문서만 처리합니다. Slack Connect/조직 간 공유와 Enterprise Grid 조직 전체 설치를 지원한다고 보장하지 않습니다.
-- 현재 외부 워크스페이스 OAuth 설치는 미구현입니다. 조직의 새 환경에서 자체 호스팅을 재현하는 검증도 남아 있습니다.
+- 외부 OAuth 설치·편집·저장을 같은 운영자 계정으로 두 워크스페이스에서 확인했습니다. 다른 동료의 외부 로그인, 실제 제거·재설치, 조직의 새 환경에서 자체 호스팅을 재현하는 검증은 남아 있습니다.
 - 무료 할당량·크레딧은 무과금 보장이 아닙니다. Pages로 프로그램을 옮겨도 Cloud Run 대기·API·변환 및 DB/큐/전송 비용은 남습니다.
 
 ## 개발·운영 문서

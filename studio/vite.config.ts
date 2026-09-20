@@ -1,8 +1,11 @@
 import { defineConfig } from 'vite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {staticVersion} from '../scripts/static-version.mjs';
-const root = resolve('.cache/studio-source/rhwp-studio');
+// Vite resolves symlinks before transform; compare against the same canonical path.
+const root = realpathSync('.cache/studio-source/rhwp-studio');
+const requiredOverlays = new Set(['src/main.ts','src/ui/chrome-mode.ts','src/ui/options-dialog.ts'].map(p => resolve(root,p)));
+const appliedOverlays = new Set<string>();
 const replaceOnce = (code: string, from: string, to: string): string => {
   if (code.split(from).length !== 2) throw new Error(`Studio overlay anchor changed: ${from}`);
   return code.replace(from, to);
@@ -17,6 +20,10 @@ export default defineConfig({
   } },
   plugins: [{
     name: 'slack-studio-policy', enforce: 'pre',
+    buildStart() { appliedOverlays.clear(); },
+    buildEnd(error) {
+      if (!error) for (const path of requiredOverlays) if (!appliedOverlays.has(path)) this.error('Required Slack Studio overlay was not applied: '+path);
+    },
     transform(code, id) {
       const path = id.split('?')[0];
       if (['/recovery/autosave-store.ts','/recent/recent-store.ts','/history/idb-store.ts'].some(s => path.endsWith(s))) {
@@ -50,6 +57,7 @@ export default defineConfig({
           code = replaceOnce(code, `this.${field}.checked = autosave.${setting};`, `this.${field}.checked = false; this.${field}.disabled = true; this.${field}.title = 'Slack에서는 문서 자동 저장을 사용하지 않습니다.';`);
         }
       }
+      if (requiredOverlays.has(path)) appliedOverlays.add(path);
       return code;
     },
   }],
