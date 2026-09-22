@@ -39,6 +39,19 @@ export default defineConfig({
             if (window.parent !== window) window.parent.postMessage({ type: 'rhwp-slack:dirty', dirty: (change as {dirty:boolean}).dirty }, window.location.origin);
           });`);
         code = replaceOnce(code, 'notifySaved: (fileName?: string) => completeHostSave(fileName),', `notifySaved: (fileName?: string) => completeHostSave(fileName),
+          captureSlackSave: () => {
+            if (!documentAgent) throw new Error('문서가 준비되지 않았습니다.');
+            const before = documentAgent.getDocumentState();
+            if (before.pageCount > 200) throw new Error('200페이지 이하 문서만 저장할 수 있습니다.');
+            // Export stamps the current caret. Capture bytes and their post-stamp state
+            // in one synchronous task so no user edit or document load can interleave.
+            const bytes = before.format === 'hwpx' ? wasm.exportHwpx() : wasm.exportHwp();
+            const state = documentAgent.getDocumentState();
+            if (before.documentEpoch !== state.documentEpoch || before.changeSeq !== state.changeSeq || before.format !== state.format) {
+              throw new Error('내보내는 동안 문서가 변경되었습니다. 다시 저장해 주세요.');
+            }
+            return { bytes, state };
+          },
           notifySavedIfUnchanged: async (expected: {documentEpoch:number;changeSeq:number;documentSha256:string}) => {
             const current = documentAgent?.getDocumentState();
             if (!current || current.documentEpoch !== expected.documentEpoch || current.changeSeq !== expected.changeSeq || current.documentSha256 !== expected.documentSha256) return false;
