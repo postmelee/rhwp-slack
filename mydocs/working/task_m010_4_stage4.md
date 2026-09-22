@@ -43,3 +43,32 @@
 제품 정본 [Marketplace 준비](../../docs/marketplace.md)에 저장/초안/미제출을 구분했다. 보안 정보는 새 설정 탭에서 재조회하고 보안 이메일은 화면으로 단일 주소를 직접 확인했다. 전화번호·인증 코드·토큰은 기록하지 않았다.
 
 활성 워크스페이스·주간 활성 사용자 요건, 전체 설치/설정 시연 링크, 실제 공유 해제·다른 사용자 철회, 별도 조직 자체 호스팅 재현은 아직 남는다.
+
+## 후속 — 설치 화면 안내 및 수용 결과 연결
+
+2026-09-22 PR #36 병합 후 첫 저장 성공을 공개 배포에서 확인했다. 원인은 네트워크가 아니라 Studio 내보내기의 caret 메타데이터 갱신이었다. #5도 실제 두 공개 채널 간 공유 해제를 검증했다. [#34 최종 보고](../report/task_m010_34_report.md)와 [#5 Stage 4](task_m010_5_stage4.md)가 각 원인·상태·검증 한계를 기록한다. 위 최초 관측 기록을 덮어쓰지 않고 후속 결과로 연결한다.
+
+`site/review/index.html`은 설치 OAuth → 설치 완료 → 채널 설정 → 편집용 Slack 로그인 → 첫 저장 성공 → Slack 결과의 실제 화면 6장을 안내한다. 앞 4장은 제거·재설치 수용, 뒤 2장은 #34의 첫 저장 수용 화면이다. 합성 문서만 포함하며 비밀값·로그인 코드가 없음을 직접 확인했다. PNG를 가공하지 않고 복사했으며 문서 원본은 게시하지 않는다. 홈페이지의 대표 이미지는 그대로 둔다.
+
+- `node --test tests/unit/public-site.test.mjs`: 1/1 통과. 공개 파일 allowlist, HTML 링크, API origin과 secret/source 파일 제외 확인.
+- `node scripts/export-pages.mjs https://rhwp-beta-ingress-aaj47f2u5q-uc.a.run.app --public-site`: 파일 76개, 헤더 72개, site 1,755,409 bytes. `/review/`·이미지에 noindex, robots 제외. 프로그램 namespace는 #34와 동일한 `ea2d06d323e9c93b29e683feb45cdfedd8705b0f6ccf912f143e158d7b881451`.
+- 자체 페이지 Playwright: 1440×1000·390×844에서 6장 로드, 가로 넘침 없음, 전체 캡처 직접 판독. `/private/tmp/rhwp-review-desktop.png`, `/private/tmp/rhwp-review-mobile.png`. 마지막 PNG 실제 비율 1200×818 반영 후 재검증.
+- 로컬 서버의 초기 포트 바인딩은 sandbox/기존 포트 점유로 실패하여 다른 로컬 포트에서 검증했다. 앱 기능 실패로 세지 않는다.
+
+공개 배포·Slack Testing information 저장은 다음 기록으로 연결한다. 다른 사용자 철회와 별도 조직 자체 호스팅, 활성 설치/사용 요건은 계속 미완료다.
+
+### 공개 게시·Slack 양식 확인
+
+- Pages production `aff3490d`, source `f8633a1`: `/review/`와 PNG HTTP 200, `X-Robots-Tag: noindex, nofollow`, Chrome 실제 내용 확인.
+- Testing information의 screenshots URL에 공개 주소를 입력하고 blur·다른 탭 이동·Back을 시도했다. SPA 내부에는 남지만 전체 재로드에서는 빈칸이었다. 독립 Save 버튼은 없고 약관 동의 전 Next: Automated Checks는 비활성화다. URL **영구 저장 미완료**이며 약관을 선택하거나 제출하지 않았다.
+- 기존 소개·지원·3장 이미지 저장 결과와 새 안내 URL 미저장을 구분한다. 제출 준비 시 동의·다음 단계와 함께 URL을 저장하고 재조회해야 한다.
+
+### CI 종료 단계 보완
+
+최초 head `ca46a3c`의 push run `35723793747`은 cross-origin viewer 테스트 1건이 90초로 실패했고, 동일 head PR run `35723797967`은 통과했다. 실패 trace는 저장 성공 assertion과 게시 개수·thread_ts·브라우저 오류 없음 검사가 10,017.918ms에 모두 끝난 뒤 finally에서 멈췄음을 보여준다. 사용자 네트워크나 문서 저장 실패로 분류하지 않는다. 실패 artifact는 `/private/tmp/pr37-viewer-failure/`에 보존했다.
+
+테스트 정리에서 page.close를 서버 stop보다 먼저 수행하고 각 정리 단계를 test.step으로 표시했다. 시간 제한·기능 assertion·제품 코드는 유지한다. 어느 서버 close가 멈췄는지는 기존 trace에서 구분되지 않으므로 확정하지 않는다.
+
+- `npm run typecheck`: 통과.
+- `npm exec -- playwright test tests/viewer/cross-origin.spec.ts --repeat-each=3`: 3/3, 14.7초. 별도 첫 단일 실행도 1/1 통과했으나 잘못 전달된 npm 반복 옵션을 3회 증거로 세지 않는다.
+- 다른 기능 검증은 변경하지 않았다. 최종 Linux CI 결과는 PR #37에 연결한다.
