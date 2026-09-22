@@ -5,6 +5,7 @@ import {ID} from './config';
 import {assertActor, authorizeFile, type Actor} from './access';
 import type {SlackApi} from './slack-api';
 import {Preparations, type Job} from './jobs';
+import {sharedChannels} from './file-sharing';
 import {HELP, parseCommand} from './commands';
 import {Replays} from './replays';
 import {Selections, candidatesFrom, selectionView} from './shortcuts';
@@ -223,7 +224,13 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
   for(const type of ['file_deleted','file_unshared'] as const) app.event(type,async({body,event})=>{
     if(body.team_id!==config.teamId || typeof body.event_id!=='string' || !body.event_id || !replays.claim(`event:${body.team_id}:${body.event_id}`))return;
     const e=object(event);const fileId=e.file_id;
-    if(typeof fileId==='string'&&ID.file.test(fileId)){for(const [key,item] of observed)if(item.team===body.team_id&&item.file===fileId)observed.delete(key);for(const [key,value] of state?.all<{file:string}>('observed')??[])if(value.file===fileId)state?.delete('observed',key);preparations.invalidate(body.team_id,fileId);await documents?.invalidate(body.team_id,fileId);}
+    if(typeof fileId!=='string'||!ID.file.test(fileId))return;
+    try {
+      const keep=type==='file_unshared'?await sharedChannels(api,config.teamId,fileId):undefined;
+      for(const [key,item] of observed)if(item.team===body.team_id&&item.file===fileId&&!keep?.has(item.channel))observed.delete(key);
+      for(const [key,value] of state?.all<{file:string;channel:string}>('observed')??[])if(value.file===fileId&&!keep?.has(value.channel))state?.delete('observed',key);
+      preparations.invalidate(body.team_id,fileId,keep);await documents?.invalidate(body.team_id,fileId,keep);
+    }catch(error){replays.release(`event:${body.team_id}:${body.event_id}`);throw error;}
   });
   app.error(async()=>{}); // No raw payload/token logging; callers receive safe errors above.
   receiver.router.get('/healthz',(_req,res)=>{res.json({ok:true});});
