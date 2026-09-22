@@ -22,7 +22,7 @@ export class CloudEvents {
  async execute(spec:TaskSpec,context:TaskContext):Promise<void>{
   const app=this.application;if(spec.teamId!==app.config.teamId)throw new Error('Wrong workspace');
   const input=await app.store.get<Input>('inputs',spec.cardId);if(!input)throw new Error('Missing event');
-  if(input.kind==='file_deleted'||input.kind==='file_unshared'){if(input.fileId)await app.invalidate(input.fileId);return;}
+  if(input.kind==='file_deleted'||input.kind==='file_unshared'){if(input.fileId)await app.invalidate(input.fileId,input.kind==='file_unshared');return;}
   if(input.kind==='home'){await new Settings(app.config,app.api,undefined,app.store).home(app.config.teamId,input.user!);return;}
   const actor=input.actor!;if(actor.userId===this.botUserId||await app.mode(actor.channelId)==='off')return;
   await context.checkpoint();

@@ -9,6 +9,7 @@ import {withLease,type LeaseContext} from './lease';
 import type {Config} from '../config';
 import {ID} from '../config';
 import {authorizeFile,type Actor,type SourceFile} from '../access';
+import {sharedChannels} from '../file-sharing';
 import type {SlackApi} from '../slack-api';
 import type {Card} from '../documents';
 import type {Session} from '../sessions';
@@ -329,9 +330,13 @@ export class CloudApplication {
       return {...operation.receipt};
     });
   }
-  async invalidate(fileId:string):Promise<void>{
-    for(const [id,card] of await this.store.list<CloudCard>('cards'))if(card.fileId===fileId||card.rootFileId===fileId){
+  async invalidate(fileId:string,unshared=false):Promise<void>{
+    const keep=unshared?await sharedChannels(this.api,this.config.teamId,fileId):undefined;
+    for(const [id,card] of await this.store.list<CloudCard>('cards'))if((card.fileId===fileId||card.rootFileId===fileId)&&!keep?.has(card.actor.channelId)){
       await this.store.atomic<CloudCard,void>('cards',id,current=>({value:current?{...current,removed:true}:undefined,result:undefined}));await this.sessions.invalidate(id);
+    }
+    for(const [id,record] of await this.store.list<{file:string;channel:string}>('observed'))if(record.file===fileId&&!keep?.has(record.channel)){
+      await this.store.atomic<{file:string;channel:string},void>('observed',id,current=>({value:current?.file===fileId&&!keep?.has(current.channel)?undefined:current,result:undefined}));
     }
   }
 }

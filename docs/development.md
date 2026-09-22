@@ -121,7 +121,7 @@ git diff --check
 - [Slack 파일 객체](https://docs.slack.dev/reference/objects/file-object/): 인증 다운로드, 공유와 제한 접근 필드를 확인합니다.
 - [conversations.info](https://docs.slack.dev/reference/methods/conversations.info/), [files.info](https://docs.slack.dev/reference/methods/files.info/): 채널과 파일의 현재 상태를 조회합니다.
 - [메시지 바로가기 payload](https://docs.slack.dev/reference/interaction-payloads/shortcuts-interaction-payload/): 선택할 메시지와 호출 사용자를 식별합니다.
-- [file_unshared](https://docs.slack.dev/reference/events/file_unshared/): 공유 해제 시 보관 자료를 무효화합니다.
+- [file_unshared](https://docs.slack.dev/reference/events/file_unshared/): 최신 `files.info`의 완전한 공유 정보로 해제된 채널을 판별해 해당 채널의 원본·수정본 연결과 세션을 무효화합니다. 다른 채널의 공유는 유지합니다. 전역 파일 삭제는 모든 연결을 무효화합니다. API 장애·불완전 정보에서는 연결을 영구 제거하지 않으며 매 요청의 권한 확인으로 접근을 차단합니다. Cloud 이벤트 작업은 재시도하고 단일 서버는 재전달된 이벤트를 다시 수용합니다. 이미 무효화한 연결은 재공유로 복원하지 않고 새 요청으로 생성합니다.
 - [App manifest](https://docs.slack.dev/reference/app-manifest/): 명령·메뉴·scope·수신 주소를 설정합니다.
 
 - [Work Objects 구현](https://docs.slack.dev/messaging/work-objects-implementation/), [embeds](https://docs.slack.dev/messaging/work-objects-embeds/): 카드 metadata, 사용자별 preview_url, domain·sandbox·CSP 설정.

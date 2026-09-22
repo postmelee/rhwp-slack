@@ -205,8 +205,8 @@ export class Documents {
     const ticket=await this.sessions.issue(id,{...actor,threadTs:card.actor.threadTs});
     await this.api.call('entity.presentDetails',{trigger_id:triggerId,metadata:this.metadata(card,`${this.config.editorOrigin??this.config.publicOrigin}/editor/#ticket=${ticket}`)});
   }
-  async invalidate(team:string,file:string):Promise<void> {
-    for(const [id,c] of this.cards)if(c.actor.teamId===team&&(c.fileId===file||c.rootFileId===file)){this.cards.delete(id);this.options.state?.delete('cards',id);await this.sessions.invalidate(id);}
+  async invalidate(team:string,file:string,keep?:ReadonlySet<string>):Promise<void> {
+    for(const [id,c] of this.cards)if(c.actor.teamId===team&&(c.fileId===file||c.rootFileId===file)&&!keep?.has(c.actor.channelId)){this.preparations.invalidateCard(id);this.cards.delete(id);this.options.state?.delete('cards',id);await this.sessions.invalidate(id);}
   }
   sweep():void {for(const [id,c] of this.cards)if(!this.options.state&&this.now()-c.createdAt>=24*60*60_000){this.cards.delete(id);void Promise.resolve(this.sessions.invalidate(id)).catch(()=>{});}this.sessions.sweep();}
   async close():Promise<void>{await Promise.allSettled([...this.cards.values()].map(c=>c.imageWork));await this.pdf.close();this.checkpoint();this.closed=true;this.cards.clear();this.sessions.clear();}

@@ -90,9 +90,13 @@ export class Preparations {
     }
     for (const [key,item] of this.requests) if (item.expiresAt<=now) {this.requests.delete(key);this.options.state?.delete('requests',key);}
   }
-  invalidate(teamId:string,fileId:string):void {
-    for (const job of this.jobs.values()) if (job.actor.teamId===teamId && job.fileId===fileId) {
-      this.running.get(job.id)?.abort(); job.bytes=undefined; job.state='expired';this.persist(job);
+  invalidateCard(id:string):void {
+    const job=this.jobs.get(id);if(!job)return;
+    this.running.get(id)?.abort();job.bytes=undefined;job.state='expired';this.persist(job);
+  }
+  invalidate(teamId:string,fileId:string,keep?:ReadonlySet<string>):void {
+    for (const job of this.jobs.values()) if (job.actor.teamId===teamId && job.fileId===fileId && !keep?.has(job.actor.channelId)) {
+      this.invalidateCard(job.id);
     }
   }
   private pump():void {
