@@ -1,6 +1,6 @@
 import type {RhwpEditor,RhwpDocumentStateV1} from '@rhwp/editor';
 import {EditorApiError} from './reconnect';
-import {validateInput,MAX_PAGES} from '../shared/errors';
+import {captureSaveSnapshot} from './save-snapshot';
 type State=RhwpDocumentStateV1;
 interface Attempt {id:string;state:State;bytes:Uint8Array;}
 interface Receipt {saved:boolean;pdf:'pending'|'ready'|'failed';}
@@ -26,8 +26,7 @@ export function attachSave(studio:RhwpEditor,api:(path:string,init?:RequestInit)
   download.addEventListener('click',()=>{void(async()=>{
     download.disabled=true;
     try{
-      const before=await studio.getDocumentState(),bytes=before.format==='hwpx'?await studio.exportHwpx():await studio.exportHwp();validateInput(bytes);
-      if(!same(before,await studio.getDocumentState()))throw new Error('내보내는 동안 변경되었습니다. 다시 다운로드해 주세요.');
+      const {state:before,bytes}=await captureSaveSnapshot(studio);
       const url=URL.createObjectURL(new Blob([new Uint8Array(bytes)],{type:'application/octet-stream'}));
       const link=document.createElement('a');link.href=url;link.download=(options.name??'문서').replace(/\.(hwp|hwpx)$/i,'').replace(/[\/\\:*?"<>|]/g,'_')+'_편집본.'+before.format;link.click();setTimeout(()=>URL.revokeObjectURL(url),30_000);
       report('현재 편집본을 다운로드했습니다. Slack에는 아직 저장되지 않았습니다.');
@@ -37,7 +36,6 @@ export function attachSave(studio:RhwpEditor,api:(path:string,init?:RequestInit)
     if(event.origin!==location.origin||event.source!==studio.element.contentWindow||event.data?.type!=='rhwp-slack:dirty'||typeof event.data.dirty!=='boolean')return;
     documentDirty=event.data.dirty;report(announcement);
   });
-  const same=(a:State,b:State)=>a.documentEpoch===b.documentEpoch&&a.changeSeq===b.changeSeq&&a.documentSha256===b.documentSha256;
   async function pdfStatus(id:string,receipt:Receipt,version:number):Promise<void> {
     for(let i=0;i<30&&receipt.pdf==='pending';i++){
       await new Promise(resolve=>setTimeout(resolve,3000));if(version!==generation)return;
@@ -50,10 +48,8 @@ export function attachSave(studio:RhwpEditor,api:(path:string,init?:RequestInit)
     if(saving||reconnecting)return;saving=true;button.disabled=true;const version=++generation;
     try{
       if(!attempt){
-        const before=await studio.getDocumentState();if(before.pageCount>MAX_PAGES)throw new Error('200페이지 이하 문서만 저장할 수 있습니다.');
-        const bytes=before.format==='hwpx'?await studio.exportHwpx():await studio.exportHwp();validateInput(bytes);
-        const after=await studio.getDocumentState();if(!same(before,after))throw new Error('내보내는 동안 문서가 변경되었습니다. 다시 저장해 주세요.');
-        attempt={id:crypto.randomUUID(),state:before,bytes};
+        const {state,bytes}=await captureSaveSnapshot(studio);
+        attempt={id:crypto.randomUUID(),state,bytes};
       }
       report('편집본을 Slack에 저장하는 중…');
       const current=attempt;
