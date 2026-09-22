@@ -29,5 +29,12 @@ test('separate static origin → API authorization → Studio edit → same-thre
   await page.locator('#save-to-slack').click();await expect(page.locator('#slack-save p')).toHaveText('편집본과 PDF를 Slack에 저장했습니다.',{timeout:60_000});
   const posts=api.calls.filter(c=>c.method==='chat.postMessage');expect(posts).toHaveLength(2);expect(posts[1].args.thread_ts).toBe('123.456');
   await Promise.all(staticRequests);expect(failures).toEqual([]);
- }finally{await runtime.receiver.stop();await runtime.close();await new Promise<void>((r,j)=>frontend.close(e=>e?j(e):r()));}
+ }finally{
+  // Release browser connections before awaiting either test HTTP server's close.
+  // Otherwise a live page can keep teardown pending after every assertion passed.
+  await test.step('close browser page',()=>page.close({runBeforeUnload:false}));
+  await test.step('stop API receiver',()=>runtime.receiver.stop());
+  await test.step('close runtime',()=>runtime.close());
+  await test.step('close static server',()=>new Promise<void>((r,j)=>frontend.close(e=>e?j(e):r())));
+ }
 });

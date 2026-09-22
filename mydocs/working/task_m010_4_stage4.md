@@ -62,3 +62,13 @@
 - Pages production `aff3490d`, source `f8633a1`: `/review/`와 PNG HTTP 200, `X-Robots-Tag: noindex, nofollow`, Chrome 실제 내용 확인.
 - Testing information의 screenshots URL에 공개 주소를 입력하고 blur·다른 탭 이동·Back을 시도했다. SPA 내부에는 남지만 전체 재로드에서는 빈칸이었다. 독립 Save 버튼은 없고 약관 동의 전 Next: Automated Checks는 비활성화다. URL **영구 저장 미완료**이며 약관을 선택하거나 제출하지 않았다.
 - 기존 소개·지원·3장 이미지 저장 결과와 새 안내 URL 미저장을 구분한다. 제출 준비 시 동의·다음 단계와 함께 URL을 저장하고 재조회해야 한다.
+
+### CI 종료 단계 보완
+
+최초 head `ca46a3c`의 push run `35723793747`은 cross-origin viewer 테스트 1건이 90초로 실패했고, 동일 head PR run `35723797967`은 통과했다. 실패 trace는 저장 성공 assertion과 게시 개수·thread_ts·브라우저 오류 없음 검사가 10,017.918ms에 모두 끝난 뒤 finally에서 멈췄음을 보여준다. 사용자 네트워크나 문서 저장 실패로 분류하지 않는다. 실패 artifact는 `/private/tmp/pr37-viewer-failure/`에 보존했다.
+
+테스트 정리에서 page.close를 서버 stop보다 먼저 수행하고 각 정리 단계를 test.step으로 표시했다. 시간 제한·기능 assertion·제품 코드는 유지한다. 어느 서버 close가 멈췄는지는 기존 trace에서 구분되지 않으므로 확정하지 않는다.
+
+- `npm run typecheck`: 통과.
+- `npm exec -- playwright test tests/viewer/cross-origin.spec.ts --repeat-each=3`: 3/3, 14.7초. 별도 첫 단일 실행도 1/1 통과했으나 잘못 전달된 npm 반복 옵션을 3회 증거로 세지 않는다.
+- 다른 기능 검증은 변경하지 않았다. 최종 Linux CI 결과는 PR #37에 연결한다.
