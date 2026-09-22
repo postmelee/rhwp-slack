@@ -14,8 +14,8 @@ export async function exportPages(apiOrigin,output=resolve('dist/pages'),{public
  await rm(output,{recursive:true,force:true});await mkdir(output,{recursive:true});
  const headers=[`/*\n  Referrer-Policy: no-referrer\n  X-Content-Type-Options: nosniff\n${publicSite?'':'  X-Robots-Tag: noindex, nofollow\n'}  Content-Security-Policy: ${editorPolicy(api.origin)}`, `/editor/*\n  Cache-Control: no-cache${publicSite?'\n  X-Robots-Tag: noindex, nofollow':''}`, `/api/*\n  Cache-Control: no-store${publicSite?'\n  X-Robots-Tag: noindex, nofollow':''}`, '/404.html\n  Cache-Control: no-store'];
  if(publicSite){
-  headers.push('/static/*\n  X-Robots-Tag: noindex, nofollow');
-  for(const path of ['/','/guide/','/privacy/','/support/','/site.css','/rhwp-logo.png'])headers.push(path+'\n  Cache-Control: no-cache');
+  headers.push('/static/*\n  X-Robots-Tag: noindex, nofollow','/review/*\n  X-Robots-Tag: noindex, nofollow','/assets/review/*\n  X-Robots-Tag: noindex, nofollow');
+  for(const path of ['/','/guide/','/privacy/','/support/','/review/','/site.css','/rhwp-logo.png'])headers.push(path+'\n  Cache-Control: no-cache');
  }
  let count=0,total=0;
  for(const [path,record] of Object.entries(manifest.files)){
@@ -33,7 +33,7 @@ export async function exportPages(apiOrigin,output=resolve('dist/pages'),{public
  await mkdir(output+'/editor');await writeFile(output+'/editor/index.html',shell.replace('<meta name="rhwp-api-origin" content="">',`<meta name="rhwp-api-origin" content="${api.origin}">`));
  await writeFile(output+'/404.html','<!doctype html><meta charset="utf-8"><title>rhwp</title><p>Slack에서 편집 카드를 다시 열어 주세요.</p>');
  const site=publicSite?await exportPublicSite(output,api.origin):{files:0,bytes:0};
- await writeFile(output+'/robots.txt',publicSite?'User-agent: *\nAllow: /\nDisallow: /editor/\nDisallow: /static/\nDisallow: /api/\n':'User-agent: *\nDisallow: /\n');
+ await writeFile(output+'/robots.txt',publicSite?'User-agent: *\nAllow: /\nDisallow: /editor/\nDisallow: /static/\nDisallow: /api/\nDisallow: /review/\nDisallow: /assets/review/\n':'User-agent: *\nDisallow: /\n');
  if(headers.length>100||headers.some(h=>h.split('\n').some(l=>l.length>2000)))throw Error('Pages header limit exceeded');
  await writeFile(output+'/_headers',headers.join('\n\n')+'\n');
  // Explicit 404 disables Pages SPA fallback; no redirects forward fragments to the API.
