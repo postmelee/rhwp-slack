@@ -1,6 +1,6 @@
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
-const pages=['index.html','guide/index.html','privacy/index.html','support/index.html','site.css','rhwp-logo.png'];
+const pages=['index.html','guide/index.html','privacy/index.html','support/index.html','site.css','rhwp-logo.png','assets/slack-preview-20260922.jpg'];
 /** Explicit allowlist: never publish repository files, environment data or test documents. */
 export async function exportPublicSite(output,apiOrigin){
   const api=new URL(apiOrigin);
