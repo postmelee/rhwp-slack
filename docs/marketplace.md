@@ -8,6 +8,7 @@
 - 외부 베타: **PDF·PNG는 Slack, 편집은 브라우저**로 준비하기로 사용자 결정.
 - 외부 설치: #16/PR #19 병합, Public Distribution 활성화. 같은 앱의 실제 2개 workspace에서 HWP/HWPX 변환·브라우저 편집·같은 스레드 저장·재열기 확인.
 - 조직 자체 호스팅: 브라우저 편집 구성 안내 작성. 새 조직에서 설치 재현은 미검증.
+- Marketplace 소개: 공개 앱 `A0C329NJ85C`의 긴 소개·지원 이메일·실제 화면 3장 저장 후 재조회 확인(2026-09-22).
 - Marketplace: 미제출, 승인되지 않음.
 
 ## 미등재 시험 배포
@@ -52,7 +53,7 @@ README는 기능·설치·자료 처리 위치·제약의 진입점으로 사용
 - 지원: https://rhwp-slack.pages.dev/support/
 - 운영자/연락처: Taegyu Lee / meleeisdeveloping@gmail.com (공개 승인됨)
 - Direct install URL: https://rhwp-beta-ingress-aaj47f2u5q-uc.a.run.app/install — 실제 302 + state/cookie 응답 확인 후 직접 설치 설정 저장.
-- 가격 Free, 언어 Korean. 심사 연락처 전화번호는 사용자가 Slack 설정에 직접 입력하고 저장했다. 번호는 저장소에 보관하지 않는다. 스크린샷·최종 약관 동의·제출은 별도 준비한다.
+- 가격 Free, 언어 Korean. 심사 연락처 전화번호는 사용자가 Slack 설정에 직접 입력하고 저장했다. 번호는 저장소에 보관하지 않는다. 스크린샷 3장은 저장 후 재조회했다. 최종 약관 동의·제출은 별도다.
 
 설정 입력이나 Install from Slack Marketplace 선택은 심사 제출·승인을 의미하지 않는다.
 
@@ -68,6 +69,8 @@ README는 기능·설치·자료 처리 위치·제약의 진입점으로 사용
 | 보조 | [브라우저 편집기](assets/marketplace/marketplace-04-browser-editor.jpg) | rhwp에서 편집을 누르면 브라우저에서 편집합니다. |
 
 각 JPEG는 1600×1000, 2 MB 미만이다. 실제 UI를 캡처했으며 재구성·합성하지 않았다. 공식 [이미지 지침](https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/#images-and-screenshots)에 따라 Slack 문맥이 보이는 1–3번을 제출 이미지로 우선 사용한다. 4번은 홈페이지·지원용 보조 자료이며 Slack 내부 편집으로 설명하지 않는다. 동영상은 만들지 않는다.
+
+2026-09-22 Slack의 새 `1. Your App Listing` 화면에서 1–3번 이미지 저장 후 새로고침과 직접 판독으로 중복 없는 3장을 확인했다. 실제 표시 순서는 스레드 미리보기 → 페이지 이미지 → PDF 뷰어다. 긴 소개와 지원 이메일도 유지된다. 다음 심사 단계의 OAuth 권한별 사용 사유 입력과 보안·테스트 정보, 제출 요건 확인은 #4에서 진행한다.
 
 ### 짧은 소개
 
