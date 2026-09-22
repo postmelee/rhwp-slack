@@ -56,3 +56,9 @@
 - 로컬 서버의 초기 포트 바인딩은 sandbox/기존 포트 점유로 실패하여 다른 로컬 포트에서 검증했다. 앱 기능 실패로 세지 않는다.
 
 공개 배포·Slack Testing information 저장은 다음 기록으로 연결한다. 다른 사용자 철회와 별도 조직 자체 호스팅, 활성 설치/사용 요건은 계속 미완료다.
+
+### 공개 게시·Slack 양식 확인
+
+- Pages production `aff3490d`, source `f8633a1`: `/review/`와 PNG HTTP 200, `X-Robots-Tag: noindex, nofollow`, Chrome 실제 내용 확인.
+- Testing information의 screenshots URL에 공개 주소를 입력하고 blur·다른 탭 이동·Back을 시도했다. SPA 내부에는 남지만 전체 재로드에서는 빈칸이었다. 독립 Save 버튼은 없고 약관 동의 전 Next: Automated Checks는 비활성화다. URL **영구 저장 미완료**이며 약관을 선택하거나 제출하지 않았다.
+- 기존 소개·지원·3장 이미지 저장 결과와 새 안내 URL 미저장을 구분한다. 제출 준비 시 동의·다음 단계와 함께 URL을 저장하고 재조회해야 한다.
