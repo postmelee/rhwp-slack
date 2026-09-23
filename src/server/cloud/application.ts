@@ -8,7 +8,7 @@ import {DurableTasks,MAX_TASK_ATTEMPTS,type TaskSpec,type TaskContext} from './t
 import {withLease,type LeaseContext} from './lease';
 import type {Config} from '../config';
 import {ID} from '../config';
-import {authorizeFile,type Actor,type SourceFile} from '../access';
+import {authorizeFile,authorizeBotChannel,type Actor,type SourceFile} from '../access';
 import {sharedChannels} from '../file-sharing';
 import type {SlackApi} from '../slack-api';
 import type {Card} from '../documents';
@@ -173,7 +173,7 @@ export class CloudApplication {
       }
       return;
     }
-    await this.authorize(card.id,spec.actor??card.actor);
+    if(spec.teamId!==this.config.teamId||card.actor.teamId!==spec.teamId)denied();
     await this.locked(card.id,async(current,lease)=>{
       const context:LeaseContext={...lease,signal:AbortSignal.any([task.signal,lease.signal]),checkpoint:async()=>{await task.checkpoint();await lease.checkpoint();}};
       await context.checkpoint();
@@ -183,7 +183,24 @@ export class CloudApplication {
       current.recovery={taskId:task.id??'legacy',state:final?'failed':'retrying',attempt:task.attempt??1,maxAttempts:task.maxAttempts??MAX_TASK_ATTEMPTS,errorCode:code};
       if(current.pdf!=='ready')current.pdf=final?'failed':'pending';
       if(current.imageState!=='ready')current.imageState=final?'failed':'pending';
-      if(current.messageTs)await this.update(current,spec.actor??current.actor,context);else await this.write(current,context);
+      // A revoked actor must not prevent durable failure bookkeeping.
+      await this.write(current,context);
+      if(current.messageTs){
+        try{await this.authorize(current.id,spec.actor??current.actor);}
+        catch(error){
+          if(!(error instanceof UserError)||error.code!=='access_denied')throw error;
+          await authorizeBotChannel(this.guarded(context),await this.accessConfig(current.actor),current.actor,context.signal);
+          // Never reuse documentMessage here: its file_ids/metadata can share new files.
+          const text=final?'권한 변경으로 PDF·이미지 준비가 중단되었습니다. 채널 참여와 문서 접근 권한을 확인한 뒤 다시 시도하세요.':'권한을 확인할 수 없어 PDF·이미지 준비를 다시 확인하고 있습니다.';
+          await this.guarded(context).call('chat.update',{channel:current.actor.channelId,ts:current.messageTs,text,blocks:[
+            {type:'section',text:{type:'plain_text',text}},
+            ...(final?[{type:'actions',elements:[{type:'button',action_id:'rhwp_retry_preview',value:current.id,text:{type:'plain_text',text:'문서 미리보기 다시 준비'}}]}]:[]),
+          ],parse:'none',unfurl_links:false,unfurl_media:false});
+          await this.reaction(current.id,current.actor,final?'failed':'pending',true);
+          return;
+        }
+        await this.update(current,spec.actor??current.actor,context);
+      }
       await this.reaction(current.id,current.actor,final?'failed':'pending',true);
     });
   }

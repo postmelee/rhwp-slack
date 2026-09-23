@@ -11,11 +11,7 @@ export function assertActor(config: Config, actor: Actor): void {
 export async function authorizeChannel(api:SlackApi,config:Config,actor:Actor,signal?:AbortSignal,enabled=true):Promise<Record<string,unknown>>{
   if(actor.teamId!==config.teamId||!ID.user.test(actor.userId)||!ID.channel.test(actor.channelId))denied();
   if(enabled)assertActor(config,actor);
-  const c=object((await api.call('conversations.info',{channel:actor.channelId},signal)).channel);
-  if (c.id!==actor.channelId || (c.is_channel!==true && c.is_group!==true) ||
-      typeof c.is_private!=='boolean' || c.is_im!==false || c.is_mpim!==false || c.is_member!==true || c.is_archived!==false ||
-      c.is_ext_shared!==false || c.is_pending_ext_shared!==false || c.is_org_shared!==false || c.context_team_id!==actor.teamId) denied();
-  if (!Array.isArray(c.pending_shared) || c.pending_shared.length || !Array.isArray(c.shared_team_ids) || c.shared_team_ids.length!==1 || c.shared_team_ids[0]!==actor.teamId) denied();
+  const c=await authorizeBotChannel(api,config,actor,signal);
   let cursor=''; let found=false; const seen=new Set<string>();
   for (let page=0; page<100; page++) {
     const result=await api.call('conversations.members',{channel:actor.channelId,limit:200,...(cursor?{cursor}:{})},signal);
@@ -28,6 +24,16 @@ export async function authorizeChannel(api:SlackApi,config:Config,actor:Actor,si
     seen.add(next); cursor=next;
   }
   if (!found) denied();
+  return c;
+}
+/** Status-only updates still require the bot's same-workspace channel access. */
+export async function authorizeBotChannel(api:SlackApi,config:Config,actor:Actor,signal?:AbortSignal):Promise<Record<string,unknown>>{
+  if(actor.teamId!==config.teamId||!ID.channel.test(actor.channelId))denied();
+  const c=object((await api.call('conversations.info',{channel:actor.channelId},signal)).channel);
+  if (c.id!==actor.channelId || (c.is_channel!==true && c.is_group!==true) ||
+      typeof c.is_private!=='boolean' || c.is_im!==false || c.is_mpim!==false || c.is_member!==true || c.is_archived!==false ||
+      c.is_ext_shared!==false || c.is_pending_ext_shared!==false || c.is_org_shared!==false || c.context_team_id!==actor.teamId) denied();
+  if (!Array.isArray(c.pending_shared) || c.pending_shared.length || !Array.isArray(c.shared_team_ids) || c.shared_team_ids.length!==1 || c.shared_team_ids[0]!==actor.teamId) denied();
   return c;
 }
 export async function authorizeFile(api: SlackApi, config: Config, actor: Actor, fileId: string, signal?: AbortSignal): Promise<SourceFile> {
