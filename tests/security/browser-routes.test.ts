@@ -21,13 +21,13 @@ test('browser callback accepts query and form transports with identical inputs, 
   const server=await serve(browserSignInRoutes(signin));try{
     const start=await fetch(server.url+'/browser/open?workspace=TONE&document=one',{redirect:'manual'});assert.equal(start.status,303);assert.match(start.headers.get('set-cookie')!,/Secure; HttpOnly; SameSite=None/);
     const headers={'Content-Type':'application/x-www-form-urlencoded',Cookie:'__Host-rhwp-signin-state='+'b'.repeat(43)};
-    assert.equal((await fetch(server.url+'/browser/callback?state=state')).status,400);
-    assert.equal((await fetch(server.url+'/browser/callback',{method:'POST',headers,body:'state=state&state=other&code=test'})).status,400);assert.equal(calls,0);
+    assert.equal((await fetch(server.url+'/browser/callback?state=state',{redirect:'manual'})).headers.get('location'),'/browser/result?reason=signin_failed');
+    assert.equal((await fetch(server.url+'/browser/callback',{method:'POST',headers,body:'state=state&state=other&code=test',redirect:'manual'})).headers.get('location'),'/browser/result?reason=signin_failed');assert.equal(calls,0);
     const response=await fetch(server.url+'/browser/callback',{method:'POST',headers,body:'state=state&code=test',redirect:'manual'});assert.equal(response.status,303);assert.match(response.headers.get('set-cookie')!,/Max-Age=0/);assert.equal(calls,1);
     const query=await fetch(server.url+'/browser/callback?state=state&code=test',{headers:{Cookie:headers.Cookie},redirect:'manual'});assert.equal(query.status,303);assert.equal(calls,2);
-    for(const path of ['/browser/callback?state=state&state=other&code=test','/browser/callback?state=state&code=a&code=b','/browser/callback?state=state&code='+('a'.repeat(8192))])assert.equal((await fetch(server.url+path,{headers,redirect:'manual'})).status,400);
-    assert.equal((await fetch(server.url+'/browser/callback?state=other',{method:'POST',headers,body:'state=state&code=test'})).status,400);
-    assert.equal((await fetch(server.url+'/browser/callback',{method:'PUT',headers,body:'state=state&code=test'})).status,400);assert.equal(calls,2);
+    for(const path of ['/browser/callback?state=state&state=other&code=test','/browser/callback?state=state&code=a&code=b','/browser/callback?state=state&code='+('a'.repeat(8192))])assert.equal((await fetch(server.url+path,{headers,redirect:'manual'})).headers.get('location'),'/browser/result?reason=signin_failed');
+    assert.equal((await fetch(server.url+'/browser/callback?state=other',{method:'POST',headers,body:'state=state&code=test',redirect:'manual'})).headers.get('location'),'/browser/result?reason=signin_failed');
+    assert.equal((await fetch(server.url+'/browser/callback',{method:'PUT',headers,body:'state=state&code=test',redirect:'manual'})).headers.get('location'),'/browser/result?reason=signin_failed');assert.equal(calls,2);
   }finally{await server.close();}
 });
 test('workspace header cannot exchange or use another workspace credential; CORS does not bypass authentication',async()=>{
@@ -50,4 +50,36 @@ test('workspace header cannot exchange or use another workspace credential; CORS
     const preflight=await fetch(server.url+'/api/editor/source',{method:'OPTIONS',headers:{Origin:studio,'Access-Control-Request-Method':'GET','Access-Control-Request-Headers':'authorization,x-rhwp-workspace'}});assert.equal(preflight.status,204);assert.equal(preflight.headers.get('Access-Control-Allow-Origin'),studio);
     assert.equal((await fetch(server.url+'/api/editor/exchange',{method:'POST',headers:headers('TONE'),body})).status,403);
   }finally{await server.close();for(const state of states)state.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('failed login leaves callback credentials behind and renders a fixed non-executable recovery page',async()=>{
+ const secret='private-code-<script>alert(1)</script>';
+ let calls=0;
+ const signin:Pick<EditorSignIn,'callback'|'start'|'finish'>={callback:'https://api.example.com/browser/callback',async start(){throw new Error(secret);},async finish(){calls++;throw new Error(secret);}};
+ const server=await serve(browserSignInRoutes(signin));try{
+  for(const method of ['GET','POST']){
+   const data=new URLSearchParams({state:'private-state',code:secret}).toString();
+   const response=await fetch(server.url+'/browser/callback'+(method==='GET'?'?'+data:''),{method,redirect:'manual',headers:{'Content-Type':'application/x-www-form-urlencoded'},...(method==='POST'?{body:data}:{})});
+   assert.equal(response.status,303);
+   assert.equal(response.headers.get('location'),'/browser/result?reason=signin_failed');
+   assert.match(response.headers.get('set-cookie')!,/Max-Age=0/);
+   const page=await fetch(server.url+response.headers.get('location'));
+   assert.equal(page.status,200);assert.match(page.headers.get('content-type')!,/text\/html/);
+   assert.equal(page.headers.get('cache-control'),'no-store');assert.equal(page.headers.get('referrer-policy'),'no-referrer');
+   assert.match(page.headers.get('content-security-policy')!,/default-src 'none'/);
+   const html=await page.text();assert.match(html,/Slack 열기/);assert.ok(!html.includes(secret));assert.ok(!html.includes('private-state'));assert.ok(!/<script\b|<form\b/i.test(html));
+  }
+  assert.equal(calls,2);
+  const bad=await fetch(server.url+'/browser/result?reason='+encodeURIComponent(secret));assert.ok(!(await bad.text()).includes(secret));
+  assert.equal(calls,2); // Viewing recovery does not retry OAuth or mint a ticket.
+ }finally{await server.close();}
+});
+
+test('cancelled login uses a safe result location and never exposes callback parameters',async()=>{
+ const signin:Pick<EditorSignIn,'callback'|'start'|'finish'>={callback:'https://api.example.com/browser/callback',async start(){throw new Error();},async finish(){return undefined;}};
+ const server=await serve(browserSignInRoutes(signin));try{
+  const response=await fetch(server.url+'/browser/callback?state=synthetic&error=access_denied',{redirect:'manual'});
+  assert.equal(response.status,303);assert.equal(response.headers.get('location'),'/browser/result?reason=cancelled');
+  const html=await (await fetch(server.url+response.headers.get('location'))).text();assert.match(html,/문서 로그인을 취소했습니다/);assert.ok(!html.includes('synthetic'));
+ }finally{await server.close();}
 });

@@ -53,9 +53,9 @@ test('both callback transports enforce real state binding, one-use consumption a
     try{
       const input=await f.start(),params=new URLSearchParams({state:input.state,code:input.code}).toString();
       const send=(binding?:string)=>fetch(url+(method==='GET'?'?'+params:''),{method,redirect:'manual',headers:{'Content-Type':'application/x-www-form-urlencoded',...(binding?{Cookie:'__Host-rhwp-signin-state='+binding}:{})},...(method==='POST'?{body:params}:{})});
-      assert.equal((await send()).status,400);assert.equal((await send('x'.repeat(43))).status,400);assert.equal(f.issued,0);
+      assert.equal((await send()).headers.get('location'),'/browser/result?reason=login_expired');assert.equal((await send('x'.repeat(43))).headers.get('location'),'/browser/result?reason=login_expired');assert.equal(f.issued,0);
       const response=await send(input.binding);assert.equal(response.status,303);assert.equal(f.issued,1);assert.equal(f.user,'UREADER');assert.equal(response.headers.get('Referrer-Policy'),'no-referrer');assert.equal(response.headers.get('Cache-Control'),'no-store');
-      assert.equal((await send(input.binding)).status,400);assert.equal(f.issued,1);
+      assert.equal((await send(input.binding)).headers.get('location'),'/browser/result?reason=login_expired');assert.equal(f.issued,1);
     }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));f.close();}
   }
 });
@@ -68,4 +68,16 @@ test('both callback transports enforce real state binding, one-use consumption a
     assert.equal(new URL(url!).search,'');
     const ordinary=await f.service.finish(await f.start());assert.ok(!ordinary!.includes('reconnect'));
   }finally{f.close();}
+});
+
+test('recovery reasons distinguish expired login, rejected identity and unavailable document without issuing tickets',async()=>{
+ const f=await fixture();try{
+  const first=await f.start();f.setClaims({nonce:'forged'});
+  await assert.rejects(f.service.finish(first),{reason:'signin_failed'});assert.equal(f.issued,0);
+  await assert.rejects(f.service.finish(first),{reason:'login_expired'});assert.equal(f.issued,0);
+  f.setClaims({});const inaccessible=await f.start();f.deny();
+  await assert.rejects(f.service.finish(inaccessible),{reason:'document_unavailable'});assert.equal(f.issued,0);
+  const reinstalled=await f.start();f.revoke();
+  await assert.rejects(f.service.finish(reinstalled),{reason:'document_unavailable'});assert.equal(f.issued,0);
+ }finally{f.close();}
 });
