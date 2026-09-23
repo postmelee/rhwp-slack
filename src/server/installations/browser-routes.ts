@@ -3,6 +3,7 @@ import type {EditorSignIn} from './signin';
 import type {Tenants} from './tenants';
 import {editorRoutes} from '../editor-routes';
 import {ID} from '../config';
+import {BrowserSignInError,signInResultPage} from './signin-result';
 const cookieName='__Host-rhwp-signin-state';
 // OpenID form_post is a cross-site top-level POST; Lax cookies are not sent on that callback.
 const cookie=(value:string,age:number)=>`${cookieName}=${value}; Path=/; Secure; HttpOnly; SameSite=None; Max-Age=${age}`;
@@ -10,9 +11,14 @@ function binding(raw:string):string{const matches=raw.split(';').map(s=>s.trim()
 export function browserSignInRoutes(signin:Pick<EditorSignIn,'callback'|'start'|'finish'>){
   return async(req:IncomingMessage,res:ServerResponse,next:()=>void):Promise<void>=>{
     const url=new URL(req.url??'/',signin.callback);
-    if(!['/browser/open','/browser/callback'].includes(url.pathname)){next();return;}
-    res.setHeader('Cache-Control','no-store');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
-    const error=()=>{res.writeHead(400,{'Content-Type':'text/plain; charset=utf-8'}).end('문서를 열지 못했습니다. Slack에서 다시 문서 편집을 선택하고 같은 워크스페이스 계정으로 로그인해 주세요.');};
+    if(!['/browser/open','/browser/callback','/browser/result'].includes(url.pathname)){next();return;}
+    res.setHeader('Cache-Control','no-store');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+    res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Robots-Tag','noindex, nofollow');
+    if(url.pathname==='/browser/result'){
+      if(req.method!=='GET'){res.writeHead(405,{Allow:'GET'}).end();return;}
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end(signInResultPage(url.searchParams.getAll('reason').length===1?url.searchParams.get('reason'):null));return;
+    }
+    const result=(reason:string)=>{res.setHeader('Set-Cookie',cookie('',0));res.writeHead(303,{Location:'/browser/result?reason='+reason}).end();};
     try{
       if(url.pathname==='/browser/open'&&req.method==='GET'){
         if(['workspace','document'].some(key=>url.searchParams.getAll(key).length!==1)||url.searchParams.getAll('reconnect').length>1)throw new Error('Invalid parameter');
@@ -35,9 +41,9 @@ export function browserSignInRoutes(signin:Pick<EditorSignIn,'callback'|'start'|
       }
       if(['state','code','error'].some(key=>p.getAll(key).length>1)||!p.get('state')||(!p.get('code')&&!p.get('error')))throw new Error('Invalid parameter');
       const redirect=await signin.finish({state:p.get('state')??'',binding:binding(req.headers.cookie??''),code:p.get('code')??undefined,error:p.get('error')??undefined});
-      if(!redirect){res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8'}).end('문서 로그인을 취소했습니다.');return;}
+      if(!redirect){result('cancelled');return;}
       res.writeHead(303,{Location:redirect}).end();
-    }catch{error();}
+    }catch(error){result(error instanceof BrowserSignInError?error.reason:'signin_failed');}
   };
 }
 export function tenantEditorRoutes(tenants:Tenants,origin:string,editorOrigin:string){
