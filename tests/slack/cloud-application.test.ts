@@ -215,3 +215,57 @@ test('browser beta shares PDF before ready and saved HWP in the same thread with
   assert.ok((revision.files as {id:string}[]).some(v=>v.id===saved.fileId));assert.ok(f.api.calls.some(c=>c.method==='chat.update'&&c.args.ts===revisions[0].messageTs&&(c.args.file_ids as string[])?.includes(saved.fileId!)));assert.equal(f.api.calls.filter(c=>c.method==='chat.postMessage').length,2);
  }finally{f.close();}
 });
+
+test('leaving during preview finalizes state without resharing files and permits a fresh authorized retry',async()=>{
+ const f=fixture(1,'browser');try{
+  const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:left-preview');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>f.make().execute(s,c));const job=f.pending.shift()!;
+  let left=false;
+  f.api.handler=async(method,args)=>left&&method==='conversations.members'?{ok:true,members:[],response_metadata:{next_cursor:''}}:f.api.response(method,args);
+  const app=f.make({convert:async()=>{left=true;return {pdf:Buffer.from('%PDF-test'),pageCount:12,pages:[{page:1,png:Buffer.from('png')}]};}});
+  await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)));
+  await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)));
+  await f.tasks.execute(job,(s,c)=>app.execute(s,c));
+  const card=await f.store.get<any>('cards',id);
+  assert.equal(card.pdf,'failed');assert.equal(card.imageState,'failed');assert.equal(card.recovery.state,'failed');
+  assert.equal((await f.store.get<any>('tasks',job)).state,'failed');
+  const updates=f.api.calls.filter(c=>c.method==='chat.update');assert.ok(updates.length);
+  const last=updates.at(-1)!.args;assert.match(JSON.stringify(last),/권한 변경/);
+  for(const key of ['file_ids','metadata'])assert.equal(last[key],undefined);
+  assert.equal(JSON.stringify(last).includes('FTEST'),false);assert.equal(JSON.stringify(last).includes('https://'),false);
+  assert.equal(f.api.calls.filter(c=>c.method==='files.completeUploadExternal').length,0);
+  await assert.rejects(f.make().retryPreview(id,actor,card.messageTs),{code:'access_denied'});
+  left=false;await f.make().retryPreview(id,actor,card.messageTs);await f.drain();
+  assert.equal((await f.make().authorize(id,actor)).pdf,'ready');
+  assert.equal(f.api.calls.filter(c=>c.method==='chat.postMessage').length,1);
+ }finally{f.close();}
+});
+
+test('failure persists when status delivery is forbidden or unavailable and old tasks cannot overwrite a retry',async()=>{
+ for(const scenario of ['bot-left','external','channel-off','slack-down','wrong-team'] as const){
+  const f=fixture();try{
+   const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:status-'+scenario);
+   await f.tasks.execute(f.pending.shift()!,(s,c)=>f.make().execute(s,c));const job=f.pending.shift()!;
+   const spec=(await f.store.get<any>('tasks',job)).spec;
+   f.api.calls.length=0;
+   f.api.handler=async(method,args)=>{
+    if(method==='conversations.members')return {ok:true,members:[],response_metadata:{next_cursor:''}};
+    if(method==='chat.update'&&scenario==='slack-down')throw new Error('network');
+    const result=f.api.response(method,args);
+    if(method==='conversations.info'&&['bot-left','external'].includes(scenario))return {...result,channel:{...(result.channel as object),...(scenario==='bot-left'?{is_member:false}:{is_ext_shared:true})}};
+    return result;
+   };
+   if(scenario==='channel-off')await f.store.atomic('channels',actor.channelId,()=>({value:{mode:'off'},result:undefined}));
+   const ctx={id:job,attempt:3,maxAttempts:3,finalAttempt:true,terminalFailure:'access_denied',signal:new AbortController().signal,checkpoint:async()=>{}};
+   await assert.rejects(f.make().execute({...spec,...(scenario==='wrong-team'?{teamId:'TOTHER'}:{})},ctx));
+   const card=await f.store.get<any>('cards',id);
+   assert.equal(card.pdf,scenario==='wrong-team'?'pending':'failed');
+   if(scenario!=='slack-down')assert.equal(f.api.calls.filter(c=>c.method==='chat.update').length,0);
+   // Simulate a newer manual generation before an old deadline delivery arrives.
+   await f.store.atomic<any,void>('cards',id,c=>({value:{...c,pdf:'pending',recovery:{taskId:'newer',state:'running'}},result:undefined}));
+   await f.make().execute(spec,ctx);
+   assert.equal((await f.store.get<any>('cards',id)).recovery.taskId,'newer');
+   assert.equal((await f.store.get<any>('cards',id)).pdf,'pending');
+  }finally{f.close();}
+ }
+});
