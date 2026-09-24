@@ -40,6 +40,7 @@ Marketplace는 Chrome의 공개 앱 `A0C329NJ85C`에서 확인했다.
 - 새 How to test your app 설명과 본문 내 공개 화면 URL은 전체 재로드 후 유지됐다. 오래된 다른 사용자 검증 미진행 문장은 제거됐다.
 - 사용자 진행 승인에 따라 약관 체크를 적용했고 재로드 후 checked 상태를 확인했다.
 - 스크린샷 전용 URL 및 Contact Email 입력은 유지되지 않았고 Contact Number는 빈 상태다. 일반 오류와 Next 비활성화가 발생했다. 저장 완료로 보고하지 않는다.
+- 사용자가 수동 입력 후 항목 이동 시 값 유지됨을 확인했다. 이후 에이전트가 전체 URL을 다시 열어 확인한 DOM에서는 Contact Email·Contact Number·스크린샷 URL이 빈 값이었다. 항목 간 이동에서의 유지와 전체 재로드 후 영구 저장을 구분하며 미해결로 남긴다.
 - 메뉴 5. Automated checks의 실제 Automated Feedback은 활성 워크스페이스 10개 미만을 제출 차단 사유로 표시했다. Submit App for Review는 disabled였다. 최종 제출하지 않았다.
 - 공식 요건 페이지 재확인: 활성 워크스페이스 10곳·주간 활성 사용자 10명 기준. 시험용 설치 2곳을 충족 근거로 사용하지 않는다. [공식 기준](https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/).
 
