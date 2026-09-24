@@ -5,7 +5,7 @@ import type {State} from './state';
 import {UserError,denied} from './errors';
 export type ChannelMode='auto'|'mention'|'off';
 interface Policy {mode:ChannelMode;updatedBy?:string;updatedAt:number;}
-const labels:Record<ChannelMode,string>={auto:'모든 HWP/HWPX 파일 자동 감지',mention:'멘션할 때 처리',off:'이 채널에서 사용 안 함'};
+const labels:Record<ChannelMode,string>={auto:'자동 변환',mention:'멘션할 때만 변환',off:'이 채널에서 사용 안 함'};
 const option=(value:ChannelMode)=>({text:{type:'plain_text',text:labels[value]},value});
 export class Settings {
   readonly enabled=new Set<string>();
@@ -43,7 +43,7 @@ export class Settings {
     this.admin(team,user);await this.refresh();
     const current=channel&&ID.channel.test(channel)?channel:undefined;
     await this.api.call('views.open',{trigger_id:triggerId,view:{type:'modal',callback_id:'rhwp_channel_settings',title:{type:'plain_text',text:'rhwp 채널 설정'},submit:{type:'plain_text',text:'저장'},close:{type:'plain_text',text:'취소'},blocks:[
-      {type:'section',text:{type:'mrkdwn',text:'설정할 채널에 먼저 rhwp를 초대해 주세요. 설정은 해당 채널의 모든 사용자에게 적용됩니다.'}},
+      {type:'section',text:{type:'mrkdwn',text:'자동 변환은 새로 올린 한글 파일을 처리합니다. 필요한 문서만 처리하려면 멘션할 때만 변환을 선택하세요. 설정은 채널의 모든 사용자에게 적용됩니다.'}},
       {type:'input',block_id:'channel',label:{type:'plain_text',text:'채널'},element:{type:'conversations_select',action_id:'value',placeholder:{type:'plain_text',text:'채널 선택'},filter:{include:['public','private'],exclude_external_shared_channels:true},...(current?{initial_conversation:current}:{})}},
       {type:'input',block_id:'mode',label:{type:'plain_text',text:'동작 방식'},element:{type:'static_select',action_id:'value',options:(['auto','mention','off'] as const).map(option),initial_option:option(current&&this.mode(current)!=='off'?this.mode(current):'mention')}},
       {type:'context',elements:[{type:'plain_text',text:'멘션 모드에서도 /rhwp 명령과 메시지 메뉴로 직접 요청할 수 있습니다. 자동 감지는 활성화된 채널의 한글 파일만 처리합니다.'}]},
@@ -53,10 +53,10 @@ export class Settings {
     if(team!==this.config.teamId||!ID.user.test(user))denied();
     await this.refresh();const admin=this.isAdmin(team,user);
     const blocks:Record<string,unknown>[]=[
-      {type:'header',text:{type:'plain_text',text:'rhwp · Slack에서 한글 문서 보기와 편집'}},
-      {type:'section',text:{type:'mrkdwn',text:'파일이 공유된 메시지의 스레드에 PDF와 페이지 이미지를 준비합니다. PDF 링크로 열람하고, rhwp 문서 카드로 편집하세요. 수정본도 같은 스레드에 저장됩니다.'}},
-      {type:'section',text:{type:'mrkdwn',text:'*사용 방법*\n• 자동 감지 채널: HWP/HWPX 파일을 올리세요.\n• 멘션 모드: 파일과 함께 이 앱을 멘션하세요.\n• 기존 파일: 메시지 메뉴 → 한글 문서 열기\n• 명령 도움말: `/rhwp help`'}},
-      {type:'context',elements:[{type:'plain_text',text:'⏳ 처리 중 · ✅ 미리보기 준비 완료 · ⚠️ 준비 실패 또는 일부 실패'}]},
+      {type:'header',text:{type:'plain_text',text:'한글 프로그램 없이 문서를 확인하고 편집하세요'}},
+      {type:'section',text:{type:'mrkdwn',text:'*1. 사용할 채널에 rhwp를 초대하세요.*\n처음 초대한 채널은 자동 변환이 켜집니다. 이전에 설정한 채널은 기존 설정을 유지합니다.\n\n*2. HWP·HWPX 파일을 올리세요.*\n같은 스레드에 PDF와 첫 3페이지 이미지를 자동으로 만듭니다.\n\n*3. 수정이 필요하면 rhwp에서 편집을 누르세요.*\n브라우저에서 무료로 편집하고, 편집본을 같은 스레드에 저장할 수 있습니다.'}},
+      {type:'section',text:{type:'mrkdwn',text:'*필요한 문서만 변환하고 싶나요?*\n채널 설정에서 *멘션할 때만 변환*을 선택하고, 파일이 있는 메시지의 스레드에서 @rhwp를 멘션하세요.\n기존 파일은 메시지 메뉴의 *한글 문서 열기*로 요청할 수 있습니다.'}},
+      {type:'context',elements:[{type:'plain_text',text:'⏳ 변환 중 · ✅ PDF와 이미지 준비 완료 · ⚠️ 일부 또는 전체 변환 실패'}]},
     ];
     if(admin){
       blocks.push({type:'divider'},{type:'actions',elements:[{type:'button',action_id:'rhwp_settings',text:{type:'plain_text',text:'채널 설정'},style:'primary'}]});

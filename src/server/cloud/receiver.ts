@@ -28,7 +28,7 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
  app.command('/rhwp',async({command,ack})=>{
   try{
    if(command.api_app_id!==config.appId)denied();
-   if(command.text.trim()==='settings'){await settings.open(command.team_id,command.user_id,trigger(command.trigger_id),command.channel_id);await ack();return;}
+   if(!command.text.trim()||command.text.trim()==='settings'){await settings.open(command.team_id,command.user_id,trigger(command.trigger_id),command.channel_id);await ack();return;}
    const actor=await who(command.team_id,command.user_id,command.channel_id),parsed=parseCommand(command.text,config.workspaceHost);
    if(parsed.kind==='help'){await ack({response_type:'ephemeral',text:HELP});return;}
    await documents.submit(actor,parsed.fileId,'command:'+trigger(command.trigger_id));await ack({response_type:'ephemeral',text:'문서 접근 권한을 확인하고 있습니다.'});
@@ -50,19 +50,23 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
    await documents.submit(item.actor,selected!,'selection:'+id);await ack();
   }catch(error){await ack({response_action:'errors',errors:{document:userMessage(error)}});}
  });
+ app.event('member_joined_channel',async({body,event})=>{
+  if(event.user!==identity.botUserId||body.team_id!==config.teamId||typeof body.event_id!=='string'||!ID.channel.test(event.channel))return;
+  await events.enqueue(body.event_id,{kind:'channel_joined',actor:{teamId:config.teamId,userId:identity.botUserId,channelId:event.channel}});
+ });
  app.event('file_shared',async({body,event})=>{
   const e=object(event);if(e.user_id===identity.botUserId||typeof e.file_id!=='string'||!ID.file.test(e.file_id)||typeof body.event_id!=='string')return;
-  let actor:Actor;try{actor=await who(body.team_id,e.user_id,e.channel_id);}catch(error){if(error instanceof UserError&&error.code==='access_denied')return;throw error;}
+  let actor:Actor;try{if(body.team_id!==config.teamId||typeof e.user_id!=='string'||!ID.user.test(e.user_id)||typeof e.channel_id!=='string'||!ID.channel.test(e.channel_id))return;actor={teamId:config.teamId,userId:e.user_id,channelId:e.channel_id};}catch(error){if(error instanceof UserError&&error.code==='access_denied')return;throw error;}
   await events.enqueue(body.event_id,{kind:'file_shared',actor,fileId:e.file_id});
  });
  app.event('app_mention',async({body,event})=>{
   const e=object(event);if(e.user===identity.botUserId||e.bot_id||typeof body.event_id!=='string')return;
-  let actor:Actor;try{actor=await who(body.team_id,e.user,e.channel);actor.threadTs=ts(e.thread_ts??e.ts);actor.reactionTs=ts(e.ts);}catch(error){if(error instanceof UserError&&error.code==='access_denied')return;throw error;}
+  let actor:Actor;try{if(body.team_id!==config.teamId||typeof e.user!=='string'||!ID.user.test(e.user)||typeof e.channel!=='string'||!ID.channel.test(e.channel))return;actor={teamId:config.teamId,userId:e.user,channelId:e.channel};actor.threadTs=ts(e.thread_ts??e.ts);actor.reactionTs=ts(e.ts);}catch(error){if(error instanceof UserError&&error.code==='access_denied')return;throw error;}
   const files=Array.isArray(e.files)?candidatesFrom(e.files).map(f=>f.id):undefined;
   await events.enqueue(body.event_id,{kind:'app_mention',actor,files});
  });
  app.event('app_home_opened',async({body,event})=>{if(event.tab==='home'&&typeof body.event_id==='string')await events.enqueue(body.event_id,{kind:'home',user:event.user});});
- app.action('rhwp_settings',async({body,ack})=>{const b=object(body);try{await settings.open(String(object(b.team).id),String(object(b.user).id),trigger(b.trigger_id));}catch{/* No mutation on forged actions. */}await ack();});
+ app.action('rhwp_settings',async({body,ack})=>{const b=object(body);try{await settings.open(String(object(b.team).id),String(object(b.user).id),trigger(b.trigger_id),typeof object(b.channel).id==='string'?String(object(b.channel).id):undefined);}catch{/* No mutation on forged actions. */}await ack();});
  app.view('rhwp_channel_settings',async({body,view,ack})=>{
   try{const channel=view.state.values.channel?.value?.selected_conversation,mode=view.state.values.mode?.value?.selected_option?.value;
    if(typeof channel!=='string'||typeof mode!=='string')denied();await settings.set({teamId:body.team?.id??'',userId:body.user.id,channelId:channel},mode);

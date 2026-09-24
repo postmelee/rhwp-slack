@@ -68,7 +68,7 @@ export function createSlackReceiver(config:Config,api:SlackApi,botIdentity:BotId
   app.command('/rhwp',async({command,ack})=>{
     try {
       if(command.api_app_id!==config.appId)denied();
-      if(command.text.trim()==='settings'){
+      if(!command.text.trim()||command.text.trim()==='settings'){
         if(!settings.isAdmin(command.team_id,command.user_id)){await ack({response_type:'ephemeral',text:'채널 설정은 rhwp 앱 관리자가 변경할 수 있습니다.'});return;}
         await ack();await settings.open(command.team_id,command.user_id,trigger(command.trigger_id),command.channel_id);return;
       }

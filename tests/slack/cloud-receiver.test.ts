@@ -92,3 +92,40 @@ test('preview button queue outage is not acknowledged and worker rejects a forge
   assert.ok(f.api.calls.some(c=>c.method==='chat.postEphemeral'&&String(c.args.text).includes('접근 권한')));
  }finally{await f.close();}
 });
+
+test('first upload before bot join initializes auto; repeated join welcomes once; explicit policies survive',async()=>{
+ const f=await start();try{
+  await f.store.atomic('settings','initialized',()=>({value:true,result:undefined}));
+  assert.equal(await f.application.mode('CTEST'),'off');
+  const join={...event('EJOIN45'),event:{type:'member_joined_channel',user:'UBOT',channel:'CTEST',channel_type:'C'}};
+  await signed(f.origin,event('EFIRST45'),{json:true});await f.drain();
+  assert.equal(await f.application.mode('CTEST'),'auto');assert.equal((await f.store.list('cards')).length,1);
+  await signed(f.origin,join,{json:true});await f.drain();
+  await signed(f.origin,{...join,event_id:'EJOIN45B'},{json:true});await f.drain();
+  assert.equal(f.api.calls.filter(c=>c.method==='chat.postMessage'&&String(c.args.text).startsWith('이제 이 채널')).length,1);
+  for(const mode of ['mention','off'] as const){
+   await f.runtime.settings.set({teamId:'TTEST',userId:'UTEST',channelId:'CTEST'},mode);
+   await signed(f.origin,{...join,event_id:'EJOIN45'+mode},{json:true});await f.drain();assert.equal(await f.application.mode('CTEST'),mode);
+  }
+ }finally{await f.close();}
+});
+test('own bot join initializes channel; ordinary members and inaccessible channels do not',async()=>{
+ const f=await start();try{
+  await f.store.atomic('settings','initialized',()=>({value:true,result:undefined}));
+  const join={...event('EJOIN46'),event:{type:'member_joined_channel',user:'UOTHER',channel:'CTEST',channel_type:'C'}};
+  await signed(f.origin,join,{json:true});await f.drain();assert.equal(await f.application.mode('CTEST'),'off');
+  const original=f.api.response.bind(f.api);
+  f.api.handler=async(method,args)=>method==='conversations.info'?{ok:true,channel:{...(original(method,args).channel as object),is_member:false}}:original(method,args);
+  await signed(f.origin,{...join,event_id:'EJOIN46B',event:{...join.event,user:'UBOT'}},{json:true});await f.drain();assert.equal(await f.application.mode('CTEST'),'off');
+  f.api.handler=undefined;
+  await signed(f.origin,{...join,event_id:'EJOIN46C',event:{...join.event,user:'UBOT'}},{json:true});await f.drain();assert.equal(await f.application.mode('CTEST'),'auto');
+ }finally{await f.close();}
+});
+test('bare rhwp opens channel settings; ordinary user cannot change settings',async()=>{
+ const f=await start();try{
+  await signed(f.origin,new URLSearchParams(command({text:'',channel_id:'CNEW'})));
+  assert.equal(f.api.calls.filter(c=>c.method==='views.open').length,1);
+  await signed(f.origin,new URLSearchParams(command({text:'',user_id:'UOTHER'})));
+  assert.equal(f.api.calls.filter(c=>c.method==='views.open').length,1);
+ }finally{await f.close();}
+});
