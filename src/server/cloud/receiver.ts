@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {App,ExpressReceiver,LogLevel,type Logger} from '@slack/bolt';
 import {ID,type Config} from '../config';
 import type {Actor} from '../access';
@@ -70,9 +70,14 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
   }catch(error){await ack({response_action:'errors',errors:{channel:userMessage(error)}});}
  });
  for(const actionId of ['rhwp_more_pages','rhwp_retry_preview'])app.action(actionId,async({body,action,ack})=>{
-  let actor:Actor|undefined;try{const b=object(body),a=object(action),c=object(b.container);actor=await who(object(b.team).id,object(b.user).id,c.channel_id);
-   if(c.type!=='message'||typeof a.value!=='string'||(b.channel&&object(b.channel).id!==actor.channelId))denied();await (actionId==='rhwp_more_pages'?documents.morePages(a.value,actor,ts(c.message_ts)):documents.retryPreview(a.value,actor,ts(c.message_ts)));
-  }catch(error){if(actor)await notice(actor,error);}await ack();
+  const b=object(body),a=object(action),c=object(b.container);
+  const actor=await who(object(b.team).id,object(b.user).id,c.channel_id);
+  if(c.type!=='message'||typeof a.value!=='string'||!a.value||a.value.length>128||(b.channel&&object(b.channel).id!==actor.channelId))denied();
+  const messageTs=ts(c.message_ts),actionTs=ts(a.action_ts);
+  const key=createHash('sha256').update(JSON.stringify([actionId,actor.teamId,actor.userId,actor.channelId,a.value,messageTs,actionTs])).digest('hex');
+  // Return only after durable handoff. Slack lookups, card locks and notifications run on the worker.
+  await events.enqueue('action:'+key,{kind:actionId==='rhwp_retry_preview'?'retry_preview':'more_pages',actor,cardId:a.value,messageTs});
+  await ack();
  });
  app.action('rhwp_browser_edit',async({ack})=>{await ack();});
  app.event('entity_details_requested',async({body,event})=>{

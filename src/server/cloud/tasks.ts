@@ -24,20 +24,30 @@ export class GoogleTaskPublisher implements TaskPublisher {
     }catch(error){if((error as {code?:number}).code!==6)throw error;}
   }
 }
-export class TaskBusy extends Error {}
+export class TaskBusy extends Error {readonly code='task_busy';}
 export class LeaseLost extends Error {}
 export interface TaskContext {signal:AbortSignal;checkpoint():Promise<void>;id?:string;attempt?:number;maxAttempts?:number;finalAttempt?:boolean;terminalFailure?:string;}
 /** Queue messages contain an opaque ID only. No document contents, tokens or transfer URLs. */
 export class DurableTasks {
   constructor(private store:MetadataStore,private publisher:TaskPublisher,private now=Date.now,private leaseMs=60_000){}
   async enqueue(requestKey:string,spec:TaskSpec):Promise<string>{
+    const id=await this.reserve(requestKey,spec);await this.dispatch(id);return id;
+  }
+  /** Persist intent without starting work. Call dispatch only after releasing document locks. */
+  async reserve(requestKey:string,spec:TaskSpec):Promise<string>{
     if(!/^T[A-Z0-9]+$/.test(spec.teamId)||!spec.cardId||!['prepare','preview','images','event'].includes(spec.kind)||!requestKey||requestKey.length>2048)throw new Error('Invalid task');
     const id=createHash('sha256').update(JSON.stringify([spec.teamId,requestKey])).digest('hex');
-    const work=await this.store.atomic<Work,Work|undefined>('tasks',id,current=>{
+    await this.store.atomic<Work,Work|undefined>('tasks',id,current=>{
       if(current){if(JSON.stringify(current.spec)!==JSON.stringify(spec))throw new Error('Task key conflict');return {value:current,result:current.state==='done'||current.state==='failed'?undefined:current};}
       const value:Work={spec,state:'queued',generation:0,createdAt:this.now(),deadlineAt:this.now()+TASK_LIFETIME_MS};return {value,result:value};
     });
-    if(!work)return id;
+    return id;
+  }
+  async dispatch(id:string):Promise<void>{
+    if(!/^[a-f0-9]{64}$/.test(id))throw new Error('Invalid task ID');
+    const work=await this.store.get<Work>('tasks',id);if(!work)throw new Error('Missing reserved task');
+    if(work.state==='done'||work.state==='failed')return;
+    const spec=work.spec;
     // A separate scheduled delivery repairs the visible state even if the last worker was killed.
     // Publish it before the work, so acknowledging ingress always includes this durable handoff.
     if(spec.kind!=='event'){
@@ -45,7 +55,7 @@ export class DurableTasks {
       await this.store.atomic<Work,void>('tasks',watchId,current=>({value:current??{spec,state:'queued',generation:0,createdAt:work.createdAt,deadlineAt:deadline,watchdogFor:id},result:undefined}));
       await this.publisher.publish(watchId,deadline);
     }
-    await this.publisher.publish(id);return id;
+    await this.publisher.publish(id);
   }
   async execute(id:string,run:(spec:TaskSpec,context:TaskContext)=>Promise<void>):Promise<void>{
     if(!/^[a-f0-9]{64}$/.test(id))throw new Error('Invalid task ID');

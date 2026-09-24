@@ -269,3 +269,35 @@ test('failure persists when status delivery is forbidden or unavailable and old 
   }finally{f.close();}
  }
 });
+
+test('manual retry releases the card lock before dispatch and progress failure does not cancel another user retry',async()=>{
+ const f=fixture();try{
+  const app=f.make(),id=await app.submit({...actor,threadTs:'100.001'},'FTEST','thread:dispatch-lock');await f.drain();
+  const original=await app.authorize(id,actor);
+  await f.store.atomic<any,void>('cards',id,c=>({value:{...c,pdf:'failed',imageState:'failed',recovery:{taskId:'old',state:'failed',attempt:3,maxAttempts:3}},result:undefined}));
+  const other={...actor,userId:'UOTHER'};
+  f.api.handler=async(method,args)=>{
+   if(method==='conversations.members')return {ok:true,members:['UOTHER'],response_metadata:{next_cursor:''}};
+   if(method==='chat.update')throw new Error('progress unavailable');
+   return f.api.response(method,args);
+  };
+  const dispatch=f.tasks.dispatch.bind(f.tasks);let dispatched=false;
+  f.tasks.dispatch=async job=>{assert.equal(await f.store.get('locks','card:'+id),undefined);dispatched=true;await dispatch(job);};
+  await app.retryPreview(id,other,original.messageTs!,'click-other');assert.equal(dispatched,true);
+  const job=f.pending.shift()!;const work=await f.store.get<any>('tasks',job);assert.equal(work.spec.actor.userId,'UOTHER');
+  f.api.handler=async(method,args)=>method==='conversations.members'?{ok:true,members:['UOTHER'],response_metadata:{next_cursor:''}}:f.api.response(method,args);
+  await f.tasks.execute(job,(s,c)=>app.execute(s,c));assert.equal((await app.authorize(id,other)).pdf,'ready');
+  assert.equal(f.api.calls.filter(c=>c.method==='chat.postEphemeral').length,0);
+ }finally{f.close();}
+});
+
+test('a redelivered action publishes the same reservation after queue failure',async()=>{
+ const f=fixture();try{
+  const app=f.make(),id=await app.submit(actor,'FTEST','thread:reserve');await f.drain();const card=await app.authorize(id,actor);
+  await f.store.atomic<any,void>('cards',id,c=>({value:{...c,pdf:'failed',imageState:'failed',recovery:{taskId:'old',state:'failed',attempt:3,maxAttempts:3}},result:undefined}));
+  f.setPublishFailure(true);await assert.rejects(app.retryPreview(id,actor,card.messageTs!,'click-republish'),/queue unavailable/);
+  const reserved=(await app.authorize(id,actor)).recovery!.taskId;assert.equal(await f.store.get('locks','card:'+id),undefined);
+  f.setPublishFailure(false);await app.retryPreview(id,actor,card.messageTs!,'click-republish');assert.deepEqual(f.pending,[reserved]);
+  await f.drain();assert.equal((await app.authorize(id,actor)).pdf,'ready');
+ }finally{f.close();}
+});
