@@ -23,6 +23,7 @@ export function documentMessage(card:Card,origin:string,editorMode:'embed'|'brow
     const detail=card.pageCount?card.pageCount+'페이지':'페이지 확인 중';
     const pdf=card.pdf==='ready'&&card.pdfUrl?' · <'+card.pdfUrl+'|PDF로 보기>':card.pdf==='failed'?' · PDF 준비 실패':' · PDF 준비 중';
     const blocks:Record<string,unknown>[]=[{type:'section',text:{type:'mrkdwn',text:'*'+documentText(card)+'* · '+detail+pdf}}];
+    if(card.recovery?.state==='running')blocks.push({type:'context',elements:[{type:'plain_text',text:card.recovery.attempt===0?'미리보기 요청을 접수했습니다. PDF·이미지를 준비할 차례를 기다리고 있습니다.':'PDF·이미지를 다시 준비하고 있습니다.'}]});
     if(card.recovery?.state==='retrying')blocks.push({type:'context',elements:[{type:'plain_text',text:`준비가 지연되어 자동으로 다시 시도합니다. (${card.recovery.attempt}/${card.recovery.maxAttempts}회 시도)`}]});
     if(card.pdf==='failed'&&card.recovery?.state==='failed')blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_retry_preview',value:card.id,text:{type:'plain_text',text:'문서 미리보기 다시 준비'}}]});
     if(card.imageState==='pending')blocks.push({type:'context',elements:[{type:'plain_text',text:'페이지 이미지를 준비하고 있습니다.'}]});

@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {measured,conversionMetric,milestone,errorCode} from './telemetry';
+import {measured,conversionMetric,milestone,errorCode,notificationFailure} from './telemetry';
 import {setTimeout as delay} from 'node:timers/promises';
 import type {MetadataStore} from './metadata';
 import {BoundedWork,serialWrites} from '../concurrency';
@@ -21,7 +21,7 @@ import {UserError,denied} from '../errors';
 import {validateDocument} from '../validate-document';
 import {validateInput} from '../../shared/errors';
 import {convertPreview,convertPageImages,type PageImage} from '../../conversion/convert.mjs';
-interface CloudCard extends Omit<Card,'imageAttempts'|'imageWork'|'updates'> {attempts?:Record<string,UploadAttempt>;fence?:string;removed?:boolean;}
+interface CloudCard extends Omit<Card,'imageAttempts'|'imageWork'|'updates'> {attempts?:Record<string,UploadAttempt>;fence?:string;removed?:boolean;previewRequestId?:string;}
 interface Request {actor:Actor;fileId:string;}
 interface SaveOperation {hash:string;cardId:string;attempt:UploadAttempt;receipt:Receipt;}
 const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
@@ -84,29 +84,35 @@ export class CloudApplication {
     if(!await this.store.get('cards',id))await this.reaction(id,actor,'pending',false);
     await this.tasks.enqueue('prepare:'+id,{teamId:actor.teamId,cardId:id,kind:'prepare'});return id;
   }
-  async retryPreview(id:string,actor:Actor,messageTs:string):Promise<void>{
-    await this.authorize(id,actor);
-    await this.locked(id,async(card,context)=>{
-      if(card.messageTs!==messageTs)denied();
-      if(card.pdf==='ready'&&card.imageState==='ready')return;
-      if(card.recovery&&card.recovery.state!=='failed')throw new UserError('pages_pending','자동 재시도 중입니다. 잠시 후 다시 확인하세요.');
-      const taskId=await this.tasks.enqueue('preview-retry:'+id+':'+(card.recovery?.taskId??'initial'),{teamId:actor.teamId,cardId:id,kind:'preview',actor});
-      card.recovery={taskId,state:'running',attempt:0,maxAttempts:MAX_TASK_ATTEMPTS};
-      if(card.pdf!=='ready')card.pdf='pending';if(card.imageState!=='ready')card.imageState='pending';
-      await this.update(card,actor,context);await this.reaction(id,card.actor,'pending',true);
-    });
+  async retryPreview(id:string,actor:Actor,messageTs:string,requestId?:string):Promise<void>{
+    return this.schedulePreview(id,actor,messageTs,'preview',requestId);
   }
-  async morePages(id:string,actor:Actor,messageTs:string):Promise<void>{
+  async morePages(id:string,actor:Actor,messageTs:string,requestId?:string):Promise<void>{
+    return this.schedulePreview(id,actor,messageTs,'images',requestId);
+  }
+  private async schedulePreview(id:string,actor:Actor,messageTs:string,kind:'preview'|'images',requestId?:string):Promise<void>{
     await this.authorize(id,actor);
-    await this.locked(id,async(card,context)=>{
+    const taskId=await this.locked(id,async(card,context)=>{
       if(card.messageTs!==messageTs)denied();
-      if(!card.pageCount||card.pdf!=='ready')throw new UserError('pages_pending','PDF를 준비 중입니다. 잠시 후 다시 시도하세요.');
-      if(card.imageState==='ready'&&(card.images?.length??0)>=Math.min(10,card.pageCount))return;
-      if(card.recovery&&card.recovery.state!=='failed'&&card.imageState!=='ready')return;
-      const taskId=await this.tasks.enqueue('images:'+id+':'+(card.recovery?.taskId??'initial'),{teamId:actor.teamId,cardId:id,kind:'images',actor});
-      card.recovery={taskId,state:'running',attempt:0,maxAttempts:MAX_TASK_ATTEMPTS};card.imageState='pending';
-      await this.update(card,actor,context);await this.reaction(id,card.actor,'pending',true);
+      if(kind==='preview'&&card.pdf==='ready'&&card.imageState==='ready')return;
+      if(kind==='images'){
+        if(!card.pageCount||card.pdf!=='ready')throw new UserError('pages_pending','PDF를 준비 중입니다. 잠시 후 다시 시도하세요.');
+        if(card.imageState==='ready'&&(card.images?.length??0)>=Math.min(10,card.pageCount))return;
+      }
+      const resumed=!!requestId&&card.previewRequestId===requestId;
+      if(card.recovery&&card.recovery.state!=='failed'&&!resumed)throw new UserError('pages_pending','이미 접수되어 처리 중입니다. 잠시 후 다시 확인하세요.');
+      const next=resumed&&card.recovery?card.recovery.taskId:await this.tasks.reserve(
+        requestId?'preview-action:'+requestId:(kind==='preview'?'preview-retry:':'images:')+id+':'+(card.recovery?.taskId??'initial'),
+        {teamId:actor.teamId,cardId:id,kind,actor});
+      card.previewRequestId=requestId;
+      card.recovery={taskId:next,state:'running',attempt:0,maxAttempts:MAX_TASK_ATTEMPTS};
+      if(card.pdf!=='ready')card.pdf='pending';card.imageState='pending';
+      await this.write(card,context);
+      // A failed progress notification must not cancel already reserved work.
+      try{await this.update(card,actor,context);}catch(error){notificationFailure('preview_progress',error);}
+      return next;
     });
+    if(taskId)await this.tasks.dispatch(taskId);
   }
   private guarded(context:TaskContext):SlackApi{return {call:async(method,args,signal)=>{await context.checkpoint();return this.api.call(method,args,AbortSignal.any([context.signal,...(signal?[signal]:[])]));}};}
   private async write(card:CloudCard,context:LeaseContext):Promise<void>{
@@ -223,7 +229,8 @@ export class CloudApplication {
       await this.reaction(card.id,card.actor,'pending',true);
       card.recovery={taskId:task.id??'legacy',state:'running',attempt:task.attempt??1,maxAttempts:task.maxAttempts??MAX_TASK_ATTEMPTS};
       if(card.pdf!=='ready')card.pdf='pending';card.imageState='pending';
-      if((task.attempt??1)>1)await this.update(card,actor,context);else await this.write(card,context);
+      await this.write(card,context);
+      try{await this.update(card,actor,context);}catch(error){notificationFailure('preview_progress',error);}
       const bytes=await this.ensureSource(card.id,actor,context.signal);
       const serial=serialWrites(),persist=()=>serial(()=>this.write(card,context)),publish=()=>serial(()=>this.update(card,actor,context));
       const pool=new BoundedWork(this.config.imageUploadConcurrency??1),pdfWork=new BoundedWork(1);

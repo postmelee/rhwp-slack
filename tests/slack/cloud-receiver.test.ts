@@ -58,3 +58,37 @@ test('metadata outage during event authorization requests a Slack retry instead 
   f.store.get=get;assert.equal((await signed(f.origin,event('ESTORE'),{json:true})).status,200);await f.drain();assert.equal(f.api.messages.size,1);
  }finally{await f.close();}
 });
+
+test('preview button durably acknowledges before Slack lookups and deduplicates the same signed click',async()=>{
+ const f=await start();try{
+  await signed(f.origin,event('EBUTTON'),{json:true});await f.drain();
+  const [id,card]=(await f.store.list<any>('cards'))[0];
+  await f.store.atomic<any,void>('cards',id,c=>({value:{...c,pdf:'failed',imageState:'failed',recovery:{taskId:'old',state:'failed',attempt:3,maxAttempts:3}},result:undefined}));
+  const payload={type:'block_actions',api_app_id:'ATEST',team:{id:'TTEST'},user:{id:'UTEST'},channel:{id:'CTEST'},container:{type:'message',channel_id:'CTEST',message_ts:card.messageTs},actions:[{type:'button',action_id:'rhwp_retry_preview',value:id,action_ts:'999.001'}]};
+  // Any synchronous Slack lookup hangs: the durable acknowledgment must still finish.
+  let unblock!:()=>void;const blocked=new Promise<void>(r=>{unblock=r;});let called=false;
+  f.api.handler=async(method,args)=>{called=true;await blocked;return f.api.response(method,args);};
+  try{
+   const response=await signed(f.origin,new URLSearchParams({payload:JSON.stringify(payload)}));
+   assert.equal(response.status,200);assert.equal(called,false);assert.equal(f.pending.length,1);
+   assert.equal((await signed(f.origin,new URLSearchParams({payload:JSON.stringify(payload)}))).status,200);
+   const inputs=await f.store.list<any>('inputs');assert.equal(inputs.filter(([,v])=>v.kind==='retry_preview').length,1);
+  }finally{unblock();f.api.handler=undefined;}
+  await f.drain();assert.equal((await f.store.get<any>('cards',id)).pdf,'ready');
+  assert.equal(f.api.calls.filter(c=>c.method==='chat.postEphemeral').length,0);
+  assert.ok(f.api.calls.some(c=>c.method==='chat.update'&&JSON.stringify(c.args).includes('요청을 접수했습니다')));
+ }finally{await f.close();}
+});
+
+test('preview button queue outage is not acknowledged and worker rejects a forged message before reserving conversion',async()=>{
+ const f=await start();try{
+  await signed(f.origin,event('EBADBUTTON'),{json:true});await f.drain();
+  const [id]=(await f.store.list<any>('cards'))[0];
+  const payload={type:'block_actions',api_app_id:'ATEST',team:{id:'TTEST'},user:{id:'UTEST'},channel:{id:'CTEST'},container:{type:'message',channel_id:'CTEST',message_ts:'999.999'},actions:[{type:'button',action_id:'rhwp_retry_preview',value:id,action_ts:'999.002'}]};
+  const body=new URLSearchParams({payload:JSON.stringify(payload)});
+  f.setFailure(true);assert.equal((await signed(f.origin,body)).status,503);
+  f.setFailure(false);assert.equal((await signed(f.origin,body)).status,200);
+  const before=(await f.store.list('tasks')).length;await f.drain();assert.equal((await f.store.list('tasks')).length,before);
+  assert.ok(f.api.calls.some(c=>c.method==='chat.postEphemeral'&&String(c.args.text).includes('접근 권한')));
+ }finally{await f.close();}
+});

@@ -2,12 +2,13 @@ import {createHash} from 'node:crypto';
 import type {Actor} from '../access';
 import {authorizeFile} from '../access';
 import {ID} from '../config';
-import {object,UserError} from '../errors';
+import {object,UserError,userMessage} from '../errors';
 import type {CloudApplication} from './application';
 import type {TaskContext,TaskSpec} from './tasks';
+import {notificationFailure} from './telemetry';
 import {Settings} from '../settings';
 /** A projection of a signed event. Never store the message text or the original payload. */
-export interface Input {kind:'file_shared'|'app_mention'|'file_deleted'|'file_unshared'|'home';actor?:Actor;fileId?:string;files?:string[];user?:string;receivedAt?:number;}
+export interface Input {kind:'file_shared'|'app_mention'|'file_deleted'|'file_unshared'|'home'|'retry_preview'|'more_pages';cardId?:string;messageTs?:string;actor?:Actor;fileId?:string;files?:string[];user?:string;receivedAt?:number;}
 export class CloudEvents {
  constructor(private application:CloudApplication,private botUserId:string){}
  async enqueue(eventId:string,input:Input):Promise<void>{
@@ -24,6 +25,18 @@ export class CloudEvents {
   const input=await app.store.get<Input>('inputs',spec.cardId);if(!input)throw new Error('Missing event');
   if(input.kind==='file_deleted'||input.kind==='file_unshared'){if(input.fileId)await app.invalidate(input.fileId,input.kind==='file_unshared');return;}
   if(input.kind==='home'){await new Settings(app.config,app.api,undefined,app.store).home(app.config.teamId,input.user!);return;}
+  if(input.kind==='retry_preview'||input.kind==='more_pages'){
+   const actor=input.actor!;await context.checkpoint();
+   try{
+    if(input.kind==='retry_preview')await app.retryPreview(input.cardId!,actor,input.messageTs!,spec.cardId);
+    else await app.morePages(input.cardId!,actor,input.messageTs!,spec.cardId);
+   }catch(error){
+    if(!(error instanceof UserError))throw error;
+    try{await app.api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text:userMessage(error)},context.signal);}
+    catch(noticeError){notificationFailure('preview_notice',noticeError);throw noticeError;}
+   }
+   return;
+  }
   const actor=input.actor!;if(actor.userId===this.botUserId||await app.mode(actor.channelId)==='off')return;
   await context.checkpoint();
   if(input.kind==='file_shared'){
