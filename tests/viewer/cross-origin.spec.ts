@@ -8,12 +8,16 @@ import {EditorApi} from '../slack/editor-support';
 import {config,actor,bytes} from '../slack/support';
 import {object} from '../../src/server/errors';
 
-test('separate static origin → API authorization → Studio edit → same-thread save, without token propagation',async({page})=>{
+for(const pendingContextRequest of [false,true])test('separate static origin → API authorization → Studio edit → same-thread save, without token propagation'+(pendingContextRequest?' with pending context request':''),async({page})=>{
  const apiOrigin='http://127.0.0.1:4177',editorOrigin='http://127.0.0.1:4180',api=new EditorApi();
  const runtime=createSlackReceiver({...config,publicOrigin:apiOrigin,editorOrigin},api,{botId:'BBOT',botUserId:'UBOT'},{download:async()=>bytes,fetcher:async()=>new Response('ok')});
  const serve=staticAssets();const shell=readFileSync('dist/editor/index.html','utf8').replace('<meta name="rhwp-api-origin" content="">',`<meta name="rhwp-api-origin" content="${apiOrigin}">`);
+ let pendingRequest=false,pendingRequestClosed=false;
  const frontend=createServer((req,res)=>{res.setHeader('Cache-Control','no-store');res.setHeader('Content-Security-Policy',editorPolicy(apiOrigin));res.setHeader('Referrer-Policy','no-referrer');
    const path=new URL(req.url!,editorOrigin).pathname;
+   // A second page holds a connection owned by the same test context.
+   // This regression checks ownership, not the original CI socket type.
+   if(pendingContextRequest&&path==='/teardown-probe'){pendingRequest=true;res.once('close',()=>{pendingRequestClosed=true;});res.writeHead(200,{'Content-Type':'text/html'});res.write('<!doctype html><title>Pending context request</title><p>Waiting for context teardown</p>');return;}
    if(path==='/editor/'){res.setHeader('Content-Type','text/html');res.end(shell);return;}
    void serve(req,res,path).catch(()=>res.writeHead(500).end());
  });
@@ -28,11 +32,17 @@ test('separate static origin → API authorization → Studio edit → same-thre
   const input=page.frameLocator('#editor iframe').getByLabel('문서 편집 입력',{exact:true});await input.focus();await input.pressSequentially('Cross origin ');await expect(page).toHaveTitle(/^\* /);
   await page.locator('#save-to-slack').click();await expect(page.locator('#slack-save p')).toHaveText('편집본과 PDF를 Slack에 저장했습니다.',{timeout:60_000});
   const posts=api.calls.filter(c=>c.method==='chat.postMessage');expect(posts).toHaveLength(2);expect(posts[1].args.thread_ts).toBe('123.456');
+  if(pendingContextRequest){
+   const pendingPage=await page.context().newPage();
+   await pendingPage.goto(editorOrigin+'/teardown-probe',{waitUntil:'commit'});
+   await expect.poll(()=>pendingRequest).toBe(true);
+  }
   await Promise.all(staticRequests);expect(failures).toEqual([]);
  }finally{
   // Release browser connections before awaiting either test HTTP server's close.
   // Otherwise a live page can keep teardown pending after every assertion passed.
   await test.step('close browser page',()=>page.close({runBeforeUnload:false}));
+  if(pendingContextRequest)await test.step('browser released pending request',()=>expect.poll(()=>pendingRequestClosed).toBe(true));
   await test.step('stop API receiver',()=>runtime.receiver.stop());
   await test.step('close runtime',()=>runtime.close());
   await test.step('close static server',()=>new Promise<void>((r,j)=>frontend.close(e=>e?j(e):r())));
