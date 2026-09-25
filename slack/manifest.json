@@ -13,8 +13,8 @@
       {
         "command": "/rhwp",
         "url": "https://example.invalid/slack/events",
-        "description": "한글 문서 열기 및 PDF 보기",
-        "usage_hint": "open|edit|pdf <Slack 파일 링크> 또는 help|settings",
+        "description": "rhwp 채널의 자동 변환 설정을 엽니다",
+        "usage_hint": "채널 설정 열기",
         "should_escape": true
       }
     ],
@@ -54,7 +54,8 @@
         "entity_details_requested",
         "file_shared",
         "app_mention",
-        "app_home_opened"
+        "app_home_opened",
+        "member_joined_channel"
       ]
     },
     "interactivity": {

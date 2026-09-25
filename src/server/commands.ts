@@ -3,12 +3,13 @@ import {UserError} from './errors';
 export type Mode = 'open' | 'pdf';
 export type Command = {kind:'help'} | {kind:'prepare'; mode:Mode; fileId:string};
 export const HELP = [
+  '/rhwp — 채널 설정 열기',
   '/rhwp open <Slack 파일 링크> — Studio에서 편집할 문서 준비',
   '/rhwp edit <Slack 파일 링크> — 문서 열기와 동일',
   '/rhwp pdf <Slack 파일 링크> — PDF로 볼 문서 준비',
   '/rhwp help — 사용법',
   '/rhwp settings — 관리자용 채널 설정',
-  '카드의 문서 제목을 누르면 Studio 편집기가 열립니다. PDF로 보기는 Slack에 공유한 PDF로 연결합니다. 편집본은 새 파일로 저장합니다.',
+  '응답의 rhwp에서 편집으로 문서를 편집할 수 있습니다. PDF로 보기는 Slack에 공유한 PDF로 연결합니다. 편집본은 새 파일로 저장합니다.',
   '채널 설정에 따라 HWP/HWPX 업로드 또는 @rhwp 멘션으로 스레드 미리보기를 만듭니다. 처음 3페이지를 보여주며 추가 페이지 보기로 앞 10페이지까지 펼칩니다.',
   '이미지 단독·전체/지정 PNG·ZIP 명령은 추후 제공됩니다.',
 ].join('\n');

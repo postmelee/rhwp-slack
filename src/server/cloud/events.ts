@@ -1,3 +1,4 @@
+import {onboardChannel} from './channel-onboarding';
 import {createHash} from 'node:crypto';
 import type {Actor} from '../access';
 import {authorizeFile} from '../access';
@@ -8,7 +9,7 @@ import type {TaskContext,TaskSpec} from './tasks';
 import {notificationFailure} from './telemetry';
 import {Settings} from '../settings';
 /** A projection of a signed event. Never store the message text or the original payload. */
-export interface Input {kind:'file_shared'|'app_mention'|'file_deleted'|'file_unshared'|'home'|'retry_preview'|'more_pages';cardId?:string;messageTs?:string;actor?:Actor;fileId?:string;files?:string[];user?:string;receivedAt?:number;}
+export interface Input {kind:'channel_joined'|'file_shared'|'app_mention'|'file_deleted'|'file_unshared'|'home'|'retry_preview'|'more_pages';cardId?:string;messageTs?:string;actor?:Actor;fileId?:string;files?:string[];user?:string;receivedAt?:number;}
 export class CloudEvents {
  constructor(private application:CloudApplication,private botUserId:string){}
  async enqueue(eventId:string,input:Input):Promise<void>{
@@ -37,7 +38,10 @@ export class CloudEvents {
    }
    return;
   }
-  const actor=input.actor!;if(actor.userId===this.botUserId||await app.mode(actor.channelId)==='off')return;
+  const actor=input.actor!;
+  try{await onboardChannel(app.config,app.api,app.store,actor.channelId,this.botUserId);}catch(error){if(error instanceof UserError&&error.code==='access_denied')return;throw error;}
+  if(input.kind==='channel_joined')return;
+  if(actor.userId===this.botUserId||await app.mode(actor.channelId)==='off')return;
   await context.checkpoint();
   if(input.kind==='file_shared'){
    const f=object((await app.api.call('files.info',{file:input.fileId},context.signal)).file);
