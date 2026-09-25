@@ -10,7 +10,7 @@ GitHub Issue: https://github.com/postmelee/rhwp-slack/issues/45
 공개 Cloud Run 경로에 채널 최초 초기화를 추가한다. Slack에서 봇의 실제 동일 워크스페이스 채널 참여를 검증한 뒤 atomic create로 auto를 저장한다. 명시적 기존 정책은 보존한다. member_joined_channel에서 자기 봇 참여만 처리한다. file_shared/app_mention의 선행 도착에도 동일 초기화를 사용한다. 초기화 안내는 채널별 한 번 게시한다. /rhwp 빈 인자는 설정을 열고 기존 인자는 유지한다. 홈 설명은 업로드→PDF/PNG→브라우저 편집→저장을 설명한다.
 
 ## 문서 위치 판단
-기존 site 사용자 안내와 README만 최신 흐름으로 맞춘다. 작업 기록은 mydocs/plans, working, report의 기존 위치를 사용한다. 엔진·embed·영상·Marketplace 최종 제출은 제외한다.
+기존 site 사용자 안내·README·외부 베타 안내(`docs/external-beta.md`)를 최신 흐름으로 맞춘다. 외부 베타 안내의 기존 중지 기본값 설명도 공개 Cloud Run의 초대 자동 감지와 일치시킨다. 작업 기록은 mydocs/plans, working, report의 기존 위치를 사용한다. 엔진·embed·영상·Marketplace 최종 제출은 제외한다.
 
 ## 예상 변경 파일
 src/server/settings.ts, cloud/receiver.ts, cloud/events.ts, receiver.ts, tests/slack, Slack manifest, 기존 사용자 안내.
