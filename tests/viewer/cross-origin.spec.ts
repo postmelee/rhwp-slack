@@ -39,12 +39,17 @@ for(const pendingContextRequest of [false,true])test('separate static origin →
   }
   await Promise.all(staticRequests);expect(failures).toEqual([]);
  }finally{
-  // Release browser connections before awaiting either test HTTP server's close.
-  // Otherwise a live page can keep teardown pending after every assertion passed.
-  await test.step('close browser page',()=>page.close({runBeforeUnload:false}));
-  if(pendingContextRequest)await test.step('browser released pending request',()=>expect.poll(()=>pendingRequestClosed).toBe(true));
-  await test.step('stop API receiver',()=>runtime.receiver.stop());
-  await test.step('close runtime',()=>runtime.close());
-  await test.step('close static server',()=>new Promise<void>((r,j)=>frontend.close(e=>e?j(e):r())));
+  // Connections belong to the context, including those not owned by this page.
+  // Close that owner before either HTTP server, even after an assertion failure.
+  try{
+   await test.step('close browser context',()=>page.context().close());
+   if(pendingContextRequest)await test.step('browser released pending request',()=>expect.poll(()=>pendingRequestClosed).toBe(true));
+  }finally{
+   try{await test.step('stop API receiver',()=>runtime.receiver.stop());}
+   finally{
+    try{await test.step('close runtime',()=>runtime.close());}
+    finally{await test.step('close static server',()=>new Promise<void>((r,j)=>frontend.close(e=>e?j(e):r())));}
+   }
+  }
  }
 });
