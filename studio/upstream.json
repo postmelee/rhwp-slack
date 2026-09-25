@@ -1,0 +1,14 @@
+{
+  "version": "0.8.6",
+  "repository": "https://github.com/edwardkim/rhwp.git",
+  "commit": "f1f9c6ae58344ee9368996d3543f76b9345cf227",
+  "archiveSha256": "1e6b1533ba77078fa134112487f18872d9bc30382838ff558532643e3c37ee0e",
+  "paths": [
+    "rhwp-studio",
+    "assets/fonts",
+    "npm/hwpctrl-ocx",
+    "npm/editor",
+    "LICENSE",
+    "THIRD_PARTY_LICENSES.md"
+  ]
+}

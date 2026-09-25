@@ -1,0 +1,65 @@
+import {test,expect} from '@playwright/test';
+import {readFileSync} from 'node:fs';
+const origin='http://127.0.0.1:4174',ticket='t'.repeat(43),bearer='s'.repeat(43);
+test('direct external opening guides the user to the Slack card without loading an empty editor',async({page})=>{
+ await page.goto(origin+'/editor/');await expect(page.locator('#reopen')).toContainText('rhwp에서 편집');
+ await expect(page.locator('#editor iframe')).toHaveCount(0);await expect(page.locator('#slack-save')).toHaveCount(0);
+});
+test('browser beta passes workspace only to authenticated API requests and clears the login fragment',async({page})=>{
+ const seen:string[]=[];
+ await page.route(origin+'/api/editor/**',async route=>{
+  expect(route.request().headers()['x-rhwp-workspace']).toBe('TSECOND');
+  const path=new URL(route.request().url()).pathname;seen.push(path);
+  if(path.endsWith('/exchange'))await route.fulfill({json:{token:bearer}});
+  else {expect(route.request().headers().authorization).toBe('Bearer '+bearer);
+   if(path.endsWith('/document'))await route.fulfill({json:{name:'문서.hwp',format:'hwp'}});
+   else await route.fulfill({body:readFileSync('tests/fixtures/viewer-two-pages.hwp')});
+  }
+ });
+ await page.goto(origin+'/editor/#ticket='+ticket+'&workspace=TSECOND');
+ await expect(page.locator('#save-to-slack')).toBeVisible({timeout:60_000});
+ expect(new URL(page.url()).hash).toBe('');expect(seen.sort()).toEqual(['/api/editor/document','/api/editor/exchange','/api/editor/source']);
+});
+test('a stalled iframe has a deadline and cannot replace recovery guidance with a late result',async({page})=>{
+ await page.clock.install();
+ let release!:()=>void;const gate=new Promise<void>(r=>release=r);
+ await page.route(origin+'/api/editor/exchange',route=>route.fulfill({json:{token:bearer}}));
+ await page.route(origin+'/api/editor/document',route=>route.fulfill({json:{name:'문서.hwp'}}));
+ await page.route(origin+'/api/editor/source',route=>route.fulfill({body:readFileSync('tests/fixtures/viewer-two-pages.hwp')}));
+ await page.route('**/studio/**',async route=>{await gate;await route.fulfill({contentType:'text/html',body:'<!doctype html><title>late</title>'}).catch(()=>{});});
+ try{
+  await page.goto(origin+'/editor/#ticket='+ticket,{waitUntil:'domcontentloaded'});
+  await expect(page.locator('#editor iframe')).toHaveCount(1);await expect(page.locator('#status')).toContainText('편집기를 준비');
+  await page.clock.fastForward(120_001);
+  await expect(page.locator('body')).toHaveAttribute('data-state','error');await expect(page.locator('#reopen')).toBeVisible();
+  await expect(page.locator('#editor iframe')).toHaveCount(0);release();await page.clock.fastForward(60_000);
+  await expect(page.locator('body')).toHaveAttribute('data-state','error');await expect(page.locator('#slack-save')).toHaveCount(0);
+ }finally{release();}
+});
+test('source transfer failure removes the editor and offers a fresh Slack entry',async({page})=>{
+ await page.route(origin+'/api/editor/**',async route=>{
+  const path=new URL(route.request().url()).pathname;
+  if(path.endsWith('/exchange'))await route.fulfill({json:{token:bearer}});
+  else if(path.endsWith('/document'))await route.fulfill({json:{name:'문서.hwp',format:'hwp'}});
+  else await route.fulfill({status:503,json:{error:'문서를 가져오지 못했습니다.'}});
+ });
+ await page.goto(origin+'/editor/#ticket='+ticket);
+ await expect(page.locator('#status')).toContainText('문서를 가져오지 못했습니다.',{timeout:60_000});
+ await expect(page.locator('#editor iframe')).toHaveCount(0);await expect(page.locator('#reopen')).toBeVisible();
+ expect(new URL(page.url()).hash).toBe('');
+});
+
+test('source starts while Studio is blocked, once per open, then loads after both complete',async({page})=>{
+ let release!:()=>void;const gate=new Promise<void>(r=>release=r);let downloads=0;
+ await page.route(origin+'/api/editor/exchange',route=>route.fulfill({json:{token:bearer}}));
+ await page.route(origin+'/api/editor/document',route=>route.fulfill({json:{name:'문서.hwp'}}));
+ await page.route(origin+'/api/editor/source',route=>{downloads++;return route.fulfill({body:readFileSync('tests/fixtures/viewer-two-pages.hwp')});});
+ await page.route('**/studio/?*',async route=>{await gate;await route.continue();});
+ try{
+  await page.goto(origin+'/editor/#ticket='+ticket,{waitUntil:'domcontentloaded'});
+  await expect.poll(()=>downloads).toBe(1);await expect(page.locator('#slack-save')).toHaveCount(0);
+  release();await expect(page.locator('#save-to-slack')).toBeVisible({timeout:60_000});expect(downloads).toBe(1);
+  const marks=await page.evaluate(()=>performance.getEntriesByType('mark').filter(e=>e.name.startsWith('rhwp:')).map(e=>({name:e.name,ms:e.startTime})));
+  expect(marks.find(e=>e.name==='rhwp:source-ready')!.ms).toBeLessThan(marks.find(e=>e.name==='rhwp:studio-ready')!.ms);
+ }finally{release();}
+});

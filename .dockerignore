@@ -1,0 +1,20 @@
+# Allow only reproducible app/build/test inputs. Never send local .env, .git or document caches.
+**
+!package.json
+!package-lock.json
+!tsconfig*.json
+!vite.config.ts
+!playwright.config.ts
+!src/
+!src/**
+!studio/
+!studio/**
+!scripts/
+!scripts/**
+!tests/
+!tests/**
+!Dockerfile
+!LICENSE
+
+!site/
+!site/**
