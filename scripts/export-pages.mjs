@@ -12,10 +12,10 @@ export async function exportPages(apiOrigin,output=resolve('dist/pages'),{public
  // Fixed output under dist prevents accidentally erasing an unrelated directory.
  if(output!==resolve('dist/pages'))throw Error('Output must be dist/pages');
  await rm(output,{recursive:true,force:true});await mkdir(output,{recursive:true});
- const headers=[`/*\n  Referrer-Policy: no-referrer\n  X-Content-Type-Options: nosniff\n${publicSite?'':'  X-Robots-Tag: noindex, nofollow\n'}  Content-Security-Policy: ${editorPolicy(api.origin)}`, `/editor/*\n  Cache-Control: no-cache${publicSite?'\n  X-Robots-Tag: noindex, nofollow':''}`, `/api/*\n  Cache-Control: no-store${publicSite?'\n  X-Robots-Tag: noindex, nofollow':''}`, '/404.html\n  Cache-Control: no-store'];
+ const headers=[`/*\n  Referrer-Policy: no-referrer\n  X-Content-Type-Options: nosniff\n${publicSite?'':'  X-Robots-Tag: noindex, nofollow\n'}  Content-Security-Policy: ${editorPolicy(api.origin)}${publicSite?"; media-src 'self'":""}`, `/editor/*\n  Cache-Control: no-cache${publicSite?'\n  X-Robots-Tag: noindex, nofollow':''}`, `/api/*\n  Cache-Control: no-store${publicSite?'\n  X-Robots-Tag: noindex, nofollow':''}`, '/404.html\n  Cache-Control: no-store'];
  if(publicSite){
   headers.push('/static/*\n  X-Robots-Tag: noindex, nofollow','/review/*\n  X-Robots-Tag: noindex, nofollow','/assets/review/*\n  X-Robots-Tag: noindex, nofollow');
-  for(const path of ['/','/guide/','/privacy/','/support/','/review/','/site.css','/rhwp-logo.png'])headers.push(path+'\n  Cache-Control: no-cache');
+  for(const path of ['/','/guide/','/privacy/','/support/','/licenses/','/licenses/MIT.txt','/licenses/THIRD_PARTY_NOTICES.md','/review/','/site.css','/rhwp-logo.png'])headers.push(path+'\n  Cache-Control: no-cache');
  }
  let count=0,total=0;
  for(const [path,record] of Object.entries(manifest.files)){

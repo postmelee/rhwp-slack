@@ -9,7 +9,7 @@
 - 앱 소스 또는 검증된 컨테이너 이미지와 Pages 자산에 대한 접근 권한.
 - Node/npm은 저장소 `.nvmrc`와 `package.json`에 고정한 버전, Linux AMD64 컨테이너 빌드 환경.
 
-현재 저장소는 private이며 프로젝트 전체의 공개 배포 라이선스는 아직 정하지 않았다. 조직 초대 또는 배포물 제공 조건을 먼저 정한다. upstream/폰트 고지는 [의존성 문서](dependencies.md)를 유지한다.
+앱의 자체 코드·문서는 [MIT License](../LICENSE)로 제공한다. 엔진·라이브러리·폰트는 [제3자 고지](../THIRD_PARTY_NOTICES.md)의 원래 조건을 유지한다. 검증된 앱 릴리스와 함께 고정된 엔진을 사용한다.
 
 ## 구성
 
@@ -30,7 +30,7 @@
 
 ### 1. 조직의 Slack 앱 만들기
 
-소스 접근 권한을 받은 뒤 저장소에서 다음 명령으로 초기 manifest를 만든다.
+저장소를 준비한 뒤 다음 명령으로 초기 manifest를 만든다.
 
 ```sh
 node scripts/slack-beta-manifest.mjs --bootstrap > slack-bootstrap.json
@@ -90,11 +90,11 @@ ingress의 `EDITOR_ORIGIN`에는 조직의 고정 Pages origin을 설정한다. 
 node scripts/slack-beta-manifest.mjs --origin https://YOUR-INGRESS.a.run.app > slack-connected.json
 ```
 
-앱의 manifest를 적용하고 Events·Interactivity·`/rhwp` 주소가 ingress의 `/slack/events`인지 확인한다. OAuth redirect는 ingress의 `/oauth/callback`, OpenID redirect는 `/browser/callback`을 등록한다. `/install`로 설치하면 설치자가 초기 설정 관리자가 된다. 채널에 앱을 초대하고 앱 홈에서 채널 동작을 활성화한다. 한 조직에서만 쓸 경우 외부 배포를 켤 필요가 없다. 여러 workspace에 배포하려면 해당 앱의 Public Distribution을 별도로 활성화한다.
+앱의 manifest를 적용하고 Events·Interactivity·`/rhwp` 주소가 ingress의 `/slack/events`인지 확인한다. OAuth redirect는 ingress의 `/oauth/callback`, OpenID redirect는 `/browser/callback`을 등록한다. `/install`로 설치하면 설치자가 초기 설정 관리자가 된다. 채널에 앱을 초대하면 처음 초대한 채널에서 자동 감지가 켜진다. 기존 채널 설정은 유지한다. 한 조직에서만 쓸 경우 외부 배포를 켤 필요가 없다. 여러 workspace에 배포하려면 해당 앱의 Public Distribution을 별도로 활성화한다.
 
 이 경로는 **Slack PDF·PNG + 브라우저 Studio**이며 Work Objects embeds를 요청하지 않는다. 이미 승인된 내부 embed 앱을 자체 운영하려는 경우에만 기존 [단일 workspace 운영](cloud-run.md)과 `slack-manifest.mjs`를 사용한다. 공개 앱의 내부 embeds 지원은 별도 승인 조건을 확인해야 한다.
 
-앱을 채널에 초대한 뒤 설치자가 `/rhwp settings`에서 자동 감지/멘션 모드를 설정한다. 새 설치의 채널은 기본 중지이며 일반 대화 내역 읽기 권한은 요청하지 않는다.
+설정 관리자는 앱 홈 또는 `/rhwp`에서 자동 감지·멘션 요청·사용 안 함을 선택한다. 일반 대화 내역 읽기 권한은 요청하지 않는다. 단일 워크스페이스 서버의 명시적 활성화 설정과 분산 서버의 초대 시 자동 감지를 구분한다.
 
 ### 6. 사용 전 검증
 
@@ -109,7 +109,7 @@ node scripts/slack-beta-manifest.mjs --origin https://YOUR-INGRESS.a.run.app > s
 
 컨테이너와 Pages 자산을 같은 릴리스로 갱신하고 이전 배포를 복구용으로 보존한다. WASM만 덮어쓰지 않는다. 장기 문서 연결은 Firestore에 있으므로 프로그램 복구 과정에서 DB를 초기화하지 않는다.
 
-비공개 코드/배포물 접근 문의: [Taegyu Lee](mailto:meleeisdeveloping@gmail.com). 조직의 보안·백업·지원·비용 책임은 자체 운영자에게 있다.
+자체 호스팅 안내 문의: [Taegyu Lee](mailto:meleeisdeveloping@gmail.com). 조직의 보안·백업·지원·비용 책임은 자체 운영자에게 있다.
 
 향후 배포 템플릿은 프로젝트/지역/Slack 설정을 입력받아 IAM·Cloud Run·Tasks·Secret 참조·Pages 연결을 재현하도록 준비한다. 빈 조직 환경에서 검증하기 전까지 Terraform/원클릭 배포가 완료됐다고 안내하지 않는다.
 
