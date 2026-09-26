@@ -43,6 +43,12 @@ Slack에 올린 **HWP·HWPX 문서를 PDF와 페이지 이미지로 확인하고
 
 [지원·이용 안내](https://rhwp-slack.pages.dev/support/) 또는 [이메일](mailto:meleeisdeveloping@gmail.com)로 문의해 주세요. 오류가 난 시각, 누른 버튼, 오류 문구를 알려 주시면 도움이 됩니다. 비밀번호·토큰·업무 문서 원본은 보내지 않아도 됩니다.
 
+## 후원
+
+rhwp for Slack은 직접 호스팅하여 무료로 제공합니다. 후원은 서버 운영비를 충당하고, 서비스를 장기적으로 유지·개선하는 데 큰 힘이 됩니다. 후원 여부와 관계없이 무료로 이용하실 수 있습니다.
+
+**[GitHub Sponsors로 후원하기](https://github.com/sponsors/postmelee)**
+
 ## 조직 관리자와 개발자
 
 - [설치 방식 선택](docs/installation.md)

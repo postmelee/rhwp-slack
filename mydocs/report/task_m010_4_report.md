@@ -65,3 +65,7 @@ Marketplace의 활성 설치·심사 정보 최종 재확인과 실제 제출은
 ## 후속 Community Standards 준비
 
 공개 게시·전환의 실제 완료 결과는 [PR #51 배포 기록](https://github.com/postmelee/rhwp-slack/pull/51#issuecomment-5850599931)에 있다. 이후 사용자 요청으로 행동 강령·기여 안내·보안 정책의 로컬 초안을 준비했다. 위치 판단·확인 결과·아직 원격 반영 전인 범위는 [Stage 10](../working/task_m010_4_stage10.md)을 따른다.
+
+## 후속 후원 안내 준비
+
+사용자 요청으로 기존 postmelee GitHub Sponsors를 연결하는 FUNDING.yml과 README·홈페이지·지원 페이지 안내를 준비했다. 서버 운영비와 장기 유지에 도움이 되는 선택적 후원임을 설명했다. 검사·시각 확인과 게시 전 상태는 [Stage 11](../working/task_m010_4_stage11.md)에 기록했다.
