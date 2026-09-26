@@ -42,3 +42,7 @@
 자동재생을 제거하고 controls·playsinline·preload=none으로 되돌렸다. 홈페이지와 /review/의 영상·포스터에서 macOS 메뉴 막대에 해당하는 상단36px만 제거했다. Downloads 원본으로부터 다시 인코딩해 중복 압축을 피했으며 원본 파일은 변경하지 않았다. 최종 영상은1662×1044, 65.400초, 12,539,537bytes, SHA256 49ed025726721c917474122e1fc32581f709b4d34a0e97b69dc2e75818e52150이다. 이전 표의 압축본 수치는 크롭 전 기록이다.
 
 전체 ffmpeg 디코딩과 공개 export 단위 검사 통과. 페이지 진입 시 autoplay=false, paused=true, currentTime=0과 크롭된 포스터·모바일 배치를 직접 확인했다. 새 export는 사이트14,516,305bytes이다. 공개 배포는 여전히 시각 승인 대기다.
+
+## 모바일 그림자 잘림 수정
+
+이미지 폭을 콘텐츠에 맞추는 모바일 링크의 overflow:hidden이 PNG에 포함된 그림자를 좌우 경계에서 잘랐다. overflow:clip과 overflow-clip-margin:20px로 페이지 여백까지 그림자를 표시하도록 수정했다. 520×900 브라우저 화면에서 하단 양쪽 그림자가 자연스럽게 퍼지는 모습을 직접 확인했고, scrollWidth=viewport width=520으로 가로 넘침이 없다. 공개 export 재생성 통과(사이트14,516,329bytes). 공개 게시 전 사용자 확인 대기를 유지한다.
