@@ -67,3 +67,5 @@ site/licenses/는 일반 사용자에게 앱과 외부 구성 요소의 라이�
 ## Stage 9 — 홈페이지 게시와 기존 저장소 Public 전환
 
 2026-09-27 사용자가 Public 전환까지 진행을 승인했다. 준비된 Stage 6–8 변경을 publish/task4 PR로 게시하고 Linux viewer/container CI 통과 후 merge commit으로 통합한다. 기존 편집기 프로그램 namespace와 API origin을 유지하여 rhwp-slack Pages production에 홈페이지·시연 영상·라이선스 안내를 배포한다. 공개 URL의 HTML·영상·라이선스·설치 연결을 확인한 뒤 기존 postmelee/rhwp-slack 저장소를 Public으로 전환하고 익명 접근을 확인한다. 영상의 사용자 소유 파일명과 만료 ticket 일부 노출은 사용자 수용으로 원본 유지한다. Git·이슈 이력을 보존하며 #4 전체 종료 또는 Marketplace 제출은 하지 않는다.
+
+Stage 9 CI 보완: 첫 container smoke에서 LICENSE 파일 복사 누락을 발견했다. Dockerfile 공통 layer에 앱 LICENSE·제3자 고지를 포함하고 .dockerignore에서 해당 고지만 추가 허용한다. 기존 공개 export 테스트가 이미지 안에서도 실행되어 누락의 회귀를 검출한다. 수정 후 Linux viewer/container 전체를 다시 검증한다.

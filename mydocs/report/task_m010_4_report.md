@@ -57,3 +57,7 @@ Marketplace의 활성 설치·심사 정보 최종 재확인과 실제 제출은
 ## 승인과 실행 범위
 
 사용자가 2026-09-27 “public 전환까지 진행해줘”로 PR 게시·CI·병합, 확정 홈페이지/영상/라이선스 게시와 기존 저장소 공개를 승인했다. 동일 범위의 승인을 다시 요청하지 않고 단계별 결과를 확인해 진행한다.
+
+## Linux CI에서 확인한 컨테이너 고지 누락
+
+첫 PR CI의 container job은 공개 export 검사에서 `/app/LICENSE` ENOENT로 실패했다. 로컬 저장소에는 파일이 있지만 Dockerfile의 명시적 COPY에 포함되지 않은 것이 원인이다. 공통 dependencies layer에 LICENSE와 THIRD_PARTY_NOTICES.md를 복사하고 .dockerignore에서 고지 파일을 허용했다. 따라서 smoke 검사와 최종 release 이미지에 모두 앱 고지가 포함된다. 서버 실행 로직·권한·메모리 제한·검사 조건은 바꾸지 않았다. 실패 실행: https://github.com/postmelee/rhwp-slack/actions/runs/36276582590 . 수정 head의 Linux CI 결과를 PR에 기록한다.
