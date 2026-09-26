@@ -63,3 +63,7 @@ site/licenses/는 일반 사용자에게 앱과 외부 구성 요소의 라이�
 ## Stage 8 — 2026-09-27 잔여 공개 노출 점검
 
 사용자의 잔여 노출 점검 지시에 따라 기존 저장소의 원격 branch/tag/PR refs, GitHub 본문 편집 이력, Actions 로그·아티팩트, 이미지·영상과 릴리스 첨부 범위를 읽기 전용으로 확인한다. 대량 다운로드가 자동 승인 검토에서 차단된 후 사용자가 전체 다운로드·검사·임시 사본 삭제를 명시 승인했다. 제품 변경 없이 #4 단계 검증 기록을 mydocs/working/task_m010_4_stage8.md에 남긴다. 값 자체를 보고서에 복사하지 않고 유형·위치·해결 필요 범위만 기록한다. 저장소 visibility 변경, 원격 삭제, 이력 재작성, 키 폐기·교체는 포함하지 않는다.
+
+## Stage 9 — 홈페이지 게시와 기존 저장소 Public 전환
+
+2026-09-27 사용자가 Public 전환까지 진행을 승인했다. 준비된 Stage 6–8 변경을 publish/task4 PR로 게시하고 Linux viewer/container CI 통과 후 merge commit으로 통합한다. 기존 편집기 프로그램 namespace와 API origin을 유지하여 rhwp-slack Pages production에 홈페이지·시연 영상·라이선스 안내를 배포한다. 공개 URL의 HTML·영상·라이선스·설치 연결을 확인한 뒤 기존 postmelee/rhwp-slack 저장소를 Public으로 전환하고 익명 접근을 확인한다. 영상의 사용자 소유 파일명과 만료 ticket 일부 노출은 사용자 수용으로 원본 유지한다. Git·이슈 이력을 보존하며 #4 전체 종료 또는 Marketplace 제출은 하지 않는다.
