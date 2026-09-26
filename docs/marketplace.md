@@ -171,3 +171,9 @@ test·rhwp-slack 채널 재초대와 기존 자동 감지 설정은 복구했다
 - 메뉴의 `5. Automated checks`에서 Automated Feedback을 확인했다. 활성 워크스페이스가 10개 미만이라는 오류와 비활성화된 Submit App for Review가 표시됐다. 이 화면 접근을 모든 양식 저장 성공이나 전체 보안 검사 통과로 해석하지 않는다. 최종 제출은 하지 않았다.
 
 다음 순서는 실제 사용 조직을 통한 활성 설치·사용자 요건 충족, 남은 양식 저장 문제 해결 및 재조회, 자동 피드백 재확인, 최종 제출 결정이다. 별도 조직 자체 호스팅 재현도 #4에 남는다. 테스트 워크스페이스를 늘리는 것만으로 활성 설치 요건을 충족했다고 표시하지 않는다.
+
+## 새 사용 영상 준비 (2026-09-26)
+
+65초 사용 영상을 웹용으로 압축하고 홈페이지·`/review/`에 배치한 로컬 미리보기를 준비했다. 사용자 시각 확인 전이므로 공개 영상 게시·Slack 제출 URL 저장은 미완료다. [검증 및 게시 대기 상태](../mydocs/working/task_m010_4_stage6.md).
+
+영상은 문서 업로드·PDF 보기·Firefox 편집·Slack 저장을 보여 준다. 설치 OAuth·앱 제거를 포함한 전체 심사 시연은 별도 보완한다. [Slack review guide](https://docs.slack.dev/slack-marketplace/slack-marketplace-review-guide/)의 활성 워크스페이스10개 및 심사 시연 안내를 재확인했다. 앞선 Automated Feedback의 설치 요건 미충족 상태를 이번 영상 준비로 해소했다고 간주하지 않는다.
