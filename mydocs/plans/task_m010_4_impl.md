@@ -87,3 +87,7 @@ Stage 9 CI 보완: 첫 container smoke에서 LICENSE 파일 복사 누락을 발
 사용자가 GitHub Sponsors 연결과 서버 운영비·장기 운영에 대한 후원 안내를 요청했다. postmelee 계정의 hasSponsorsListing=true와 Sponsors listing 존재를 GitHub API로 확인했다. .github/FUNDING.yml에서 해당 계정을 연결하고 README, 홈페이지 하단, 지원 페이지에서 같은 후원 URL을 사용한다. 후원은 선택 사항이며 현재 무료 서비스 이용 조건과 구분한다. 확정한 히어로·시연 영상 레이아웃은 유지한다.
 
 기존 공개 사이트 export 검사와 데스크톱·모바일 하단 표시를 확인한다. 커뮤니티 문서와 함께 검토 가능한 로컬 변경으로 준비하며 Sponsors 계정의 정산·등급·결제 설정은 바꾸지 않는다. 후원 버튼의 실제 표시는 기본 브랜치 반영 후, 홈페이지 안내는 Pages 배포 후 확인한다.
+
+### Stage 10–11 공개 실행 승인
+
+2026-09-27 사용자가 “공개해줘”로 커뮤니티 문서와 후원 안내의 원격 게시·PR 병합·Pages 배포를 승인했다. 현재 변경을 publish/task4로 게시하고 Linux CI를 확인한 뒤 devel에 merge commit으로 통합한다. 기존 프로그램 namespace와 API origin을 유지하여 공개 페이지를 배포하고, GitHub 문서 인식·Sponsor 링크·공개 웹페이지를 확인한다. Marketplace 잔여 요건이 있으므로 #4는 종료하지 않는다.
