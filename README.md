@@ -49,6 +49,10 @@ Slack에 올린 **HWP·HWPX 문서를 PDF와 페이지 이미지로 확인하고
 - [조직 인프라에서 자체 호스팅](docs/self-hosting.md) — Slack 앱·Cloud Run·Pages 구성. 새 조직의 빈 계정에서 재현 검증은 아직 남아 있습니다.
 - [개발 문서](docs/README.md) — 로컬 실행, 구조, 배포와 의존성 안내.
 
+## 기여와 커뮤니티
+
+오류 제보·문서 개선·코드 기여는 [기여 안내](CONTRIBUTING.md)를 참고하세요. 참여 시 [행동 강령](CODE_OF_CONDUCT.md)을 지켜 주세요. 보안 취약점은 공개 이슈 대신 [보안 정책](SECURITY.md)의 비공개 경로로 알려 주세요.
+
 ## 라이선스
 
 이 앱의 자체 코드와 문서는 [MIT License](LICENSE)로 제공합니다. 외부 엔진·라이브러리·폰트는 각 원저작자의 라이선스가 적용됩니다. [제3자 고지](THIRD_PARTY_NOTICES.md)를 함께 확인하세요.

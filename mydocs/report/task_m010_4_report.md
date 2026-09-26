@@ -61,3 +61,7 @@ Marketplace의 활성 설치·심사 정보 최종 재확인과 실제 제출은
 ## Linux CI에서 확인한 컨테이너 고지 누락
 
 첫 PR CI의 container job은 공개 export 검사에서 `/app/LICENSE` ENOENT로 실패했다. 로컬 저장소에는 파일이 있지만 Dockerfile의 명시적 COPY에 포함되지 않은 것이 원인이다. 공통 dependencies layer에 LICENSE와 THIRD_PARTY_NOTICES.md를 복사하고 .dockerignore에서 고지 파일을 허용했다. 따라서 smoke 검사와 최종 release 이미지에 모두 앱 고지가 포함된다. 서버 실행 로직·권한·메모리 제한·검사 조건은 바꾸지 않았다. 실패 실행: https://github.com/postmelee/rhwp-slack/actions/runs/36276582590 . 수정 head의 Linux CI 결과를 PR에 기록한다.
+
+## 후속 Community Standards 준비
+
+공개 게시·전환의 실제 완료 결과는 [PR #51 배포 기록](https://github.com/postmelee/rhwp-slack/pull/51#issuecomment-5850599931)에 있다. 이후 사용자 요청으로 행동 강령·기여 안내·보안 정책의 로컬 초안을 준비했다. 위치 판단·확인 결과·아직 원격 반영 전인 범위는 [Stage 10](../working/task_m010_4_stage10.md)을 따른다.

@@ -69,3 +69,15 @@ site/licenses/는 일반 사용자에게 앱과 외부 구성 요소의 라이�
 2026-09-27 사용자가 Public 전환까지 진행을 승인했다. 준비된 Stage 6–8 변경을 publish/task4 PR로 게시하고 Linux viewer/container CI 통과 후 merge commit으로 통합한다. 기존 편집기 프로그램 namespace와 API origin을 유지하여 rhwp-slack Pages production에 홈페이지·시연 영상·라이선스 안내를 배포한다. 공개 URL의 HTML·영상·라이선스·설치 연결을 확인한 뒤 기존 postmelee/rhwp-slack 저장소를 Public으로 전환하고 익명 접근을 확인한다. 영상의 사용자 소유 파일명과 만료 ticket 일부 노출은 사용자 수용으로 원본 유지한다. Git·이슈 이력을 보존하며 #4 전체 종료 또는 Marketplace 제출은 하지 않는다.
 
 Stage 9 CI 보완: 첫 container smoke에서 LICENSE 파일 복사 누락을 발견했다. Dockerfile 공통 layer에 앱 LICENSE·제3자 고지를 포함하고 .dockerignore에서 해당 고지만 추가 허용한다. 기존 공개 export 테스트가 이미지 안에서도 실행되어 누락의 회귀를 검출한다. 수정 후 Linux viewer/container 전체를 다시 검증한다.
+
+## Stage 10 — 공개 저장소 Community Standards 준비
+
+사용자가 Community Standards의 모든 항목을 충족할 수 있도록 준비를 요청했다. 기존 #4 공개 준비의 후속 문서 작업으로 추적한다. 2026-09-27 GitHub API와 사용자 화면에서 CODE_OF_CONDUCT, CONTRIBUTING, SECURITY가 없음을 확인했다. 루트의 GitHub 표준 파일명으로 작성하여 검색·Security 탭·기여 안내 진입점을 제공하고 README/docs 인덱스에 연결한다. 운영자 연락처는 기존 공개 지원 이메일을 사용하며 새로운 응답 SLA·보상·지원 인력을 약속하지 않는다.
+
+| 문서 | 독자·역할 | 위치 판단 |
+|---|---|---|
+| CODE_OF_CONDUCT.md | 모든 참여자의 행동 기준과 비공개 신고 | GitHub 인식 경로인 루트, 앱 자체 강령 |
+| CONTRIBUTING.md | 외부 기여자의 이슈·개발·PR 안내 | 루트 진입점, 상세 명령은 기존 docs에 연결 |
+| SECURITY.md | 취약점 신고자, 지원 범위와 신고 방법 | 루트에서 GitHub Security policy 인식 |
+
+문서·링크·실제 명령·기존 정책 일치 여부를 검증해 검토 가능한 로컬 초안을 준비한다. 체크리스트 완료 판정은 기본 브랜치 병합 후 GitHub Community Standards 화면에서 수행한다. issue form은 화면에서 이미 충족이며 API의 legacy issue_template=null만으로 실패 판정하지 않는다. Private vulnerability reporting은 현재 disabled이므로 제공한다고 쓰지 않는다. 이번 준비에서는 원격 설정과 공개 정책을 변경하지 않는다.
