@@ -23,6 +23,10 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   run('https://api.example.test','--public-site');
   const root=join(cwd,'dist/pages'),files=await readdir(root,{recursive:true});
   assert.ok(files.includes('privacy/index.html'));assert.ok(files.includes('guide/index.html'));assert.ok(files.includes('support/index.html'));
+  assert.ok(files.includes('licenses/index.html'));
+  assert.equal(await readFile(join(root,'licenses/MIT.txt'),'utf8'),await readFile(new URL('../../LICENSE',import.meta.url),'utf8'));
+  assert.equal(await readFile(join(root,'licenses/THIRD_PARTY_NOTICES.md'),'utf8'),await readFile(new URL('../../THIRD_PARTY_NOTICES.md',import.meta.url),'utf8'));
+  assert.ok(!files.some(f=>f.startsWith('mydocs/')));
   assert.ok(!files.includes('.env'));assert.ok(!files.includes('source.hwp'));
   for(const path of files.filter(f=>f.endsWith('.html'))){
    const html=await readFile(join(root,path),'utf8');assert.ok(!html.includes('{{INSTALL_URL}}'));
