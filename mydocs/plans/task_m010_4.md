@@ -82,3 +82,7 @@ GitHub Issue: [#4](https://github.com/postmelee/rhwp-slack/issues/4)
 - [embeds 조건](https://docs.slack.dev/messaging/work-objects-embeds/)
 - [활성 설치 요건](https://docs.slack.dev/changelog/2026/09/01/slack-marketplace-install-requirement/)
 - [심사 요구사항](https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/)
+
+## 2026-09-27 승인된 후속 범위
+
+초기 준비 단계의 공개·라이선스 제외 범위는 후속 승인으로 갱신되었다. 사용자는 MIT, 사용자 중심 문서와 이슈 정리, 최종 홈페이지·영상, 기존 Git·이슈 이력 보존과 Public 전환을 승인했다. 실행 순서는 구현계획 Stage 9를 따른다. Marketplace 제출과 새 조직 자체 호스팅 검증은 별도 미완료 범위다.

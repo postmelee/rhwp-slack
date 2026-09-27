@@ -2,6 +2,7 @@ FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4
 WORKDIR /app
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY package.json package-lock.json ./
+COPY LICENSE THIRD_PARTY_NOTICES.md ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
     && npx playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*

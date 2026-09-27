@@ -15,6 +15,7 @@
 !tests/**
 !Dockerfile
 !LICENSE
+!THIRD_PARTY_NOTICES.md
 
 !site/
 !site/**

@@ -19,9 +19,14 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   run('https://api.example.test');
   await assert.rejects(readFile(join(cwd,'dist/pages/index.html')),{code:'ENOENT'});
   assert.match(await readFile(join(cwd,'dist/pages/robots.txt'),'utf8'),/Disallow: \/\n/);
+  assert.ok(!(await readFile(join(cwd,'dist/pages/_headers'),'utf8')).includes('media-src'));
   run('https://api.example.test','--public-site');
   const root=join(cwd,'dist/pages'),files=await readdir(root,{recursive:true});
   assert.ok(files.includes('privacy/index.html'));assert.ok(files.includes('guide/index.html'));assert.ok(files.includes('support/index.html'));
+  assert.ok(files.includes('licenses/index.html'));
+  assert.equal(await readFile(join(root,'licenses/MIT.txt'),'utf8'),await readFile(new URL('../../LICENSE',import.meta.url),'utf8'));
+  assert.equal(await readFile(join(root,'licenses/THIRD_PARTY_NOTICES.md'),'utf8'),await readFile(new URL('../../THIRD_PARTY_NOTICES.md',import.meta.url),'utf8'));
+  assert.ok(!files.some(f=>f.startsWith('mydocs/')));
   assert.ok(!files.includes('.env'));assert.ok(!files.includes('source.hwp'));
   for(const path of files.filter(f=>f.endsWith('.html'))){
    const html=await readFile(join(root,path),'utf8');assert.ok(!html.includes('{{INSTALL_URL}}'));
@@ -34,6 +39,10 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   }
   const headers=await readFile(join(root,'_headers'),'utf8');
   assert.match(headers,/connect-src 'self' https:\/\/api.example.test/);
+  assert.match(headers,/media-src 'self'(?:;|\n)/);
+  assert.match(headers,/default-src 'none'/);
+  assert.ok(files.includes('assets/demo/rhwp-slack-20260926.mp4'));
+  assert.ok(files.includes('assets/demo/rhwp-slack-20260926.jpg'));
   assert.ok(!headers.split('\n\n')[0].includes('X-Robots-Tag'));
   assert.match(headers,/\/editor\/\*\n  Cache-Control: no-cache\n  X-Robots-Tag: noindex, nofollow/);
   assert.match(await readFile(join(root,'editor/index.html'),'utf8'),/content="https:\/\/api.example.test"/);
