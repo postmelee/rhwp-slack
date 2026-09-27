@@ -1,0 +1,17 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 무료 베타 참여·피드백 안내
+    url: https://github.com/postmelee/rhwp-slack/discussions/55
+    about: 설치 방법과 베타 참여 안내를 확인하고 사용 경험을 알려 주세요.
+  - name: 설치·사용 질문
+    url: https://github.com/postmelee/rhwp-slack/discussions/categories/q-a
+    about: 사용 방법이 궁금하거나 설정에 도움이 필요하면 Discussions에 질문해 주세요.
+  - name: 기능 제안
+    url: https://github.com/postmelee/rhwp-slack/discussions/categories/ideas
+    about: 해결하고 싶은 문제와 사용 예시를 공유해 주세요.
+  - name: 비공개 지원·데이터 삭제 요청
+    url: https://rhwp-slack.pages.dev/support/
+    about: 개인정보나 업무 내용이 포함된 문의는 공개 이슈 대신 지원 이메일을 이용해 주세요.
+  - name: 보안 취약점 신고
+    url: https://github.com/postmelee/rhwp-slack/security/policy
+    about: 악용 방법이나 비밀값을 공개하지 말고 보안 정책의 비공개 경로로 알려 주세요.

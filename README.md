@@ -6,6 +6,14 @@ Slack에 올린 **HWP·HWPX 문서를 PDF와 페이지 이미지로 확인하고
 
 현재 무료 베타로 제공하며 Slack Marketplace에는 아직 등재되지 않았습니다.
 
+## 무료 베타 참여 팀 모집
+
+Slack에서 한글 문서를 주고받는 팀이라면 설치하고 사용 경험을 알려 주세요. **초기 10개 팀을 모집하며**, 실제 사용 의견을 바탕으로 서비스를 개선하고자 합니다.
+
+[베타 참여·피드백 안내](https://github.com/postmelee/rhwp-slack/discussions/55) · [질문·답변](https://github.com/postmelee/rhwp-slack/discussions/categories/q-a) · [기능 제안](https://github.com/postmelee/rhwp-slack/discussions/categories/ideas)
+
+10곳은 모집 목표이며 현재 이용 조직 수를 뜻하지 않습니다. 별도 참여 신청 없이 설치할 수 있고, GitHub 계정 없이도 [이메일](mailto:meleeisdeveloping@gmail.com)로 문의할 수 있습니다.
+
 ## 시작하기
 
 1. [홈페이지](https://rhwp-slack.pages.dev/)에서 **Slack에 추가**를 누르고 설치할 워크스페이스를 선택하세요. 조직 정책에 따라 관리자 승인이 필요할 수 있습니다.
@@ -41,7 +49,9 @@ Slack에 올린 **HWP·HWPX 문서를 PDF와 페이지 이미지로 확인하고
 
 ## 지원
 
-[지원·이용 안내](https://rhwp-slack.pages.dev/support/) 또는 [이메일](mailto:meleeisdeveloping@gmail.com)로 문의해 주세요. 오류가 난 시각, 누른 버튼, 오류 문구를 알려 주시면 도움이 됩니다. 비밀번호·토큰·업무 문서 원본은 보내지 않아도 됩니다.
+[설치·사용 질문](https://github.com/postmelee/rhwp-slack/discussions/categories/q-a)은 Discussions에, 재현 가능한 오류는 [GitHub Issues](https://github.com/postmelee/rhwp-slack/issues)에 알려 주세요. 오류가 난 시각, 누른 버튼, 오류 문구를 알려 주시면 도움이 됩니다.
+
+공개하기 어려운 문의와 데이터 삭제 요청은 [지원·이용 안내](https://rhwp-slack.pages.dev/support/) 또는 [이메일](mailto:meleeisdeveloping@gmail.com)을 이용해 주세요. 비밀번호·토큰·업무 문서 원본은 보내지 않아도 됩니다.
 
 ## 후원
 
