@@ -4,15 +4,17 @@ Slack에 올린 **HWP·HWPX 문서를 PDF와 페이지 이미지로 확인하고
 
 **[Slack에 추가하기](https://rhwp-slack.pages.dev/) · [시연 영상](https://rhwp-slack.pages.dev/#demo-video) · [사용 안내](https://rhwp-slack.pages.dev/guide/)**
 
-현재 무료 베타로 제공하며 Slack Marketplace에는 아직 등재되지 않았습니다.
+> 현재 무료 베타로 제공하며 Slack Marketplace에는 아직 등재되지 않았습니다.
+
+<img width="100%" alt="banner" src="https://github.com/postmelee/rhwp-slack/blob/devel/site/assets/banner.png?raw=true" />
 
 ## 무료 베타 참여 팀 모집
 
-Slack에서 한글 문서를 주고받는 팀이라면 설치하고 사용 경험을 알려 주세요. **초기 10개 팀을 모집하며**, 실제 사용 의견을 바탕으로 서비스를 개선하고자 합니다.
+Slack에서 한글 문서를 주고받는 팀이라면 설치하고 사용 경험을 알려 주세요. 실제 사용 의견을 바탕으로 서비스를 개선하고자 합니다.
 
 [베타 참여·피드백 안내](https://github.com/postmelee/rhwp-slack/discussions/55) · [질문·답변](https://github.com/postmelee/rhwp-slack/discussions/categories/q-a) · [기능 제안](https://github.com/postmelee/rhwp-slack/discussions/categories/ideas)
 
-10곳은 모집 목표이며 현재 이용 조직 수를 뜻하지 않습니다. 별도 참여 신청 없이 설치할 수 있고, GitHub 계정 없이도 [이메일](mailto:meleeisdeveloping@gmail.com)로 문의할 수 있습니다.
+> 별도 참여 신청 없이 설치할 수 있고, GitHub 계정 없이도 [이메일](mailto:meleeisdeveloping@gmail.com)로 문의할 수 있습니다.
 
 ## 시작하기
 
