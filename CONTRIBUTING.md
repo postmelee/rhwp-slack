@@ -6,13 +6,16 @@ rhwp for Slack에 관심을 가져 주셔서 감사합니다. 오류 제보, 사
 
 | 내용 | 경로 |
 |---|---|
-| 설치·사용 문의, 계정·데이터 삭제 요청 | [지원 안내](https://rhwp-slack.pages.dev/support/) |
-| 일반 버그, 기능 제안, 문서 개선 | [GitHub Issues](https://github.com/postmelee/rhwp-slack/issues) |
+| 베타 참여와 사용 후기 | [모집·피드백 안내](https://github.com/postmelee/rhwp-slack/discussions/55) |
+| 설치·사용 질문 | [Discussions 질문·답변](https://github.com/postmelee/rhwp-slack/discussions/categories/q-a) |
+| 기능 아이디어와 사용 사례 | [Discussions 기능 제안](https://github.com/postmelee/rhwp-slack/discussions/categories/ideas) |
+| 재현 가능한 버그, 문서 개선, 구현 범위가 정해진 작업 | [GitHub Issues](https://github.com/postmelee/rhwp-slack/issues) |
+| 비공개 문의, 계정·데이터 삭제 요청 | [지원 안내](https://rhwp-slack.pages.dev/support/) |
 | 권한 우회, 데이터 유출 등 보안 취약점 | [보안 정책](SECURITY.md)의 이메일 신고 |
 
 ## 이슈 작성
 
-먼저 기존 이슈를 검색해 주세요. 버그는 사용 환경(OS·브라우저·앱 버전 또는 commit), 재현 순서, 기대한 결과, 실제 결과와 오류 문구를 적습니다. 기능 제안은 해결하려는 사용자 문제와 예시를 설명해 주세요. 큰 변경이나 새로운 의존성을 도입하기 전에는 이슈에서 범위를 먼저 논의합니다.
+먼저 기존 이슈와 Discussions를 검색해 주세요. 버그는 사용 환경(OS·브라우저·앱 버전 또는 commit), 재현 순서, 기대한 결과, 실제 결과와 오류 문구를 적습니다. 기능 아이디어는 Discussions에서 해결하려는 사용자 문제와 예시를 설명해 주세요. 구현할 범위가 정해지면 관련 토론을 연결한 이슈에서 작업을 추적합니다. 큰 변경이나 새로운 의존성을 도입하기 전에는 이슈에서 범위를 먼저 논의합니다.
 
 샘플은 직접 만든 최소 재현 문서를 권장합니다. 비밀번호·Slack 토큰·서명 키·인증 URL·쿠키·사용자 원본 문서를 이슈나 PR에 올리지 마세요. 로그와 화면에서도 민감한 정보를 제거해 주세요. 공개할 수 없는 자료가 필요하다면 먼저 지원 이메일로 전달 방법을 문의합니다.
 
