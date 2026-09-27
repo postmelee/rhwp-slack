@@ -26,12 +26,26 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   assert.ok(files.includes('licenses/index.html'));
   assert.equal(await readFile(join(root,'licenses/MIT.txt'),'utf8'),await readFile(new URL('../../LICENSE',import.meta.url),'utf8'));
   assert.equal(await readFile(join(root,'licenses/THIRD_PARTY_NOTICES.md'),'utf8'),await readFile(new URL('../../THIRD_PARTY_NOTICES.md',import.meta.url),'utf8'));
+  const banner=await readFile(join(root,'assets/banner.png'));
+  assert.deepEqual(banner,await readFile(new URL('../../site/assets/banner.png',import.meta.url)));
+  assert.equal(banner.subarray(1,4).toString(),'PNG');
+  assert.equal(banner.readUInt32BE(16),2756);assert.equal(banner.readUInt32BE(20),2122);
   assert.ok(!files.some(f=>f.startsWith('mydocs/')));
   assert.ok(!files.includes('.env'));assert.ok(!files.includes('source.hwp'));
   for(const path of files.filter(f=>f.endsWith('.html'))){
    const html=await readFile(join(root,path),'utf8');assert.ok(!html.includes('{{INSTALL_URL}}'));
    if(!path.startsWith('static/')&&!path.startsWith('editor/')&&path!=='404.html'){
     assert.match(html,/https:\/\/api.example.test\/install/);assert.ok(!/<script\b/i.test(html));
+    const meta=Object.fromEntries([...html.matchAll(/<meta (?:property|name)="([^"]+)" content="([^"]*)">/g)].map(m=>[m[1],m[2]]));
+    assert.equal(meta['og:title'],html.match(/<title>(.*?)<\/title>/)[1]);
+    assert.equal(meta['og:description'],meta.description);
+    assert.equal(meta['og:url'],'https://rhwp-slack.pages.dev/'+path.replace(/index\.html$/,''));
+    assert.equal(meta['og:image'],'https://rhwp-slack.pages.dev/assets/banner.png');
+    assert.equal(meta['og:image:width'],String(banner.readUInt32BE(16)));
+    assert.equal(meta['og:image:height'],String(banner.readUInt32BE(20)));
+    assert.equal(meta['og:image:type'],'image/png');assert.ok(meta['og:image:alt']);
+    assert.equal(meta['twitter:card'],'summary_large_image');
+    assert.equal(meta['twitter:image'],meta['og:image']);
     for(const [,url] of html.matchAll(/(?:href|src)="(\/[^"#]*)"/g)){
      await readFile(join(root,url.replace(/^\//,'')+(url.endsWith('/')?'index.html':'')));
     }
