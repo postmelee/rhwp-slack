@@ -36,10 +36,14 @@ try{
    // Each thread gets new JS bindings, WASM instance/memory and copied assets. No SharedArrayBuffer.
    const worker=new Worker(resolve('.cache/conversion/pdf-child.mjs'),{execArgv:[],env:workerEnvironment(),stdout:true,stderr:true,resourceLimits:{maxOldGenerationSizeMb:512},workerData:{mode,start,end,bytes,module,fontManifest,fontBytes,print,browserWs}});
    worker.once('online',()=>metric('process_start','finish',workerStart));
-   worker.on('message',value=>send({type:'metric',value}));worker.stderr.resume();
+   let failure;
+   worker.on('message',value=>{if(value?.phase==='failed')failure=value;send({type:'metric',value});});worker.stderr.resume();
    worker.stdout.pipe(process.stdout,{end:false});
    const [code]=await Promise.all([once(worker,'exit').then(([code])=>code),finished(worker.stdout)]);
-   if(code!==0)throw new Error('conversion');
+   if(code!==0){
+    if(failure){send({type:'failure',value:failure});setTimeout(()=>void stop(),5000).unref();return;}
+    throw new Error('conversion');
+   }
    active=false;
    // End is sent only AFTER the document thread/context have been destroyed.
    const header=Buffer.from(JSON.stringify({type:'end'})),length=Buffer.alloc(4);length.writeUInt32BE(header.length);

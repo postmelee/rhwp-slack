@@ -1,4 +1,4 @@
-export interface ConversionMetric {stage:string;phase:'start'|'finish'|'failed';durationMs?:number;rssBytes?:number;}
+export interface ConversionMetric {stage:string;phase:'start'|'finish'|'failed';durationMs?:number;rssBytes?:number;failureReason?:string;pageNumber?:number;pageCount?:number;svgBytes?:number;}
 export interface ConversionOptions {timeoutMs?:number;signal?:AbortSignal;onMetric?:(metric:ConversionMetric)=>void;onPdf?:(pdf:Buffer,pageCount:number)=>Promise<void>|void;onPage?:(page:PageImage,pageCount:number)=>Promise<void>|void;}
 export class ConversionError extends Error {code:string;stage:string;}
 export function validMetric(value:unknown):ConversionMetric|undefined;

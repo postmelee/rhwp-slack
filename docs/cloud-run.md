@@ -165,3 +165,7 @@ Slack 내부 Studio에 사용하는 Work Objects embeds는 외부 배포 앱에 
 같은 worker 인스턴스에서는 브라우저와 credential-free 변환 child를 재사용합니다. compiled WASM·고정 font bytes·print helper만 보관하고 문서별 JS/WASM 실행 환경과 browser context는 매번 생성·폐기합니다. 변환 20회 또는 직전 child RSS 768MiB 초과 시 다음 변환 전에, idle 5분·자산 변경·실패/취소 시 환경을 교체합니다. min instance·CPU·메모리 설정과 독립적인 앱 내부 정책이며 별도 keep-alive 요청은 보내지 않습니다.
 
 `conversion_stage`의 `wasm_compile`은 새 child 준비, `runtime_reuse`는 준비된 환경 재사용, `wasm_init`은 문서별 새 WASM instance 초기화입니다. `fonts_ready`는 반복 문서에도 남습니다. Cloud Run instance 교체 또는 앱 내부 재생성 후 재사용 이득이 사라지는 첫 요청과 이후 요청을 구분해 비교합니다. 빌드/갱신 절차는 [의존성 문서](dependencies.md#변환-환경-재사용과-업스트림-갱신)를 따릅니다.
+
+### 변환 제한 실패 진단
+
+`conversion_stage` 실패에는 고정 `failureReason`과 숫자 `pageNumber`, `pageCount`, `svgBytes`를 추가 기록한다. 문서 내용·파일명·원시 예외/stack은 기록하지 않는다. 페이지 수·SVG/PDF/PNG 용량 한도와 잘못된 페이지 크기는 재시도로 바뀌지 않으므로 첫 실패에서 종료하고 파일 분할·그림 축소·용지 설정 확인을 안내한다. 엔진 렌더링 예외와 일시 장애는 기존 최대 3회 재시도를 유지한다. 실패 영수증 재전달은 알림만 복구하며 변환을 반복하지 않는다. 이미 게시된 PDF는 이미지 실패 이후에도 유지한다.

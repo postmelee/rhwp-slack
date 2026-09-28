@@ -1,3 +1,4 @@
+import {isPermanentConversionFailure} from '../conversion/failures.mjs';
 import type {Card} from './documents';
 export function documentMetadata(card:Card,origin:string,previewUrl?:string):Record<string,unknown> {
     return {url:`${origin}/documents/${card.id}`,external_ref:{id:card.id,type:'document'},entity_type:'slack#/entities/file',entity_payload:{
@@ -24,10 +25,20 @@ export function documentMessage(card:Card,origin:string,editorMode:'embed'|'brow
     const pdf=card.pdf==='ready'&&card.pdfUrl?' · <'+card.pdfUrl+'|PDF로 보기>':card.pdf==='failed'?' · PDF 준비 실패':' · PDF 준비 중';
     const blocks:Record<string,unknown>[]=[{type:'section',text:{type:'mrkdwn',text:'*'+documentText(card)+'* · '+detail+pdf}}];
     if(card.recovery?.state==='running')blocks.push({type:'context',elements:[{type:'plain_text',text:card.recovery.attempt===0?'미리보기 요청을 접수했습니다. PDF·이미지를 준비할 차례를 기다리고 있습니다.':'PDF·이미지를 다시 준비하고 있습니다.'}]});
-    if(card.recovery?.state==='retrying')blocks.push({type:'context',elements:[{type:'plain_text',text:`준비가 지연되어 자동으로 다시 시도합니다. (${card.recovery.attempt}/${card.recovery.maxAttempts}회 시도)`}]});
-    if(card.pdf==='failed'&&card.recovery?.state==='failed')blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_retry_preview',value:card.id,text:{type:'plain_text',text:'문서 미리보기 다시 준비'}}]});
+    if(card.recovery?.state==='retrying')blocks.push({type:'context',elements:[{type:'plain_text',text:`PDF·이미지 준비에 실패해 자동으로 다시 시도합니다. (${card.recovery.attempt}/${card.recovery.maxAttempts}회 시도)`}]});
+    const failure=card.recovery?.state==='failed'?card.recovery.errorCode:undefined;
+    const limitMessages:Record<string,string>={
+      conversion_svg_limit:'문서의 그림·페이지를 처리하는 데 필요한 데이터가 변환 한도를 넘었습니다. 문서를 나누거나 그림 용량을 줄여 새 파일로 올려 주세요.',
+      conversion_page_limit:'지원하는 페이지 수 범위(1~200페이지)를 벗어났습니다. 문서를 나누어 새 파일로 올려 주세요.',
+      conversion_page_geometry:'페이지 크기를 처리할 수 없습니다. 문서의 용지 설정을 확인하고 다시 저장한 파일을 올려 주세요.',
+      conversion_pdf_limit:'생성된 PDF가 변환 용량 한도를 넘었습니다. 문서를 나누거나 그림 용량을 줄여 새 파일로 올려 주세요.',
+      conversion_preview_limit:'페이지 이미지가 변환 용량 한도를 넘었습니다. 그림 용량을 줄인 파일을 올려 주세요.',
+    };
+    if(failure&&isPermanentConversionFailure(failure))blocks.push({type:'context',elements:[{type:'plain_text',text:limitMessages[failure]}]});
+    else if(failure)blocks.push({type:'context',elements:[{type:'plain_text',text:'PDF·이미지 준비를 완료하지 못했습니다. 다시 시도해도 실패하면 지원팀에 발생 시각을 알려 주세요.'}]});
+    if(card.pdf==='failed'&&card.recovery?.state==='failed'&&!isPermanentConversionFailure(failure))blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_retry_preview',value:card.id,text:{type:'plain_text',text:'문서 미리보기 다시 준비'}}]});
     if(card.imageState==='pending')blocks.push({type:'context',elements:[{type:'plain_text',text:'페이지 이미지를 준비하고 있습니다.'}]});
-    else if(card.pdf==='ready'&&card.pageCount&&(images.length<Math.min(10,card.pageCount)||card.imageState==='failed')){
+    else if(!isPermanentConversionFailure(failure)&&card.pdf==='ready'&&card.pageCount&&(images.length<Math.min(10,card.pageCount)||card.imageState==='failed')){
       blocks.push({type:'actions',elements:[{type:'button',action_id:'rhwp_more_pages',value:card.id,text:{type:'plain_text',text:card.imageState==='failed'?'이미지 다시 준비':'추가 페이지 이미지 보기 (최대 10페이지)'}}]});
     }
     if(card.pageCount&&card.pageCount>10&&images.length===10)blocks.push({type:'context',elements:[{type:'plain_text',text:'앞 10페이지를 표시했습니다. 전체 문서는 PDF로 볼 수 있습니다.'}]});

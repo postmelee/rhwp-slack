@@ -139,3 +139,19 @@ test('a durable deadline reconciles a killed last worker and fences stale checkp
   assert.equal(terminal,true);assert.equal((await f.a.get<any>('tasks',id)).state,'failed');release();await assert.rejects(active,LeaseLost);
  }finally{f.close();}
 });
+
+test('permanent conversion fails once; redelivery and failed notifications never convert again',async()=>{
+ const f=fixture();try{
+  const published:{id:string;at?:number}[]=[],tasks=new DurableTasks(f.a,{async publish(id,at){published.push({id,at});}},f.now);
+  const id=await tasks.enqueue('permanent',{teamId:'TTEST',cardId:'card',kind:'preview'});let conversions=0,notices=0;
+  const run=async(_s:any,ctx:any)=>{
+   if(ctx.terminalFailure){assert.equal(ctx.terminalFailure,'conversion_svg_limit');notices++;if(notices===1)throw new Error('notification unavailable');return;}
+   conversions++;throw Object.assign(new Error('private text'),{code:'conversion_svg_limit'});
+  };
+  await tasks.execute(id,run);assert.equal((await f.a.get<any>('tasks',id)).state,'failed');
+  await tasks.execute(id,run);await tasks.execute(id,run);
+  f.advance(15*60_000);await tasks.execute(published.find(p=>p.at!==undefined)!.id,run);
+  assert.equal(conversions,1);assert.equal(notices,3);
+  const receipt=await f.a.get<any>('tasks',id);assert.equal(receipt.state,'failed');assert.equal(receipt.failureCode,'conversion_svg_limit');
+ }finally{f.close();}
+});
