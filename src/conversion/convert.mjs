@@ -1,3 +1,4 @@
+import {FAILURE_REASONS,failureCode} from './failures.mjs';
 import {spawn} from 'node:child_process';
 import {AsyncResource} from 'node:async_hooks';
 import {readFile} from 'node:fs/promises';
@@ -11,7 +12,14 @@ export function validMetric(value){
   if(!value||!METRIC_STAGES.has(value.stage)||!['start','finish','failed'].includes(value.phase))return;
   if(value.durationMs!==undefined&&(!Number.isFinite(value.durationMs)||value.durationMs<0||value.durationMs>3600000))return;
   if(value.rssBytes!==undefined&&(!Number.isSafeInteger(value.rssBytes)||value.rssBytes<0))return;
-  return {stage:value.stage,phase:value.phase,...(value.durationMs!==undefined?{durationMs:value.durationMs}:{}),...(value.rssBytes!==undefined?{rssBytes:value.rssBytes}:{})};
+  const details={};
+  if(value.phase==='failed'){
+    if(value.failureReason!==undefined){if(!FAILURE_REASONS.has(value.failureReason))return;details.failureReason=value.failureReason;}
+    for(const [key,max] of [['pageNumber',200],['pageCount',1000000],['svgBytes',Number.MAX_SAFE_INTEGER]]){
+      if(value[key]!==undefined){if(!Number.isSafeInteger(value[key])||value[key]<0||value[key]>max)return;details[key]=value[key];}
+    }
+  }
+  return {...details,stage:value.stage,phase:value.phase,...(value.durationMs!==undefined?{durationMs:value.durationMs}:{}),...(value.rssBytes!==undefined?{rssBytes:value.rssBytes}:{})};
 }
 export function convertPdf(bytes,options={}){return convert(bytes,options,'pdf',0,0);}
 export function convertPreview(bytes,options={}){return convert(bytes,options,'preview',1,3);}
@@ -52,6 +60,7 @@ function startRuntime(metric){
       child.on('message',message=>{
         if(r.disposed)return;
         if(message?.type==='ready')resolveReady();
+        if(message?.type==='failure'){const value=validMetric(message.value);if(value?.phase==='failed'&&value.failureReason){const error=new ConversionError(failureCode(value.failureReason),'문서 변환에 실패했습니다.',value.stage);r.failure(error);}}
         if(message?.type==='metric'){const value=validMetric(message.value);if(value){r.rss=value.rssBytes??r.rss;r.metric?.(value);}}
       });
       child.on('error',()=>r.failure(new ConversionError('conversion_start','문서 변환기를 시작하지 못했습니다.')));
