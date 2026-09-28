@@ -41,7 +41,7 @@ try {
     if(!Number.isFinite(info.width)||!Number.isFinite(info.height)||info.width<=0||info.height<=0||info.width>10000||info.height>10000)throw new ConversionFailure('page_size');
     pages.push(createPrintPage(svg,info,i));
   }
-  operation=undefined;
+  operation=undefined;pageNumber=undefined;
   begin('fonts_prepare');
   const {css:fonts,files:fontFiles}=fontManifest;
   begin('browser_render');
@@ -83,6 +83,7 @@ try {
     let total=0;
     for(let i=0;i<start-1;i++)await page.locator('.page').nth(i).evaluate(el=>{const rect=el.getBoundingClientRect();el.style.zoom=String(Math.min(1,800/rect.width,1200/rect.height));});
     for(let number=start;number<=Math.min(end,count);number++){
+      pageNumber=number;
       const element=page.locator('.page').nth(number-1);
       await element.evaluate(el=>{const rect=el.getBoundingClientRect();el.style.zoom=String(Math.min(1,800/rect.width,1200/rect.height));});
       const png=await element.screenshot({type:'png',timeout:10_000});total+=png.length;
