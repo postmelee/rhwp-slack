@@ -94,3 +94,14 @@ test('reused child metrics retain the current request context',async()=>{
  assert.equal(events.filter(e=>e.stage==='wasm_init'&&e.phase==='finish').length,2);
  assert.equal(events.filter(e=>e.stage==='runtime_reuse').length,1);await closeConversionRuntime();
 });
+
+test('real shared-image HWP exposes SVG limit with numeric diagnostics and recovers',async()=>{
+ const {closeConversionRuntime}=await import('../../src/conversion/convert.mjs');await closeConversionRuntime();
+ const metrics=[];
+ await assert.rejects(convertPreview(await readFile('tests/fixtures/shared-image-svg-limit.hwp'),{onMetric:m=>metrics.push(m)}),e=>e.code==='conversion_svg_limit'&&e.stage==='svg_render');
+ const failed=metrics.find(m=>m.phase==='failed');assert.equal(failed.failureReason,'svg_size');
+ assert.equal(failed.pageCount,80);assert.equal(failed.pageNumber,72);assert.ok(failed.svgBytes>100*1024*1024);
+ assert.equal(metrics.some(m=>m.stage==='fonts_prepare'),false);
+ assert.equal((await convertPreview(await readFile('tests/fixtures/viewer-two-pages.hwp'))).pages.length,2);
+ await closeConversionRuntime();
+});

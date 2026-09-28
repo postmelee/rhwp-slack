@@ -1,3 +1,4 @@
+import {isPermanentConversionFailure} from '../../conversion/failures.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {measured,conversionMetric,milestone,errorCode,notificationFailure} from './telemetry';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -167,7 +168,7 @@ export class CloudApplication {
   async execute(spec:TaskSpec,task:TaskContext):Promise<void>{
     if(task.terminalFailure){await this.failed(spec,task,task.terminalFailure,true);return;}
     try{await this.executeWork(spec,task);}
-    catch(error){await this.failed(spec,task,errorCode(error),!!task.finalAttempt).catch(()=>{});throw error;}
+    catch(error){await this.failed(spec,task,errorCode(error),!!task.finalAttempt||isPermanentConversionFailure(errorCode(error))).catch(()=>{});throw error;}
   }
   private async failed(spec:TaskSpec,task:TaskContext,code:string,final:boolean):Promise<void>{
     await task.checkpoint();

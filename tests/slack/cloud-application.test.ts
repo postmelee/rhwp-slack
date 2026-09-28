@@ -301,3 +301,19 @@ test('a redelivered action publishes the same reservation after queue failure',a
   await f.drain();assert.equal((await app.authorize(id,actor)).pdf,'ready');
  }finally{f.close();}
 });
+
+test('permanent SVG limit finalizes the card on attempt one and offers actionable guidance',async()=>{
+ const f=fixture(1,'browser');try{
+  const id=await f.make().submit({...actor,threadTs:'100.001'},'FTEST','thread:limit');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>f.make().execute(s,c));const job=f.pending.shift()!;let conversions=0;
+  const app=f.make({convert:async()=>{conversions++;throw Object.assign(new Error('private contents'),{code:'conversion_svg_limit'});}});
+  await f.tasks.execute(job,(s,c)=>app.execute(s,c));
+  let card=await app.authorize(id,actor);assert.equal(card.recovery?.state,'failed');assert.equal(card.recovery?.attempt,1);assert.equal(card.pdf,'failed');
+  const message=JSON.stringify(f.api.messages.get(card.messageTs!));assert.match(message,/문서를 나누거나/);assert.doesNotMatch(message,/자동으로 다시 시도|준비가 지연|private contents|rhwp_retry_preview/);assert.match(message,/rhwp_browser_edit/);
+  await f.tasks.execute(job,(s,c)=>app.execute(s,c));assert.equal(conversions,1);
+  // A ready PDF is retained when only image generation reaches a permanent limit.
+  await f.store.atomic<any,void>('cards',id,current=>({value:{...current,pdf:'ready',pdfUrl:'https://example.com/ready.pdf'},result:undefined}));
+  await f.tasks.execute(job,(s,c)=>app.execute(s,c));card=await app.authorize(id,actor);assert.equal(card.pdf,'ready');
+  assert.match(JSON.stringify(f.api.messages.get(card.messageTs!)),/PDF로 보기/);
+ }finally{f.close();}
+});

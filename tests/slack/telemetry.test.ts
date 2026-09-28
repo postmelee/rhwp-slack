@@ -69,3 +69,14 @@ test('Firestore operations retain return values and failures while tracing no ke
  assert.deepEqual(stages.map(r=>[r.stage,r.ok]),[['metadata_get',true],['metadata_list',true],['metadata_atomic',true],['metadata_atomic',false]]);
  for(const secret of ['private-key','FPRIVATE','FOTHER','TPRIVATE','private-database-message'])assert.equal(JSON.stringify(rows).includes(secret),false);
 });
+
+test('validated conversion failures keep numeric context in the operational trace',async()=>{
+ const records:Record<string,unknown>[]=[];
+ await traceTask({teamId:'TTEST',cardId:'synthetic',kind:'preview'},{signal:new AbortController().signal,checkpoint:async()=>{}},async()=>{
+  const metric=validMetric({stage:'svg_render',phase:'failed',failureReason:'svg_size',pageNumber:72,pageCount:80,svgBytes:104880785,message:'private document'});
+  conversionMetric(metric!);
+ },record=>records.push(record));
+ const failure=records.find(r=>r.event==='conversion_stage')!;
+ assert.equal(failure.failureReason,'svg_size');assert.equal(failure.pageNumber,72);assert.equal(failure.svgBytes,104880785);
+ assert.equal(JSON.stringify(records).includes('private document'),false);
+});
