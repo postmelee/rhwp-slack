@@ -1,3 +1,4 @@
+import {isPermanentConversionFailure} from '../../conversion/failures.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {CloudTasksClient} from '@google-cloud/tasks';
 import type {Actor} from '../access';
@@ -83,7 +84,7 @@ export class DurableTasks {
     const timer=setInterval(()=>{renewal=renewal.then(checkpoint).catch(()=>{controller.abort(new LeaseLost('Worker lease unavailable'));});},Math.max(10,Math.floor(this.leaseMs/3)));timer.unref();
     const timeout=setTimeout(()=>controller.abort(Object.assign(new Error('Task deadline exceeded'),{code:'task_deadline'})),(work.watchdogFor||work.generation>MAX_TASK_ATTEMPTS||work.deadlineAt!<=this.now())?60_000:Math.max(1,Math.min(5*60_000,work.deadlineAt!-this.now())));timeout.unref();
     // An earlier retry error is diagnostic, not a terminal flag.
-    let terminalFailure=!work.watchdogFor&&(work.generation>MAX_TASK_ATTEMPTS||work.deadlineAt!<=this.now())?work.failureCode??'task_deadline':undefined;
+    let terminalFailure=!work.watchdogFor&&(work.generation>MAX_TASK_ATTEMPTS||work.deadlineAt!<=this.now()||isPermanentConversionFailure(work.failureCode))?work.failureCode??'task_deadline':undefined;
     try{
       if(work.watchdogFor){
         const target=await this.store.atomic<Work,Work|undefined>('tasks',work.watchdogFor,current=>{
@@ -106,10 +107,10 @@ export class DurableTasks {
       });
     }catch(error){
       clearInterval(timer);await renewal;
-      const final=!(error instanceof TaskBusy)&&!work.watchdogFor&&(work.generation>=MAX_TASK_ATTEMPTS||work.deadlineAt!<=this.now());
+      const final=!(error instanceof TaskBusy)&&!work.watchdogFor&&(work.generation>=MAX_TASK_ATTEMPTS||work.deadlineAt!<=this.now()||isPermanentConversionFailure(errorCode(error))||terminalFailure!==undefined);
       const owned=await this.store.atomic<Work,boolean>('tasks',id,current=>{
         if(current?.owner!==owner)return {value:current,result:false};
-        return {value:{...current,state:final?'failed':'queued',owner:undefined,leaseUntil:undefined,failureCode:errorCode(error),generation:error instanceof TaskBusy?Math.max(0,current.generation-1):current.generation},expiresAt:final?this.now()+7*86400_000:undefined,result:true};
+        return {value:{...current,state:final?'failed':'queued',owner:undefined,leaseUntil:undefined,failureCode:terminalFailure??errorCode(error),generation:error instanceof TaskBusy?Math.max(0,current.generation-1):current.generation},expiresAt:final?this.now()+7*86400_000:undefined,result:true};
       }).catch(()=>false);
       if(!owned||!final)throw error;
       // The durable deadline delivery repairs a notification lost during this final attempt.
