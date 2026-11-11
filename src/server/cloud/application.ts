@@ -50,11 +50,13 @@ export class CloudApplication {
   }
   private async authorizeUnmeasured(id:string,actor:Actor,context?:TaskContext):Promise<{card:CloudCard;source:SourceFile}>{
     const config=await this.accessConfig(actor),card=await this.store.get<CloudCard>('cards',id);
-    if(!card||card.removed||card.actor.teamId!==actor.teamId||card.actor.channelId!==actor.channelId)denied();
+    if(!card)denied('card_missing');
+    if(card.removed)denied('card_removed');
+    if(card.actor.teamId!==actor.teamId||card.actor.channelId!==actor.channelId)denied('card_mismatch');
     const api=context?this.guarded(context):this.api;
     const source=await authorizeFile(api,config,actor,card.fileId,context?.signal);
     if(card.rootFileId!==card.fileId)await authorizeFile(api,config,actor,card.rootFileId,context?.signal);
-    if(source.name!==card.name||source.size!==card.size)denied();return {card,source};
+    if(source.name!==card.name||source.size!==card.size)denied('invalid_source_metadata');return {card,source};
   }
   async ensureSource(id:string,actor:Actor,outer?:AbortSignal):Promise<Buffer>{
     // Reuse only the file info validated in this call; never cache permissions between requests.
@@ -143,7 +145,7 @@ export class CloudApplication {
   private async locked<T>(id:string,run:(card:CloudCard,context:LeaseContext)=>Promise<T>):Promise<T>{
     return withLease(this.store,'card:'+id,async context=>{
       const card=await this.store.atomic<CloudCard,CloudCard>('cards',id,current=>{
-        if(!current||current.removed)denied();const value={...current,fence:context.owner};return {value,result:value};
+        if(!current)denied('card_missing');if(current.removed)denied('card_removed');const value={...current,fence:context.owner};return {value,result:value};
       });return run(card,context);
     });
   }

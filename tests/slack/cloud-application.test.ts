@@ -411,3 +411,23 @@ test('deadline watchdog settles an invalidated preview without consuming a notic
   assert.equal(f.api.calls.length,0);assert.equal((await f.store.get<any>('cards',id)).removed,true);
  }finally{f.close();}
 });
+
+test('invalidation after failure lease claim cannot resurrect a card and the retry settles',async()=>{
+ const f=fixture();try{
+  const app=f.make(),id=await app.submit(actor,'FTEST','thread:terminal-after-claim');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+  const spec=(await f.store.get<any>('tasks',job)).spec;
+  const atomic=f.store.atomic.bind(f.store);let invalidate=true;
+  f.store.atomic=async(collection,key,change)=>{
+   const result=await atomic(collection,key,change);
+   if(invalidate&&collection==='cards'&&key===id){invalidate=false;await atomic<any,void>('cards',id,c=>({value:{...c,removed:true},result:undefined}));}
+   return result;
+  };
+  const context={id:job,attempt:3,finalAttempt:true,terminalFailure:'access_denied',terminalNotice:{phase:'bookkeeping' as const,result:undefined as string|undefined},signal:new AbortController().signal,checkpoint:async()=>{}};
+  f.api.calls.length=0;
+  await assert.rejects(app.execute(spec,context as any),/Card ownership changed/);
+  await app.execute(spec,context as any);
+  assert.equal(context.terminalNotice.result,'skipped');assert.equal(f.api.calls.length,0);
+  assert.equal((await f.store.get<any>('cards',id)).removed,true);
+ }finally{f.close();}
+});

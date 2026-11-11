@@ -13,7 +13,7 @@ export const MAX_NOTICE_ATTEMPTS=3;
 export const TASK_LIFETIME_MS=15*60_000;
 const RETENTION_MS=7*86400_000;
 export interface TaskSpec {teamId:string;cardId:string;kind:'prepare'|'preview'|'images'|'event';actor?:Actor;terminalNoticeRequested?:true;}
-export interface Work {spec:TaskSpec;state:'queued'|'running'|'done'|'failed';owner?:string;leaseUntil?:number;generation:number;createdAt:number;deadlineAt?:number;failureCode?:string;failureDiagnostics?:SlackDiagnostics;failureDetails?:ErrorDiagnostics;terminalAt?:number;watchdogFor?:string;}
+export interface Work {spec:TaskSpec;state:'queued'|'running'|'done'|'failed';owner?:string;leaseUntil?:number;generation:number;createdAt:number;deadlineAt?:number;failureCode?:string;failureDiagnostics?:SlackDiagnostics;failureDetails?:ErrorDiagnostics;firstFailureCode?:string;firstFailureDiagnostics?:SlackDiagnostics;firstFailureDetails?:ErrorDiagnostics;terminalAt?:number;watchdogFor?:string;}
 export interface TaskPublisher {publish(id:string,notBefore?:number):Promise<void>;}
 export class GoogleTaskPublisher implements TaskPublisher {
   constructor(private client:CloudTasksClient,private queue:string,private workerOrigin:string,private serviceAccount:string){
@@ -95,7 +95,19 @@ export class DurableTasks {
     if(diagnostic?.slackError!==undefined)attachSlackDiagnostics(error,diagnostic.httpStatus,diagnostic.slackError);
     else if(diagnostic?.httpStatus!==undefined)attachSlackDiagnostics(error,diagnostic.httpStatus);
     if(diagnostic)attachResponseSizeDiagnostics(error,diagnostic);
-    terminalTaskFailure(id,work.spec,Math.min(work.generation,MAX_TASK_ATTEMPTS),error,this.terminalSink);
+    // Preserve the earliest committed business failure, separately from the final failure.
+    // Restored metadata is untrusted; only existing diagnostic allowlists cross the boundary.
+    let first:Error|undefined;
+    if(work.firstFailureCode!==undefined){
+      first=Object.assign(new Error('First durable task failure'),{code:errorCode({code:work.firstFailureCode})});
+      if(!restoreDiagnostics(first,work.firstFailureDetails))restoreDiagnostics(first,errorDiagnostics(undefined,'terminal_failure'));
+      const raw=work.firstFailureDiagnostics;
+      const own=(key:string):unknown=>raw&&typeof raw==='object'?Object.getOwnPropertyDescriptor(raw,key)?.value:undefined;
+      const slackError=own('slackError'),httpStatus=own('httpStatus');
+      if(slackError!==undefined)attachSlackDiagnostics(first,httpStatus,slackError);
+      else if(httpStatus!==undefined)attachSlackDiagnostics(first,httpStatus);
+    }
+    terminalTaskFailure(id,work.spec,Math.min(work.generation,MAX_TASK_ATTEMPTS),error,this.terminalSink,first);
 
   }
   private async repair(id:string,work:Work,run:(spec:TaskSpec,context:TaskContext)=>Promise<void>,onTerminal?:TerminalCallback,parent?:TaskContext):Promise<void>{
@@ -240,7 +252,7 @@ export class DurableTasks {
         const failureDetails=errorDiagnostics(error,'task_failure');
         const failed=await this.store.atomic<Work,Work|undefined>('tasks',id,current=>{
           if(current?.owner!==owner||current.generation!==work.generation||current.state!=='running'||(current.leaseUntil??0)<=this.now())return {value:current,expiresAt:current?.terminalAt===undefined?undefined:current.terminalAt+RETENTION_MS,result:undefined};
-          const value:Work={...current,state:final?'failed':'queued',owner:undefined,leaseUntil:undefined,failureCode:errorCode(error),failureDiagnostics:slackDiagnostics(error),failureDetails,generation:error instanceof TaskBusy?Math.max(0,current.generation-1):current.generation,...(final?{terminalAt:this.now()}:{})};
+          const value:Work={...current,...(!work.watchdogFor&&!(error instanceof TaskBusy)&&current.firstFailureCode===undefined?{firstFailureCode:errorCode(error),firstFailureDiagnostics:slackDiagnostics(error),firstFailureDetails:failureDetails}:{}),state:final?'failed':'queued',owner:undefined,leaseUntil:undefined,failureCode:errorCode(error),failureDiagnostics:slackDiagnostics(error),failureDetails,generation:error instanceof TaskBusy?Math.max(0,current.generation-1):current.generation,...(final?{terminalAt:this.now()}:{})};
           return {value,expiresAt:final?value.terminalAt!+RETENTION_MS:undefined,result:value};
         });
         if(!failed)throw new LeaseLost('Worker no longer owns task');
