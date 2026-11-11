@@ -50,11 +50,13 @@ export class CloudApplication {
   }
   private async authorizeUnmeasured(id:string,actor:Actor,context?:TaskContext):Promise<{card:CloudCard;source:SourceFile}>{
     const config=await this.accessConfig(actor),card=await this.store.get<CloudCard>('cards',id);
-    if(!card||card.removed||card.actor.teamId!==actor.teamId||card.actor.channelId!==actor.channelId)denied();
+    if(!card)denied('card_missing');
+    if(card.removed)denied('card_removed');
+    if(card.actor.teamId!==actor.teamId||card.actor.channelId!==actor.channelId)denied('card_mismatch');
     const api=context?this.guarded(context):this.api;
     const source=await authorizeFile(api,config,actor,card.fileId,context?.signal);
     if(card.rootFileId!==card.fileId)await authorizeFile(api,config,actor,card.rootFileId,context?.signal);
-    if(source.name!==card.name||source.size!==card.size)denied();return {card,source};
+    if(source.name!==card.name||source.size!==card.size)denied('invalid_source_metadata');return {card,source};
   }
   async ensureSource(id:string,actor:Actor,outer?:AbortSignal):Promise<Buffer>{
     // Reuse only the file info validated in this call; never cache permissions between requests.
@@ -143,7 +145,7 @@ export class CloudApplication {
   private async locked<T>(id:string,run:(card:CloudCard,context:LeaseContext)=>Promise<T>):Promise<T>{
     return withLease(this.store,'card:'+id,async context=>{
       const card=await this.store.atomic<CloudCard,CloudCard>('cards',id,current=>{
-        if(!current||current.removed)denied();const value={...current,fence:context.owner};return {value,result:value};
+        if(!current)denied('card_missing');if(current.removed)denied('card_removed');const value={...current,fence:context.owner};return {value,result:value};
       });return run(card,context);
     });
   }
@@ -213,6 +215,7 @@ export class CloudApplication {
   }
   private async failed(spec:TaskSpec,task:TaskContext,code:string,final:boolean):Promise<void>{
     await task.checkpoint();
+    if(spec.teamId!==this.config.teamId)denied();
     const card=await this.store.get<CloudCard>('cards',spec.cardId);
     if(!card){
       if(task.terminalNotice){task.terminalNotice.result='skipped';task.terminalNotice.reason='card_missing';return;}
@@ -223,7 +226,19 @@ export class CloudApplication {
       return;
     }
     if(spec.teamId!==this.config.teamId||card.actor.teamId!==spec.teamId)denied();
-    await this.locked(card.id,async(current,lease)=>{
+    // Failure bookkeeping is not a document access path. A removed/missing card
+    // must settle without reviving it, while ordinary locked() still denies access.
+    await withLease(this.store,'card:'+card.id,async lease=>{
+      const current=await this.store.atomic<CloudCard,CloudCard|undefined>('cards',card.id,value=>{
+        if(!value)return {value,result:undefined};
+        if(value.actor.teamId!==spec.teamId)denied();
+        if(value.removed)return {value,result:undefined};
+        const fenced={...value,fence:lease.owner};return {value:fenced,result:fenced};
+      });
+      if(!current){
+        if(task.terminalNotice){task.terminalNotice.result='skipped';task.terminalNotice.reason='superseded';}
+        return;
+      }
       const context:LeaseContext={...lease,terminalNotice:task.terminalNotice,signal:AbortSignal.any([task.signal,lease.signal]),checkpoint:async()=>{await task.checkpoint();await lease.checkpoint();}};
       await context.checkpoint();
       // A deadline notification from an older generation cannot overwrite a manual retry.

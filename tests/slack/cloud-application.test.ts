@@ -338,3 +338,96 @@ test('PDF evidence survives failed Slack publication and a replacement worker co
   assert.equal(f.api.calls.filter(c=>c.method==='files.getUploadURLExternal'&&String(c.args.filename).endsWith('.pdf')).length,1);
  }finally{f.close();}
 });
+
+test('removed preview settles terminal bookkeeping and repeated deliveries without Slack calls',async()=>{
+ const f=fixture();try{
+  const app=f.make(),id=await app.submit(actor,'FTEST','thread:removed-terminal');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+  await app.invalidate('FTEST');f.api.calls.length=0;
+  await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)),{code:'access_denied'});
+  await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)),{code:'access_denied'});
+  await f.tasks.execute(job,(s,c)=>app.execute(s,c));
+  for(let i=0;i<3;i++)await f.tasks.execute(job,(s,c)=>app.execute(s,c));
+  assert.equal((await f.store.get<any>('tasks',job)).state,'failed');
+  const receipt=await f.store.get<any>('terminal_notices',job);
+  assert.equal(receipt.state,'skipped');assert.equal(receipt.attempts,0);
+  assert.equal(f.api.calls.length,0);assert.equal((await f.store.get<any>('cards',id)).removed,true);
+  await assert.rejects(app.authorize(id,actor),{code:'access_denied'});
+ }finally{f.close();}
+});
+
+test('terminal bookkeeping handles removal or disappearance while acquiring the card lease',async()=>{
+ for(const scenario of ['removed','missing','wrong-team'] as const){
+  const f=fixture();try{
+   const app=f.make(),id=await app.submit(actor,'FTEST','thread:terminal-race-'+scenario);
+   await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+   const spec=(await f.store.get<any>('tasks',job)).spec;
+   const atomic=f.store.atomic.bind(f.store);let armed=true;
+   f.store.atomic=async(collection,key,change)=>{
+    if(armed&&collection==='locks'&&key==='card:'+id){
+     armed=false;
+     await atomic<any,void>('cards',id,current=>({value:scenario==='missing'?undefined:{...current,...(scenario==='removed'?{removed:true}:{actor:{...current.actor,teamId:'TOTHER'}})},result:undefined}));
+    }
+    return atomic(collection,key,change);
+   };
+   const context={id:job,attempt:3,finalAttempt:true,terminalFailure:'access_denied',terminalNotice:{phase:'bookkeeping' as const,result:undefined as string|undefined},signal:new AbortController().signal,checkpoint:async()=>{}};
+   f.api.calls.length=0;
+   if(scenario==='wrong-team')await assert.rejects(app.execute(spec,context as any),{code:'access_denied'});
+   else{await app.execute(spec,context as any);assert.equal(context.terminalNotice.result,'skipped');}
+   assert.equal(f.api.calls.length,0);
+   assert.equal(await f.store.get('locks','card:'+id),undefined);
+  }finally{f.close();}
+ }
+});
+
+test('terminal card storage outage remains retryable and a later delivery settles',async()=>{
+ const f=fixture();try{
+  const app=f.make(),id=await app.submit(actor,'FTEST','thread:terminal-storage');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+  await app.invalidate('FTEST');
+  await f.store.atomic<any,void>('tasks',job,current=>({value:{...current,state:'failed',generation:3,failureCode:'access_denied',terminalAt:Date.now()},result:undefined}));
+  const atomic=f.store.atomic.bind(f.store);let fail=true;
+  f.store.atomic=async(collection,key,change)=>{if(fail&&collection==='cards'&&key===id)throw new Error('synthetic storage outage');return atomic(collection,key,change);};
+  await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)),/synthetic storage outage/);
+  assert.equal((await f.store.get<any>('terminal_notices',job)).state,'pending');
+  fail=false;await f.tasks.execute(job,(s,c)=>app.execute(s,c));
+  assert.equal((await f.store.get<any>('terminal_notices',job)).state,'skipped');
+ }finally{f.close();}
+});
+
+test('deadline watchdog settles an invalidated preview without consuming a notice attempt',async()=>{
+ const f=fixture();try{
+  const app=f.make(),id=await app.submit(actor,'FTEST','thread:removed-watchdog');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+  const [watchdog]= (await f.store.list<any>('tasks')).find(([,v])=>v.watchdogFor===job)!;
+  for(const key of [job,watchdog])await f.store.atomic<any,void>('tasks',key,value=>({value:{...value,deadlineAt:Date.now()-1},result:undefined}));
+  await app.invalidate('FTEST');f.api.calls.length=0;
+  await f.tasks.execute(watchdog,(s,c)=>app.execute(s,c));
+  await f.tasks.execute(job,(s,c)=>app.execute(s,c));
+  await f.tasks.execute(watchdog,(s,c)=>app.execute(s,c));
+  assert.equal((await f.store.get<any>('tasks',watchdog)).state,'done');
+  assert.equal((await f.store.get<any>('terminal_notices',job)).state,'skipped');
+  assert.equal((await f.store.get<any>('terminal_notices',job)).attempts,0);
+  assert.equal(f.api.calls.length,0);assert.equal((await f.store.get<any>('cards',id)).removed,true);
+ }finally{f.close();}
+});
+
+test('invalidation after failure lease claim cannot resurrect a card and the retry settles',async()=>{
+ const f=fixture();try{
+  const app=f.make(),id=await app.submit(actor,'FTEST','thread:terminal-after-claim');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+  const spec=(await f.store.get<any>('tasks',job)).spec;
+  const atomic=f.store.atomic.bind(f.store);let invalidate=true;
+  f.store.atomic=async(collection,key,change)=>{
+   const result=await atomic(collection,key,change);
+   if(invalidate&&collection==='cards'&&key===id){invalidate=false;await atomic<any,void>('cards',id,c=>({value:{...c,removed:true},result:undefined}));}
+   return result;
+  };
+  const context={id:job,attempt:3,finalAttempt:true,terminalFailure:'access_denied',terminalNotice:{phase:'bookkeeping' as const,result:undefined as string|undefined},signal:new AbortController().signal,checkpoint:async()=>{}};
+  f.api.calls.length=0;
+  await assert.rejects(app.execute(spec,context as any),/Card ownership changed/);
+  await app.execute(spec,context as any);
+  assert.equal(context.terminalNotice.result,'skipped');assert.equal(f.api.calls.length,0);
+  assert.equal((await f.store.get<any>('cards',id)).removed,true);
+ }finally{f.close();}
+});

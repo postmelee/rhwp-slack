@@ -1,11 +1,12 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {types} from 'node:util';
 import {diagnosticSources} from './diagnostic-sources';
+import {denialReason,validatedDenialReason,type DenialReason} from '../errors';
 
 export type DiagnosticCode='exception'|'worker_delivery'|'stage_failure'|'task_failure'|'editor_failure'|'terminal_failure'|'attachment_pending';
 export type ExceptionType='Error'|'TypeError'|'RangeError'|'SyntaxError'|'ReferenceError'|'URIError'|'EvalError'|'AggregateError'|'AbortError'|'TimeoutError'|'Other';
 export interface StackFrame {file:string;line:number;column:number;}
-export interface ErrorDiagnostics {diagnosticCode:DiagnosticCode;exceptionType:ExceptionType;stackFrames:StackFrame[];fingerprint:string;errorId:string;}
+export interface ErrorDiagnostics {diagnosticCode:DiagnosticCode;exceptionType:ExceptionType;stackFrames:StackFrame[];fingerprint:string;errorId:string;denialReason?:DenialReason;}
 const codes=new Set<DiagnosticCode>(['exception','worker_delivery','stage_failure','task_failure','editor_failure','terminal_failure','attachment_pending']);
 const exceptionTypes=new Set<ExceptionType>(['Error','TypeError','RangeError','SyntaxError','ReferenceError','URIError','EvalError','AggregateError','AbortError','TimeoutError','Other']);
 const sources=new Set<string>(diagnosticSources);
@@ -61,8 +62,8 @@ export function errorDiagnostics(error:unknown,code:DiagnosticCode='exception'):
     if(error&&typeof error==='object'){
       const prior=cache.get(error);if(prior)return {...prior,diagnosticCode:prior.diagnosticCode==='attachment_pending'?'attachment_pending':diagnosticCode,stackFrames:prior.stackFrames.map(frame=>({...frame}))};
     }
-    const type=exceptionType(error),frames=stackFrames(error);
-    const value:ErrorDiagnostics={diagnosticCode,exceptionType:type,stackFrames:frames,fingerprint:fingerprint(type,frames),errorId:randomUUID()};
+    const type=exceptionType(error),frames=stackFrames(error),reason=denialReason(error);
+    const value:ErrorDiagnostics={diagnosticCode,exceptionType:type,stackFrames:frames,fingerprint:fingerprint(type,frames),errorId:randomUUID(),...(reason?{denialReason:reason}:{})};
     if(error&&typeof error==='object')cache.set(error,value);
     return {...value,stackFrames:frames.map(frame=>({...frame}))};
   }catch{
@@ -83,7 +84,8 @@ export function validatedDiagnostics(value:unknown):ErrorDiagnostics|undefined {
       frames.push({file,line,column});
     }
     if(fingerprint(type as ExceptionType,frames)!==hash)return;
-    return {diagnosticCode:code as DiagnosticCode,exceptionType:type as ExceptionType,stackFrames:frames,fingerprint:hash,errorId:id};
+    const reason=validatedDenialReason(own(value,'denialReason'));
+    return {diagnosticCode:code as DiagnosticCode,exceptionType:type as ExceptionType,stackFrames:frames,fingerprint:hash,errorId:id,...(reason?{denialReason:reason}:{})};
   }catch{return;}
 }
 export function restoreDiagnostics(error:object,value:unknown):boolean {
