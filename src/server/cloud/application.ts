@@ -213,6 +213,7 @@ export class CloudApplication {
   }
   private async failed(spec:TaskSpec,task:TaskContext,code:string,final:boolean):Promise<void>{
     await task.checkpoint();
+    if(spec.teamId!==this.config.teamId)denied();
     const card=await this.store.get<CloudCard>('cards',spec.cardId);
     if(!card){
       if(task.terminalNotice){task.terminalNotice.result='skipped';task.terminalNotice.reason='card_missing';return;}
@@ -223,7 +224,19 @@ export class CloudApplication {
       return;
     }
     if(spec.teamId!==this.config.teamId||card.actor.teamId!==spec.teamId)denied();
-    await this.locked(card.id,async(current,lease)=>{
+    // Failure bookkeeping is not a document access path. A removed/missing card
+    // must settle without reviving it, while ordinary locked() still denies access.
+    await withLease(this.store,'card:'+card.id,async lease=>{
+      const current=await this.store.atomic<CloudCard,CloudCard|undefined>('cards',card.id,value=>{
+        if(!value)return {value,result:undefined};
+        if(value.actor.teamId!==spec.teamId)denied();
+        if(value.removed)return {value,result:undefined};
+        const fenced={...value,fence:lease.owner};return {value:fenced,result:fenced};
+      });
+      if(!current){
+        if(task.terminalNotice){task.terminalNotice.result='skipped';task.terminalNotice.reason='superseded';}
+        return;
+      }
       const context:LeaseContext={...lease,terminalNotice:task.terminalNotice,signal:AbortSignal.any([task.signal,lease.signal]),checkpoint:async()=>{await task.checkpoint();await lease.checkpoint();}};
       await context.checkpoint();
       // A deadline notification from an older generation cannot overwrite a manual retry.
