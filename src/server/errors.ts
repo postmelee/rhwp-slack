@@ -1,3 +1,4 @@
+import {sourceFailureMessage} from './source-failure';
 export class UserError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
 }
@@ -24,5 +25,5 @@ export function object(value: unknown): Record<string, unknown> {
   return objectWithReason(value);
 }
 export function userMessage(error: unknown): string {
-  return error instanceof UserError ? error.message : '요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.';
+  return sourceFailureMessage(error)??(error instanceof UserError ? error.message : '요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.');
 }

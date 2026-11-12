@@ -339,18 +339,16 @@ test('PDF evidence survives failed Slack publication and a replacement worker co
  }finally{f.close();}
 });
 
-test('removed preview settles terminal bookkeeping and repeated deliveries without Slack calls',async()=>{
+test('removed preview completes immediately and repeated deliveries do not call Slack',async()=>{
  const f=fixture();try{
   const app=f.make(),id=await app.submit(actor,'FTEST','thread:removed-terminal');
   await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
   await app.invalidate('FTEST');f.api.calls.length=0;
-  await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)),{code:'access_denied'});
-  await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)),{code:'access_denied'});
   await f.tasks.execute(job,(s,c)=>app.execute(s,c));
   for(let i=0;i<3;i++)await f.tasks.execute(job,(s,c)=>app.execute(s,c));
-  assert.equal((await f.store.get<any>('tasks',job)).state,'failed');
-  const receipt=await f.store.get<any>('terminal_notices',job);
-  assert.equal(receipt.state,'skipped');assert.equal(receipt.attempts,0);
+  assert.equal((await f.store.get<any>('tasks',job)).state,'done');
+  assert.equal((await f.store.get<any>('tasks',job)).generation,1);
+  assert.equal(await f.store.get<any>('terminal_notices',job),undefined);
   assert.equal(f.api.calls.length,0);assert.equal((await f.store.get<any>('cards',id)).removed,true);
   await assert.rejects(app.authorize(id,actor),{code:'access_denied'});
  }finally{f.close();}
@@ -429,5 +427,87 @@ test('invalidation after failure lease claim cannot resurrect a card and the ret
   await app.execute(spec,context as any);
   assert.equal(context.terminalNotice.result,'skipped');assert.equal(f.api.calls.length,0);
   assert.equal((await f.store.get<any>('cards',id)).removed,true);
+ }finally{f.close();}
+});
+
+
+test('removal between cancellation check and card lease completes without retry',async()=>{
+ const f=fixture();try{
+  const app=f.make(),id=await app.submit(actor,'FTEST','thread:cancel-lock');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+  const atomic=f.store.atomic.bind(f.store);let armed=true;
+  f.store.atomic=async(collection,key,change)=>{
+   if(armed&&collection==='locks'&&key==='card:'+id){armed=false;await app.invalidate('FTEST');}
+   return atomic(collection,key,change);
+  };
+  f.api.calls.length=0;await f.tasks.execute(job,(s,c)=>app.execute(s,c));
+  assert.equal((await f.store.get<any>('tasks',job)).state,'done');
+  assert.equal((await f.store.get<any>('tasks',job)).generation,1);
+  assert.equal(f.api.calls.length,0);
+ }finally{f.close();}
+});
+
+test('missing card, cross-tenant tombstone and storage outage are not confirmed cancellation',async()=>{
+ for(const scenario of ['missing','cross-tenant','storage'] as const){
+  const f=fixture();try{
+   const app=f.make(),id=await app.submit(actor,'FTEST','thread:cancel-'+scenario);
+   await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+   if(scenario!=='storage')await f.store.atomic<any,void>('cards',id,c=>({value:scenario==='missing'?undefined:{...c,removed:true,actor:{...c.actor,teamId:'TOTHER'}},result:undefined}));
+   const get=f.store.get.bind(f.store);
+   if(scenario==='storage')f.store.get=async(collection,key)=>{if(collection==='cards'&&key===id)throw new Error('synthetic storage failure');return get(collection,key);};
+   await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)));
+   assert.equal((await f.store.get<any>('tasks',job)).state,'queued');
+  }finally{f.close();}
+ }
+});
+
+test('removed card with a different actor tenant is still denied',async()=>{
+ const f=fixture();try{
+  const app=f.make(),id=await app.submit(actor,'FTEST','thread:cancel-actor');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+  await app.invalidate('FTEST');
+  await f.store.atomic<any,void>('tasks',job,c=>({value:{...c,spec:{...c.spec,actor:{...actor,teamId:'TOTHER'}}},result:undefined}));
+  await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)),{code:'access_denied'});
+  assert.equal((await f.store.get<any>('tasks',job)).state,'queued');
+ }finally{f.close();}
+});
+
+test('removed-card write race completes but unrelated conversion failures are not swallowed',async()=>{
+ for(const scenario of ['write','conversion'] as const){
+  const f=fixture();try{
+   const app=f.make(scenario==='conversion'?{convert:async()=>{await f.make().invalidate('FTEST');throw new Error('synthetic conversion failure');}}:{});
+   const id=await app.submit(actor,'FTEST','thread:cancel-during-'+scenario);
+   await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+   if(scenario==='write'){
+    const atomic=f.store.atomic.bind(f.store);let writes=0;
+    f.store.atomic=async(collection,key,change)=>{
+     if(collection==='cards'&&key===id&&++writes===2)await atomic<any,void>('cards',id,c=>({value:{...c,removed:true},result:undefined}));
+     return atomic(collection,key,change);
+    };
+    await f.tasks.execute(job,(s,c)=>app.execute(s,c));
+    assert.equal((await f.store.get<any>('tasks',job)).state,'done');
+   }else{
+    await assert.rejects(f.tasks.execute(job,(s,c)=>app.execute(s,c)),/synthetic conversion failure/);
+    assert.equal((await f.store.get<any>('tasks',job)).state,'queued');
+    await f.tasks.execute(job,(s,c)=>app.execute(s,c));
+    assert.equal((await f.store.get<any>('tasks',job)).state,'done');
+   }
+   assert.equal((await f.store.get<any>('cards',id)).removed,true);
+  }finally{f.close();}
+ }
+});
+
+test('watchdog after a completed cancellation does not produce a terminal failure or notice',async()=>{
+ const f=fixture();try{
+  const app=f.make(),id=await app.submit(actor,'FTEST','thread:cancel-watchdog');
+  await f.tasks.execute(f.pending.shift()!,(s,c)=>app.execute(s,c));const job=f.pending.shift()!;
+  const [watchdog]=(await f.store.list<any>('tasks')).find(([,v])=>v.watchdogFor===job)!;
+  await app.invalidate('FTEST');await f.tasks.execute(job,(s,c)=>app.execute(s,c));f.api.calls.length=0;
+  await f.store.atomic<any,void>('tasks',watchdog,c=>({value:{...c,deadlineAt:Date.now()-1},result:undefined}));
+  await f.tasks.execute(watchdog,(s,c)=>app.execute(s,c));
+  assert.equal((await f.store.get<any>('tasks',job)).state,'done');
+  assert.equal((await f.store.get<any>('tasks',watchdog)).state,'done');
+  assert.equal(await f.store.get<any>('terminal_notices',job),undefined);
+  assert.equal(f.api.calls.length,0);
  }finally{f.close();}
 });
