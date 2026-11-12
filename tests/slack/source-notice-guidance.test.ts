@@ -15,13 +15,16 @@ import {markSourceUnavailable,sourceFailureMessage} from '../../src/server/sourc
 import {actor,config,FakeApi} from './support';
 
 type StoredCard=Card&{pdfPreparedAt?:number;removed?:boolean};
-function fixture(code:string){
+function fixture(code:string,metadata?:Record<string,unknown>){
  const dir=mkdtempSync(join(tmpdir(),'rhwp-source-notice-')),state=new State(join(dir,'state.sqlite'),'TTEST'),store=new SqliteMetadata(state);
  const fake=new FakeApi(),calls:{method:Method;args:Record<string,string>}[]=[],notices:Record<string,unknown>[]=[];
  const api=new HttpSlackApi('xoxb-synthetic',async(url,init)=>{
   const u=new URL(String(url)),method=u.pathname.split('/').at(-1)! as Method,args=Object.fromEntries(init?.body?new URLSearchParams(String(init.body)):u.searchParams);
   calls.push({method,args});
-  if(method==='files.info')return Response.json({ok:false,error:code,private:'private-file-name'});
+  if(method==='files.info'){
+   if(metadata){const response=fake.response(method,args);return Response.json({...response,file:{...(response.file as Record<string,unknown>),...metadata}});}
+   return Response.json({ok:false,error:code,private:'private-file-name'});
+  }
   return Response.json(fake.response(method,args));
  });
  const tasks=new DurableTasks(store,{async publish(){}},Date.now,60_000,()=>{},r=>notices.push(r));
@@ -84,5 +87,33 @@ test('source notice rejects a foreign tenant card without sending or mutating it
   await assert.rejects(f.run(id),{code:'access_denied'});
   assert.equal(f.calls.some(c=>c.method.startsWith('chat.')),false);
   assert.deepEqual(await f.store.get('cards',f.cardId),before);
+ }finally{f.close();}
+});
+
+
+for(const entry of [
+ {reason:'unsupported_extension',metadata:{name:'private-file-name.txt'},message:/HWP 또는 HWPX 확장자/},
+ {reason:'file_size_limit',metadata:{size:20*1024*1024+1},message:/파일 크기 한도\(20 MiB\)/},
+ {reason:'missing_download_url',metadata:{url_private_download:null,url_private:null},message:/다운로드 주소를 제공하지/},
+])test(`metadata notice explains ${entry.reason} without sharing artifacts`,async()=>{
+ const f=fixture(entry.reason,entry.metadata);try{
+  const id=await f.seed();await f.run(id);
+  const updates=f.calls.filter(c=>c.method==='chat.update');assert.equal(updates.length,1);
+  const args=updates[0].args;assert.match(args.text,entry.message);
+  assert.equal(args.file_ids,undefined);assert.equal(args.metadata,undefined);
+  assert.equal(args.parse,'none');assert.equal(args.unfurl_links,'false');assert.equal(args.unfurl_media,'false');
+  assert.deepEqual(JSON.parse(args.blocks),[{type:'section',text:{type:'plain_text',text:args.text}}]);
+  assert.doesNotMatch(JSON.stringify(args),/FTEST|FOUTPUT|FIMAGE|private-file-name|https:\/\//);
+  assert.equal(f.calls.some(c=>c.method==='files.getUploadURLExternal'||c.method==='files.completeUploadExternal'||c.method==='chat.postMessage'),false);
+  assert.equal((await f.store.get<TerminalNotice>('terminal_notices',id))?.state,'sent');
+  await f.run(id);assert.equal(f.calls.filter(c=>c.method==='chat.update').length,1);
+ }finally{f.close();}
+});
+
+test('metadata-specific notice still requires a current bot-owned receipt',async()=>{
+ const f=fixture('file_size_limit',{size:20*1024*1024+1});try{
+  const id=await f.seed();await f.patch(card=>({...card,noticeTarget:{...card.noticeTarget!,generation:'old-generation'}}));
+  await f.run(id);assert.equal(f.calls.some(c=>c.method.startsWith('chat.')),false);
+  assert.equal((await f.store.get<TerminalNotice>('terminal_notices',id))?.state,'skipped');
  }finally{f.close();}
 });

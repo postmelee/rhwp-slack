@@ -20,7 +20,7 @@ import type {Receipt} from '../saves';
 import {downloadFile} from '../download';
 import {Uploads,savedAttempt,type UploadAttempt} from '../uploads';
 import {documentMetadata,documentMessage,browserEditorUrl} from '../document-message';
-import {UserError,denied} from '../errors';
+import {UserError,denied,denialMessage} from '../errors';
 import {slackDiagnostics,isSlackFailure} from '../slack-diagnostics';
 import {validateDocument} from '../validate-document';
 import {validateInput} from '../../shared/errors';
@@ -58,7 +58,7 @@ export class CloudApplication {
     const api=context?this.guarded(context):this.api;
     const source=await authorizeFile(api,config,actor,card.fileId,context?.signal);
     if(card.rootFileId!==card.fileId)await authorizeFile(api,config,actor,card.rootFileId,context?.signal);
-    if(source.name!==card.name||source.size!==card.size)denied('invalid_source_metadata');return {card,source};
+    if(source.name!==card.name||source.size!==card.size)denied('source_metadata_changed');return {card,source};
   }
   async ensureSource(id:string,actor:Actor,outer?:AbortSignal):Promise<Buffer>{
     // Reuse only the file info validated in this call; never cache permissions between requests.
@@ -287,7 +287,7 @@ export class CloudApplication {
             throw denial;
           }
           // Never reuse documentMessage here: its file_ids/metadata can share new files.
-          const text=missing?(current.pdfPreparedAt?'PDF는 생성됐지만 Slack 게시를 완료하지 못했습니다. ':'PDF·이미지 준비를 완료하지 못했습니다. ')+(sourceFailureMessage(error)??'원본 파일의 존재와 앱 공유 상태를 확인해 주세요.'):'문서 접근을 확인할 수 없어 PDF·이미지 준비가 중단되었습니다. 채널 참여와 문서 접근 권한을 확인해 주세요.';
+          const text=missing?(current.pdfPreparedAt?'PDF는 생성됐지만 Slack 게시를 완료하지 못했습니다. ':'PDF·이미지 준비를 완료하지 못했습니다. ')+(sourceFailureMessage(error)??'원본 파일의 존재와 앱 공유 상태를 확인해 주세요.'):(denialMessage(error)??'문서 접근을 확인할 수 없어 PDF·이미지 준비가 중단되었습니다. 채널 참여와 문서 접근 권한을 확인해 주세요.');
           if(task.terminalNotice)task.terminalNotice.reason=missing?'source_unavailable':'access_unavailable';
           const changed=await this.statusTarget(current,spec,context);
           if(changed){if(task.terminalNotice){task.terminalNotice.result='skipped';task.terminalNotice.reason=changed;}return;}
