@@ -102,3 +102,41 @@ Marketplace 입력은 실제 활성 워크스페이스 확보 전까지 보류�
 홈페이지에 OG/Twitter 이미지 지정이 없고 README 배너가 공개 export 목록에서 빠져 있었다. 공개 안내 페이지 6곳에 페이지별 제목·설명·URL과 공통 배너를 지정하고 site/assets/banner.png를 그대로 배포한다. 배너는 2756×2122 PNG이며 홈페이지 레이아웃·영상·편집기 코드는 변경하지 않았다.
 
 검증: `node --test tests/unit/public-site.test.mjs` 통과. 실제 export 결과의 배너 바이트가 원본과 동일하며 PNG 크기·모든 공개 페이지의 메타데이터·기존 비공개 자료 제외 계약을 검사했다. `git diff --check` 통과. CI·병합·공개 배포 응답은 PR 완료 기록에 남긴다. 공유 서비스의 기존 캐시 갱신 시점은 이번 검증 범위 밖이다.
+
+## 2026-11-18 후속 — 심사 피드백 정책 검토 초안
+
+### 작업 요약과 변경
+
+기존 #4의 Stage 15–17로 개인정보 처리의 코드·운영 설정을 대조하고, 국문 정확성 수정·영문 번역 초안·별도 한영 이용약관·변경 검토 페이지를 준비했다. 사용자 지시에 따라 시행 전 초안만 preview에 게시하며 production 적용·재제출은 보류한다.
+
+| 경로 | 변경 및 영향 |
+|---|---|
+| site/privacy/, site/privacy/en/ | 처리 목적/위치, 쿠키, 이용 이벤트, 분석 beacon, 만료와 삭제, 앱 제거 범위, 연락처를 한영으로 설명 |
+| site/terms/, site/terms/en/ | 서비스 범위, 권한·금지행위·문서 권리·베타·책임·중단·문의의 별도 초안 |
+| site/policy-review/ | 변경 내용·페이지 링크·사용자 검토와 사람 번역 등 남은 조건 |
+| site 공통 footer와 site.css | 약관 진입점과 눈에 띄는 초안 안내 |
+| scripts/public-site.mjs, pages-headers.mjs | 새 공개 경로 explicit allowlist/cache 및 기존 Google 확인 파일 보존 |
+| tests/unit/public-site.test.mjs, pages-headers.test.mjs | export 경계·링크·본문·언어·초안·연락처·헤더 회귀 검사 |
+
+문서 위치는 수행계획의 기존 `site/` 선택과 일치하며 작업 기록은 `mydocs/`에만 있다. 원래 /Users/melee/Documents/projects/rhwp-slack의 미커밋 privacy 수정은 건드리지 않았고, 최신 devel의 동일 내용을 기반으로 확장했다.
+
+### 검증 결과
+
+| 수용 기준 | 결과 |
+|---|---|
+| 관련 단위/내보내기 검사 | OK — 4/4 통과, git diff --check 통과 |
+| 운영 파일 기반 구성 | OK — canonical served files 200개 해시 대조 |
+| editor·static·bootstrap·Google 보존 | OK — 178개 파일 바이트 및 preview asset ID 동일 |
+| 접근 가능한 실제 정책 본문 | OK — 10개 URL HTTP 200, analytics 삽입 블록 제외 export와 동일 |
+| 모바일 읽기 | OK — 390px 영문 정책·약관 가로 넘침 없음, 초안 표시 확인 |
+| 운영·분석 설정 불변 | OK — canonical e40449f8 유지, Pages analytics build 설정 유지 |
+| 사람 번역 요청 | 미완료 — AI 초안이며 사람 번역 또는 심사자가 허용하는 사람 검수 절차 필요 |
+| 데이터 보관 설정 확정 | 미완료 — RUM 세부 조회 403, 현재 GCP 인증 미확보. 기간을 추정하지 않음 |
+
+검토 링크: [변경 요약](https://e3018368.rhwp-slack.pages.dev/policy-review/) · [국문 개인정보](https://e3018368.rhwp-slack.pages.dev/privacy/) · [English privacy](https://e3018368.rhwp-slack.pages.dev/privacy/en/) · [국문 약관](https://e3018368.rhwp-slack.pages.dev/terms/) · [English terms](https://e3018368.rhwp-slack.pages.dev/terms/en/).
+
+### 남은 사항
+
+사용자 문구·약관 검토, 사람 번역 요건 이행, 분석/로그/문의 보관 기간과 Firestore TTL 설정 확인, 적용일 확정, 승인 후 production 게시와 Slack URL 입력·재제출이 남아 있다. 현재 영문을 human-translated로 표현하지 않았고 Slack 재제출·I have fixed it·메일 발송을 하지 않았다. draft PR로 검토하며 merge나 #4 close는 하지 않는다. 로컬 Node 24.15.0의 사이트 검사를 pinned Node 24.21.0 전체 CI·실제 Slack E2E와 구분한다.
+
+공식 참고: [Slack 제출 가이드](https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/) · [Cloudflare Pages Web Analytics](https://developers.cloudflare.com/pages/how-to/web-analytics/).
