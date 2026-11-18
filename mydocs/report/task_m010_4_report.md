@@ -144,3 +144,5 @@ Marketplace 입력은 실제 활성 워크스페이스 확보 전까지 보류�
 ## Stage 18 — 2026-11-18 후속 요청 반영
 
 사용자 요청으로 REVIEW·검토 초안 및 내부 심사 문구를 공개 5개 페이지에서 제거했다. 정책 안내와 한영 개인정보·약관을 중립적으로 정리했다. 이전 Stage 17의 인증 확인 한계는 브라우저 확인으로 해소했다. Firestore records.expiresAt TTL 활성, 일반 로그 30일·필수 감사 로그 400일, Pages 관리 분석 연결을 확인했다. Cloudflare API 403과 로컬 GCP 인증 부재 자체는 유지되지만 필요한 현재 설정을 인증된 공식 콘솔에서 읽었다. 권한 확대·설정 변경은 하지 않았다. 상세는 [Stage 18](../working/task_m010_4_stage18.md). 사람 번역 요건은 계속 미완료이며 현재 영문을 사람 번역으로 주장하지 않는다.
+
+최신 확인용 배포: [정책 안내](https://policy-review-20261118.rhwp-slack.pages.dev/policy-review/) (ba2318aa). 10개 URL의 실제 본문, 기존 자산 178개, 운영 canonical 및 분석 설정 불변을 검증했다. 모바일 영문 두 페이지는 390px에서 가로 넘침이 없다. REVIEW·검토 초안 문구는 제거됐다. 테스트 4/4 통과. [PR #74](https://github.com/postmelee/rhwp-slack/pull/74)는 draft로 유지하며 기존 e3018368 주소는 이전 배포 기록이다. 사용자 확인·사람 번역 요건·운영 게시·Slack 재제출이 남아 있다.

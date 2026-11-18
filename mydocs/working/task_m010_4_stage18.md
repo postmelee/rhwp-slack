@@ -44,3 +44,14 @@ Stage: 18
 ## 승인 요청
 
 사용자가 인증 재시도 후 중립적 페이지 배포를 이미 지시했으므로 해당 범위는 계속 진행한다. Slack 재제출·I have fixed it·메일·runtime 배포는 포함하지 않는다.
+
+## 배포 후 확인
+
+- 배포: ba2318aa-ac16-4c0a-9f5d-ae6a36e4bcb4, 소스 eea49b4, preview branch policy-review-20261118.
+- [정책 안내](https://policy-review-20261118.rhwp-slack.pages.dev/policy-review/)에서 한영 개인정보·이용약관에 접근할 수 있다. 배포 고유 URL은 https://ba2318aa.rhwp-slack.pages.dev/ 이다.
+- 10개 URL HTTP 200, Cloudflare 삽입 beacon 블록 제외 본문이 export 파일과 동일. 5개 정책 페이지의 REVIEW·검토·초안·Draft 표현 없음. 약관 실제 본문 확인.
+- canonical e40449f8 및 분석 설정 유지. 기존 editor/static/locale-init/Google 파일 178개 asset ID 동일.
+- 인앱 브라우저 데스크톱 정책 안내와 모바일 영문 개인정보·약관 확인. 모바일 두 페이지 clientWidth=scrollWidth=390, 가로 넘침 없음.
+- 증거: workspace의 policy-neutral-desktop.jpg, privacy-neutral-mobile.jpg 및 policy-review-evidence/neutral-verification.json.
+- 기존 e3018368 고유 주소는 이전 배포이므로 새 고정 별칭을 사용한다.
+- PR #74는 draft로 유지한다. 사용자 확인과 사람 번역 요건 완료 후 운영 게시·Slack URL 변경·재제출을 별도로 진행해야 한다.
