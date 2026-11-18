@@ -14,7 +14,7 @@ const parse=text=>Object.fromEntries(text.trimEnd().split('\n\n').map(block=>{
 test('both roles keep editor/API policy and cache current and retained namespaces with one static rule',()=>{
  for(const publicSite of [false,true]){
   const text=pagesHeaders(origin,{publicSite}),rules=parse(text);
-  assert.equal(Object.keys(rules).length,publicSite?18:6);
+  assert.equal(Object.keys(rules).length,publicSite?23:6);
   assert.equal(rules['/editor/*']['Cache-Control'],'no-cache');
   assert.equal(rules['/api/*']['Cache-Control'],'no-store');
   assert.deepEqual(rules['/locale-init.js'],{'Cache-Control':'no-cache','X-Robots-Tag':'noindex, nofollow'});
@@ -36,7 +36,7 @@ test('both roles keep editor/API policy and cache current and retained namespace
   assert.equal(global['Content-Security-Policy'].includes("media-src 'self'"),publicSite);
   assert.equal(global['X-Robots-Tag'],publicSite?undefined:'noindex, nofollow');
   assert.equal(rules['/static/*']['X-Robots-Tag'],publicSite?'noindex, nofollow':undefined);
-  if(publicSite)assert.equal(rules['/privacy/']['Cache-Control'],'no-cache');
+  if(publicSite)for(const path of ['/privacy/','/privacy/en/','/terms/','/terms/en/','/policy-review/','/googlea2d4f48bbe57cea0.html'])assert.equal(rules[path]['Cache-Control'],'no-cache');
  }
 });
 

@@ -12,3 +12,5 @@
 @media(max-width:900px){.video-layout{grid-template-columns:1fr;gap:28px}}
 
 @media(max-width:640px){.features{grid-template-columns:1fr;gap:28px}}
+
+.policy-draft{padding:20px 24px;margin:24px 0;border:1px solid #b9913b;border-radius:12px;background:#fff9e9;color:#493b20}.policy-draft p:last-child{margin-bottom:0}.prose a{overflow-wrap:anywhere}
