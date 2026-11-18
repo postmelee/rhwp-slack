@@ -115,3 +115,7 @@ Stage 9 CI 보완: 첫 container smoke에서 LICENSE 파일 복사 누락을 발
 - Stage 15: 제품 devel, 별도 ops 사용량 writer·수집기·삭제 절차, Pages build_config 분석 설정과 live HTML을 대조한다. 임시 기록 유효기간과 물리 삭제를 구분한다.
 - Stage 16: 국문 정확성, 대응 영문 초안, 별도 한영 약관, 검토 요약, footer와 allowlist를 변경한다. node --test tests/unit/public-site.test.mjs로 실제 export·링크·정책 본문·기존 자산을 검사한다.
 - Stage 17: 운영 e40449f8의 로컬 보존본과 검증 파일을 바탕으로 public site 파일만 덮어쓴 preview를 준비한다. editor/static/locale-init/Google 파일을 해시로 대조한다. policy-review-20261118 branch만 배포하고 canonical 불변·실제 URL 본문·모바일 화면을 확인한다. publish/task4에서 devel 대상 draft PR을 만든다.
+
+## Stage 18 — 2026-11-18 인증 재확인과 중립적 정책 페이지
+
+사용자가 권한 오류·인증 부재를 다시 확인하고, REVIEW와 검토 초안 표현을 제거한 중립적 페이지 배포를 요청했다. 기존 API 재시도와 브라우저 로그인으로 현재 설정을 읽는다. 로그인만 사용자에게 맡기고 클라우드 설정은 바꾸지 않는다. Firestore TTL·로그 보관·Pages 분석 확인 결과를 한영 정책에 반영하고 사용자 화면의 심사/초안 메모를 작업 보고서로 옮긴다. 번역을 사람이 했다고 표현하지 않는다. 같은 확인용 Pages branch를 갱신해 본문/표시/기존 자산을 검증하고 PR #74를 업데이트한다. 재제출·메일·운영 runtime 변경은 계속 제외한다.

@@ -41,18 +41,20 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   assert.ok(files.includes('privacy/index.html'));assert.ok(files.includes('guide/index.html'));assert.ok(files.includes('support/index.html'));
   assert.ok(files.includes('licenses/index.html'));
   assert.equal(await readFile(join(root,'googlea2d4f48bbe57cea0.html'),'utf8'),'google-site-verification: googlea2d4f48bbe57cea0.html');
-  for(const [path,lang,title] of [['privacy/index.html','ko','개인정보 처리 안내'],['privacy/en/index.html','en','Privacy Policy'],['terms/index.html','ko','이용약관'],['terms/en/index.html','en','Terms of Service'],['policy-review/index.html','ko','정책·약관 변경 검토']]){
+  for(const [path,lang,title] of [['privacy/index.html','ko','개인정보 처리 안내'],['privacy/en/index.html','en','Privacy Policy'],['terms/index.html','ko','이용약관'],['terms/en/index.html','en','Terms of Service'],['policy-review/index.html','ko','정책 안내']]){
    const html=await readFile(join(root,path),'utf8');
    assert.match(html,new RegExp('<html lang="'+lang+'">'));
    assert.ok(html.includes('<h1>'+title+'</h1>'));
    assert.match(html,/<meta name="robots" content="noindex, nofollow">/);
-   assert.match(html,/검토 초안|Draft for review/);
+   assert.doesNotMatch(html,/검토|초안|Draft|draft|>REVIEW</);
    assert.match(html,/mailto:meleeisdeveloping@gmail.com/);
-   if(lang==='en')assert.match(html,/Human translation\/review has not been completed/);
+   assert.doesNotMatch(html,/human-translated|Human translation/);
   }
   const policy=await readFile(join(root,'privacy/index.html'),'utf8');
   assert.match(policy,/별도 자동 만료 없이/);
   assert.match(policy,/Web Analytics/);
+  assert.match(policy,/TTL 정책이 활성화/);
+  assert.match(policy,/30일/);assert.match(policy,/400일/);assert.match(policy,/6개월/);
   assert.doesNotMatch(policy,/방문자 분석 스크립트를 넣지 않습니다/);
   assert.match(policy,/접근·이전·삭제/);
   assert.match(policy,/설치 메타데이터/);
