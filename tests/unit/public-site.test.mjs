@@ -40,6 +40,29 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   const root=join(cwd,'dist/pages'),files=await readdir(root,{recursive:true});
   assert.ok(files.includes('privacy/index.html'));assert.ok(files.includes('guide/index.html'));assert.ok(files.includes('support/index.html'));
   assert.ok(files.includes('licenses/index.html'));
+  assert.equal(await readFile(join(root,'googlea2d4f48bbe57cea0.html'),'utf8'),'google-site-verification: googlea2d4f48bbe57cea0.html');
+  for(const [path,lang,title] of [['privacy/index.html','ko','개인정보 처리 안내'],['privacy/en/index.html','en','Privacy Policy'],['terms/index.html','ko','이용약관'],['terms/en/index.html','en','Terms of Service'],['policy-review/index.html','ko','정책 안내']]){
+   const html=await readFile(join(root,path),'utf8');
+   assert.match(html,new RegExp('<html lang="'+lang+'">'));
+   assert.ok(html.includes('<h1>'+title+'</h1>'));
+   assert.match(html,/<meta name="robots" content="noindex, nofollow">/);
+   assert.doesNotMatch(html,/검토|초안|Draft|draft|>REVIEW</);
+   assert.match(html,/mailto:meleeisdeveloping@gmail.com/);
+   assert.doesNotMatch(html,/human-translated|Human translation/);
+  }
+  const policy=await readFile(join(root,'privacy/index.html'),'utf8');
+  assert.match(policy,/별도 자동 만료 없이/);
+  assert.match(policy,/Web Analytics/);
+  assert.match(policy,/TTL 정책이 활성화/);
+  assert.match(policy,/30일/);assert.match(policy,/400일/);assert.match(policy,/6개월/);
+  assert.doesNotMatch(policy,/방문자 분석 스크립트를 넣지 않습니다/);
+  assert.match(policy,/접근·이전·삭제/);
+  assert.match(policy,/설치 메타데이터/);
+  const terms=await readFile(join(root,'terms/en/index.html'),'utf8');
+  assert.match(terms,/Prohibited use/);
+  assert.match(terms,/Stopping use and removing the app/);
+  assert.ok(!terms.includes('rhwp-api-origin'));
+  assert.match(await readFile(join(root,'index.html'),'utf8'),/href="\/terms\/"/);
   assert.equal(await readFile(join(root,'licenses/MIT.txt'),'utf8'),await readFile(new URL('../../LICENSE',import.meta.url),'utf8'));
   assert.equal(await readFile(join(root,'licenses/THIRD_PARTY_NOTICES.md'),'utf8'),await readFile(new URL('../../THIRD_PARTY_NOTICES.md',import.meta.url),'utf8'));
   const banner=await readFile(join(root,'assets/banner.png'));
@@ -50,7 +73,7 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   assert.ok(!files.includes('.env'));assert.ok(!files.includes('source.hwp'));
   for(const path of files.filter(f=>f.endsWith('.html'))){
    const html=await readFile(join(root,path),'utf8');assert.ok(!html.includes('{{INSTALL_URL}}'));
-   if(!path.startsWith('static/')&&!path.startsWith('editor/')&&path!=='404.html'){
+   if(!path.startsWith('google')&&!path.startsWith('static/')&&!path.startsWith('editor/')&&path!=='404.html'){
     assert.match(html,/https:\/\/api.example.test\/install/);assert.ok(!/<script\b/i.test(html));
     const meta=Object.fromEntries([...html.matchAll(/<meta (?:property|name)="([^"]+)" content="([^"]*)">/g)].map(m=>[m[1],m[2]]));
     assert.equal(meta['og:title'],html.match(/<title>(.*?)<\/title>/)[1]);
@@ -71,7 +94,7 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   assert.match(headers,/connect-src 'self' https:\/\/api.example.test/);
   assert.match(headers,/media-src 'self'(?:;|\n)/);
   assert.match(headers,/default-src 'none'/);
-  assert.equal(headers.trimEnd().split('\n\n').length,18);
+  assert.equal(headers.trimEnd().split('\n\n').length,23);
   assert.ok(!headers.includes('/static/'+version));
   assert.ok(files.includes(`static/${version}/studio/assets/chunk-119.js`));
   assert.equal(await readFile(join(root,'locale-init.js'),'utf8'),await readFile(join(root,`static/${version}/studio/locale-init.js`),'utf8'));

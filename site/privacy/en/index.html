@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Privacy Policy · rhwp for Slack</title><meta name="description" content="Privacy Policy"><link rel="icon" href="/rhwp-logo.png"><link rel="stylesheet" href="/site.css">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="rhwp for Slack">
+<meta property="og:locale" content="en_US">
+<meta property="og:title" content="Privacy Policy · rhwp for Slack">
+<meta property="og:description" content="Privacy Policy">
+<meta property="og:url" content="https://rhwp-slack.pages.dev/privacy/en/">
+<meta property="og:image" content="https://rhwp-slack.pages.dev/assets/banner.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="2756">
+<meta property="og:image:height" content="2122">
+<meta property="og:image:alt" content="Korean document previews in Slack and the rhwp browser editor">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Privacy Policy · rhwp for Slack">
+<meta name="twitter:description" content="Privacy Policy">
+<meta name="twitter:image" content="https://rhwp-slack.pages.dev/assets/banner.png">
+<meta name="twitter:image:alt" content="Korean document previews in Slack and the rhwp browser editor">
+<meta name="robots" content="noindex, nofollow">
+</head>
+<body><a class="skip" href="#main">Skip to content</a><header><a class="brand" href="/"><img src="/rhwp-logo.png" alt="" width="36" height="36"><strong class="brand-wordmark">rhwp</strong><span>for Slack</span></a><nav aria-label="Main navigation"><a href="/guide/">Guide (Korean)</a><a href="/support/">Support (Korean)</a><a href="https://github.com/postmelee/rhwp-slack">GitHub ↗</a><a class="button small" href="{{INSTALL_URL}}">Add to Slack</a></nav></header><main id="main"><article class="prose"><p class="eyebrow">PRIVACY</p><h1>Privacy Policy</h1><p class="updated">Updated: November 18, 2026 · Operator: Taegyu Lee</p><p><a href="/privacy/">한국어</a> · <a href="/policy-review/">Policies (Korean)</a></p>
+<p>This notice applies to the public beta of rhwp for Slack operated by Taegyu Lee. If your organization hosts the app itself, also consult that organization’s policies.</p>
+<h2>1. Information processed and why</h2><ul>
+<li><strong>Document content:</strong> We download the requested HWP/HWPX document to convert it to PDF and images, open it in the editor, or save an edited copy.</li>
+<li><strong>Document links:</strong> We retain workspace, channel, user and file identifiers, filenames, document hashes, and links between original messages and edited-copy threads. These support access checks, change detection, reopening in the same thread, and processing-status checks.</li>
+<li><strong>Installation and settings:</strong> We retain installer, workspace and bot identifiers, workspace addresses, installation times and permissions, encrypted bot tokens, and channel settings. Editor sign-in uses Slack’s openid and profile permissions to verify user and workspace identity.</li>
+<li><strong>Temporary records:</strong> We process sign-in state, single-use tickets, editing sessions, jobs, retries, and duplicate-prevention records. The API host uses security cookies lasting up to 10 minutes to bind installation and sign-in flows.</li>
+<li><strong>Usage records:</strong> To operate and improve the service, we retain installation observations, PDF-preparation and Slack-publication event types and times, hashed keys distinguishing workspaces, installation generations and documents, and aggregates. Usage events do not contain document content or filenames. Separate linking records for aggregation and deletion include workspace identifiers and installation-generation paths.</li>
+<li><strong>Operations and support:</strong> We use operational logs, including errors, processing times and status, and support inquiries you send to investigate problems.</li></ul>
+<h2>2. Processing locations and service providers</h2>
+<p>Original documents, edited copies, PDFs and PNGs are stored in Slack. Google Cloud Run temporarily processes documents for conversion, opening and saving. Document content is not permanently stored in Firestore. Firestore stores the linking, installation, settings, temporary and usage records described above.</p>
+<p>Cloudflare Pages delivers the public editor program and website. Document files and Slack secrets are not included in Pages deployments. Editing runs in your browser. Server processing is also necessary, so this is not a service in which all processing takes place solely on your device.</p>
+<p>The public beta uses Slack, Google Cloud and Cloudflare. These providers may process connection information, such as IP addresses, for communications, security and operations, subject to their policies and account settings.</p>
+<h2>3. Website analytics</h2>
+<p>Web Analytics is connected to the Cloudflare Pages project, and a Cloudflare analytics script (beacon) is inserted into website and editor HTML. It measures page views and loading performance. Browser and site security policies may restrict execution and transmission.</p>
+<p>See <a href="https://developers.cloudflare.com/pages/how-to/web-analytics/">Cloudflare’s official explanation</a>. Cloudflare retains received analytics data without sampling for 7 days, then uses sampled aggregates for longer-term statistics. Its analytics interface provides access to the previous 6 months of data. This access window does not specify when every raw record is deleted. See <a href="https://developers.cloudflare.com/web-analytics/faq/">Cloudflare’s retention and access information</a>.</p>
+<h2>4. Retention and expiry</h2>
+<p>Active document links, channel settings and installation information are retained while providing the service. Single-use editor tickets are valid for 1 minute; sign-in state for 10 minutes. Editing sessions become unusable after 10 minutes of inactivity or a maximum of 1 hour. Temporary event and completed-job records have expiry times of up to 7 days. In-progress jobs may remain until completion.</p>
+<p>Expiry restricts access and is distinct from physical deletion. A Firestore TTL policy is active for the records collection group using the expiresAt field. Records with an expiry timestamp are deleted in the background, not immediately at expiry. These expiry periods do not apply to active links without an expiry timestamp or to separate usage records.</p>
+<p>Workspace usage records have no separate automatic expiry. Deletion requests are handled after verifying authority and scope. Google Cloud Logging is configured to retain general operational logs for 30 days and required audit logs for 400 days. Support inquiries are received by email and used to handle the inquiry and follow-up responses. Contact us below with retention or deletion requests.</p>
+<p>Removing the app blocks use of that installation and removes its stored encrypted token, but does not immediately erase all installation metadata, previous links, usage or operational records. Retention and deletion of files in Slack follow the workspace’s policies.</p>
+<h2>5. Access, transfer and deletion requests</h2>
+<p>Email <a href="mailto:meleeisdeveloping@gmail.com">meleeisdeveloping@gmail.com</a> with your workspace address and the scope of your request. After verifying your authority, we handle requests to access, transfer or delete information retained on our servers. Linking records and usage aggregates are checked separately. Do not send passwords, bot tokens or sensitive original documents. Contact your workspace administrator as well if Slack files need to be deleted.</p>
+<h2>6. Contact and changes</h2><p>Operator: Taegyu Lee · <a href="mailto:meleeisdeveloping@gmail.com">meleeisdeveloping@gmail.com</a>. When processing practices change, this page and its updated date will be revised.</p>
+</article></main><footer><nav aria-label="Footer"><a href="/privacy/en/">Privacy Policy</a> · <a href="/terms/en/">Terms of Service</a> · <a href="/support/">Support (Korean)</a></nav><p>Operated independently by Taegyu Lee · <a href="mailto:meleeisdeveloping@gmail.com">meleeisdeveloping@gmail.com</a></p><p>Not an official product of Slack or Hancom.</p></footer></body></html>
