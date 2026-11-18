@@ -109,3 +109,9 @@ Stage 9 CI 보완: 첫 container smoke에서 LICENSE 파일 복사 누락을 발
 ## Stage 14 — 공유 링크 미리보기 배너
 
 사용자 요청에 따라 README의 site/assets/banner.png 원본을 공개 사이트 배포 목록에 포함한다. 공개 안내 페이지 6곳에 각 페이지의 제목·설명·정규 URL과 공통 배너의 Open Graph/Twitter 메타데이터를 지정한다. 기존 export 검사에서 실제 배포 이미지 바이트·크기와 메타데이터를 대조한다. devel과 main 통합 후 기존 Pages 운영 환경에 배포하고 공개 응답을 확인한다. 편집기와 홈페이지 레이아웃·영상은 변경하지 않는다.
+
+## Stage 15–17 — 2026-11-18 정책 초안 검토
+
+- Stage 15: 제품 devel, 별도 ops 사용량 writer·수집기·삭제 절차, Pages build_config 분석 설정과 live HTML을 대조한다. 임시 기록 유효기간과 물리 삭제를 구분한다.
+- Stage 16: 국문 정확성, 대응 영문 초안, 별도 한영 약관, 검토 요약, footer와 allowlist를 변경한다. node --test tests/unit/public-site.test.mjs로 실제 export·링크·정책 본문·기존 자산을 검사한다.
+- Stage 17: 운영 e40449f8의 로컬 보존본과 검증 파일을 바탕으로 public site 파일만 덮어쓴 preview를 준비한다. editor/static/locale-init/Google 파일을 해시로 대조한다. policy-review-20261118 branch만 배포하고 canonical 불변·실제 URL 본문·모바일 화면을 확인한다. publish/task4에서 devel 대상 draft PR을 만든다.
