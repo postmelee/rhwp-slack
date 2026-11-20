@@ -6,7 +6,7 @@ import type {Actor} from '../access';
 import type {MetadataStore} from './metadata';
 import {errorCode,terminalTaskFailure,eventNoticeResult,terminalNoticeResult,bindLogicalTask,taskStateFinished} from './telemetry';
 import {errorDiagnostics,restoreDiagnostics,type ErrorDiagnostics} from './error-diagnostics';
-import {isPermanentEventFailure} from './task-failures';
+import {isPermanentEventFailure,taskFailureCode} from './task-failures';
 import {slackDiagnostics,attachSlackDiagnostics,attachResponseSizeDiagnostics,type SlackDiagnostics} from '../slack-diagnostics';
 export const MAX_TASK_ATTEMPTS=3;
 export const MAX_NOTICE_ATTEMPTS=3;
@@ -137,6 +137,7 @@ export class DurableTasks {
     const timer=setInterval(()=>{renewal=renewal.then(checkpoint).catch(()=>controller.abort(new LeaseLost('Terminal notice lease unavailable')));},Math.max(10,Math.floor(this.leaseMs/3)));timer.unref();
     const timeout=setTimeout(()=>controller.abort(new LeaseLost('Terminal notice timed out')),60_000);timeout.unref();
     const context:TaskContext={signal,checkpoint,id,attempt:Math.min(work.generation,MAX_TASK_ATTEMPTS),maxAttempts:MAX_TASK_ATTEMPTS,finalAttempt:true,terminalFailure:work.failureCode??'task_deadline',terminalNotice:{phase:'bookkeeping'}};
+    const maxNoticeAttempts=work.spec.kind==='prepare'&&work.failureCode==='file_size_limit'?1:MAX_NOTICE_ATTEMPTS;
     let settled=false,noticeAttempt=receipt.attempts;
     const finish=async(state:TerminalNotice['state'],error?:unknown)=>{
       await checkpoint();
@@ -153,7 +154,7 @@ export class DurableTasks {
         await finish('skipped');terminalNoticeResult(id,'skipped',receipt.attempts,undefined,this.noticeSink,context.terminalNotice?.reason);return;
       }
       if(context.terminalNotice?.result!=='ready')throw new Error('Missing terminal bookkeeping outcome');
-      if(receipt.attempts>=MAX_NOTICE_ATTEMPTS){
+      if(receipt.attempts>=maxNoticeAttempts){
         await finish('exhausted');terminalNoticeResult(id,'exhausted',receipt.attempts,undefined,this.noticeSink,context.terminalNotice?.reason);return;
       }
       const attempt=await this.store.atomic<TerminalNotice,number>('terminal_notices',id,current=>{
@@ -169,7 +170,7 @@ export class DurableTasks {
         const denied=['not_in_channel','channel_not_found','is_archived','missing_scope','no_permission','posting_to_channel_denied','invalid_auth','token_revoked','account_inactive'].includes(slackError);
         if(denied)context.terminalNotice!.reason='channel_access_unavailable';
         const permanent=denied||['message_not_found','cant_update_message','invalid_blocks'].includes(slackError);
-        const state=permanent||attempt>=MAX_NOTICE_ATTEMPTS?'exhausted':'pending';
+        const state=permanent||attempt>=maxNoticeAttempts?'exhausted':'pending';
         await finish(state,error.failure);terminalNoticeResult(id,state==='pending'?'failed':'exhausted',attempt,error.failure,this.noticeSink,context.terminalNotice?.reason);
         if(state==='pending')throw error;
         return;
@@ -248,11 +249,12 @@ export class DurableTasks {
         if(!work.watchdogFor)taskStateFinished(id,work.spec,work.generation,'done');
       }catch(error){
         clearInterval(timer);await renewal;
-        const final=!(error instanceof TaskBusy)&&!work.watchdogFor&&(work.generation>=MAX_TASK_ATTEMPTS||work.deadlineAt!<=this.now()||isPermanentConversionFailure(errorCode(error))||isPermanentEventFailure(work.spec,error));
+        const code=taskFailureCode(error);
+        const final=!(error instanceof TaskBusy)&&!work.watchdogFor&&(work.generation>=MAX_TASK_ATTEMPTS||work.deadlineAt!<=this.now()||code==='file_size_limit'||isPermanentConversionFailure(code)||isPermanentEventFailure(work.spec,error));
         const failureDetails=errorDiagnostics(error,'task_failure');
         const failed=await this.store.atomic<Work,Work|undefined>('tasks',id,current=>{
           if(current?.owner!==owner||current.generation!==work.generation||current.state!=='running'||(current.leaseUntil??0)<=this.now())return {value:current,expiresAt:current?.terminalAt===undefined?undefined:current.terminalAt+RETENTION_MS,result:undefined};
-          const value:Work={...current,...(!work.watchdogFor&&!(error instanceof TaskBusy)&&current.firstFailureCode===undefined?{firstFailureCode:errorCode(error),firstFailureDiagnostics:slackDiagnostics(error),firstFailureDetails:failureDetails}:{}),state:final?'failed':'queued',owner:undefined,leaseUntil:undefined,failureCode:errorCode(error),failureDiagnostics:slackDiagnostics(error),failureDetails,generation:error instanceof TaskBusy?Math.max(0,current.generation-1):current.generation,...(final?{terminalAt:this.now()}:{})};
+          const value:Work={...current,...(!work.watchdogFor&&!(error instanceof TaskBusy)&&current.firstFailureCode===undefined?{firstFailureCode:code,firstFailureDiagnostics:slackDiagnostics(error),firstFailureDetails:failureDetails}:{}),state:final?'failed':'queued',owner:undefined,leaseUntil:undefined,failureCode:code,failureDiagnostics:slackDiagnostics(error),failureDetails,generation:error instanceof TaskBusy?Math.max(0,current.generation-1):current.generation,...(final?{terminalAt:this.now()}:{})};
           return {value,expiresAt:final?value.terminalAt!+RETENTION_MS:undefined,result:value};
         });
         if(!failed)throw new LeaseLost('Worker no longer owns task');

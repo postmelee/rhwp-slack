@@ -2,7 +2,7 @@ import type {NoticeReason} from './tasks';
 import {isSourceUnavailable,sourceFailureMessage} from '../source-failure';
 import {isPermanentConversionFailure} from '../../conversion/failures.mjs';
 import {createHash,randomUUID} from 'node:crypto';
-import {measured,conversionMetric,milestone,errorCode,notificationFailure,unshareVisibilityUnavailable,shareCheckFinished,artifactFinished} from './telemetry';
+import {measured,conversionMetric,milestone,notificationFailure,unshareVisibilityUnavailable,shareCheckFinished,artifactFinished} from './telemetry';
 import {setTimeout as delay} from 'node:timers/promises';
 import type {MetadataStore} from './metadata';
 import {BoundedWork,serialWrites} from '../concurrency';
@@ -20,13 +20,14 @@ import type {Receipt} from '../saves';
 import {downloadFile} from '../download';
 import {Uploads,savedAttempt,type UploadAttempt} from '../uploads';
 import {documentMetadata,documentMessage,browserEditorUrl} from '../document-message';
-import {UserError,denied,denialMessage} from '../errors';
+import {UserError,denied,denialMessage,denialReason,FILE_SIZE_LIMIT_NOTICE} from '../errors';
 import {slackDiagnostics,isSlackFailure} from '../slack-diagnostics';
 import {validateDocument} from '../validate-document';
 import {validateInput} from '../../shared/errors';
 import {convertPreview,convertPageImages,type PageImage} from '../../conversion/convert.mjs';
 interface CloudCard extends Omit<Card,'imageAttempts'|'imageWork'|'updates'> {attempts?:Record<string,UploadAttempt>;fence?:string;removed?:boolean;previewRequestId?:string;pdfPreparedAt?:number;slackPublishedAt?:number;}
-interface Request {actor:Actor;fileId:string;}
+import {taskFailureCode} from './task-failures';
+interface Request {actor:Actor;fileId:string;oversizeNotice?:'requester'|'uploader';}
 /** Internal race signal, never inferred from an external error string. */
 class RemovedCardWrite extends Error {constructor(){super('Card ownership changed');}}
 interface SaveOperation {hash:string;cardId:string;attempt:UploadAttempt;receipt:Receipt;}
@@ -78,7 +79,7 @@ export class CloudApplication {
     const card=await this.store.get<CloudCard>('cards',id);
     return !!card&&!card.removed&&typeof url==='string'&&[this.config.publicOrigin,card.origin].some(origin=>!!origin&&url===`${origin}/documents/${id}`);
   }
-  async submit(actor:Actor,fileId:string,key:string):Promise<string>{
+  async submit(actor:Actor,fileId:string,key:string,oversizeNotice?:Request['oversizeNotice']):Promise<string>{
     await this.accessConfig(actor);if(!ID.file.test(fileId))denied();
     // Preserve request identities imported from the single-server deployment.
     if(key.startsWith('thread:')){
@@ -88,7 +89,7 @@ export class CloudApplication {
     const id=stableId(JSON.stringify([actor.teamId,actor.channelId,key]));
     await this.store.atomic<Request,void>('preparations',id,current=>{
       if(current&&(current.fileId!==fileId||current.actor.teamId!==actor.teamId||current.actor.channelId!==actor.channelId))throw new Error('Request conflict');
-      return {value:current??{actor,fileId},result:undefined};
+      return {value:current??{actor,fileId,...(oversizeNotice?{oversizeNotice}:{})},result:undefined};
     });
     if(!await this.store.get('cards',id))await this.reaction(id,actor,'pending',false);
     await this.tasks.enqueue('prepare:'+id,{teamId:actor.teamId,cardId:id,kind:'prepare'});return id;
@@ -103,6 +104,7 @@ export class CloudApplication {
     await this.authorize(id,actor);
     const taskId=await this.locked(id,async(card,context)=>{
       if(card.messageTs!==messageTs)denied();
+      if(card.recovery?.state==='failed'&&card.recovery.errorCode==='file_size_limit')throw new UserError('preview_limit',FILE_SIZE_LIMIT_NOTICE);
       if(kind==='preview'&&card.pdf==='ready'&&card.imageState==='ready')return;
       if(kind==='images'){
         if(!card.pageCount||card.pdf!=='ready')throw new UserError('pages_pending','PDF를 준비 중입니다. 잠시 후 다시 시도하세요.');
@@ -211,9 +213,10 @@ export class CloudApplication {
       // Only known application denial/write races may become a confirmed cancellation.
       // Lease loss, transient storage/Slack/conversion failures must retain normal retry behavior.
       if((error instanceof RemovedCardWrite||(error instanceof UserError&&error.code==='access_denied'))&&await this.cancelled(spec,task))return;
-      const final=!!task.finalAttempt||isPermanentConversionFailure(errorCode(error));
+      const code=taskFailureCode(error);
+      const final=!!task.finalAttempt||code==='file_size_limit'||isPermanentConversionFailure(code);
       // DurableTasks commits the business failure before starting any terminal Slack notice.
-      await this.failed(spec,final?{...task,terminalNotice:{phase:'bookkeeping'}}:task,errorCode(error),final).catch(()=>{});
+      await this.failed(spec,final?{...task,terminalNotice:{phase:'bookkeeping'}}:task,code,final).catch(()=>{});
       throw error;
     }
   }
@@ -229,12 +232,35 @@ export class CloudApplication {
     if(target.fileId!==fresh.fileId||target.fileId!==card.fileId||fresh.messageTs!==card.messageTs||fresh.actor.channelId!==card.actor.channelId||fresh.actor.teamId!==card.actor.teamId||target.cardId!==spec.cardId||target.cardId!==card.id||target.teamId!==spec.teamId||target.teamId!==card.actor.teamId||target.channelId!==card.actor.channelId||target.messageTs!==card.messageTs||
       (spec.actor&&(spec.actor.teamId!==target.teamId||spec.actor.channelId!==target.channelId)))return 'target_mismatch';
   }
+  private async notifyOversizedRequest(spec:TaskSpec,task:TaskContext,notice:NonNullable<TaskContext['terminalNotice']>):Promise<void>{
+    const request=await this.store.get<Request>('preparations',spec.cardId);
+    if(!request||request.actor.teamId!==spec.teamId||
+      (request.oversizeNotice!=='requester'&&request.oversizeNotice!=='uploader')){
+      notice.result='skipped';return;
+    }
+    if(notice.phase==='bookkeeping'){
+      notice.result='ready';return;
+    }
+    let oversized=false;
+    try{await authorizeFile(this.guarded(task),await this.accessConfig(request.actor),request.actor,request.fileId,task.signal);}
+    catch(error){
+      if(!(error instanceof UserError)||error.code!=='access_denied')throw error;
+      oversized=denialReason(error)==='file_size_limit';
+    }
+    if(!oversized){notice.result='skipped';return;}
+    await this.guarded(task).call('chat.postEphemeral',{channel:request.actor.channelId,user:request.actor.userId,text:FILE_SIZE_LIMIT_NOTICE});
+    notice.result='sent';
+  }
   private async failed(spec:TaskSpec,task:TaskContext,code:string,final:boolean):Promise<void>{
     await task.checkpoint();
     if(spec.teamId!==this.config.teamId)denied();
     const card=await this.store.get<CloudCard>('cards',spec.cardId);
     if(!card){
-      if(task.terminalNotice){task.terminalNotice.result='skipped';task.terminalNotice.reason='card_missing';return;}
+      if(task.terminalNotice){
+        if(code==='file_size_limit'&&spec.kind==='prepare')await this.notifyOversizedRequest(spec,task,task.terminalNotice);
+        else{task.terminalNotice.result='skipped';task.terminalNotice.reason='card_missing';}
+        return;
+      }
       if(spec.kind==='prepare'){
         const request=await this.store.get<Request>('preparations',spec.cardId);
         if(request){await authorizeFile(this.api,await this.accessConfig(request.actor),request.actor,request.fileId);await this.reaction(spec.cardId,request.actor,final?'failed':'pending',true);}
@@ -292,9 +318,10 @@ export class CloudApplication {
           const changed=await this.statusTarget(current,spec,context);
           if(changed){if(task.terminalNotice){task.terminalNotice.result='skipped';task.terminalNotice.reason=changed;}return;}
           await this.options.noticeIdentity!.check();
-          await this.guarded(context).call('chat.update',{channel:current.actor.channelId,ts:current.messageTs,text,blocks:[
-            {type:'section',text:{type:'plain_text',text}},
-          ],parse:'none',unfurl_links:false,unfurl_media:false});
+          const blocks=denialReason(error)==='file_size_limit'?[
+            {type:'section',text:{type:'mrkdwn',text:FILE_SIZE_LIMIT_NOTICE}},
+          ]:[{type:'section',text:{type:'plain_text',text}}];
+          await this.guarded(context).call('chat.update',{channel:current.actor.channelId,ts:current.messageTs,text,blocks,parse:'none',unfurl_links:false,unfurl_media:false});
           if(task.terminalNotice)task.terminalNotice.result='sent';
           if(!missing)await this.reaction(current.id,current.actor,final?'failed':'pending',true).catch(()=>{});
           return;

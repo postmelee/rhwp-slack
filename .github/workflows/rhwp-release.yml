@@ -1,0 +1,60 @@
+name: Check upstream rhwp release
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+concurrency:
+  group: upstream-rhwp-release
+  cancel-in-progress: false
+permissions: {}
+jobs:
+  candidate:
+    if: github.repository == 'postmelee/rhwp-slack' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: devel
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+      - name: Verify release and prepare pins
+        id: pins
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/update-rhwp-release.py
+      - name: Publish candidate and run app checks
+        if: steps.pins.outputs.version != ''
+        env:
+          VERSION: ${{ steps.pins.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="codex/rhwp-$VERSION"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          gh auth setup-git
+          git switch -c "$branch"
+          git add -- package.json package-lock.json studio/upstream.json studio/source-files.json
+          git diff --cached --check
+          git commit -m "Pin rhwp $VERSION for release testing"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch --depth=1 origin "$branch"
+            git diff --exit-code HEAD FETCH_HEAD
+          else
+            git push origin "HEAD:refs/heads/$branch"
+          fi
+          gh pr create --draft --base devel --head "$branch" --title "Update rhwp to $VERSION" --body "Update converter, editor and verified Studio pins. Review integration checks before merging."
+          gh workflow run ci.yml --ref "$branch"
+      - name: Recover pending CI dispatch
+        if: steps.pins.outputs.dispatch_branch != ''
+        env:
+          BRANCH: ${{ steps.pins.outputs.dispatch_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref "$BRANCH"

@@ -1,5 +1,11 @@
-import {UserError} from '../errors';
+import {UserError,denialReason} from '../errors';
 import {slackDiagnostics,isSlackFailure} from '../slack-diagnostics';
+import {errorCode} from './telemetry';
+/** Distinguish the trusted source-file denial from Slack and download byte limits. */
+export function taskFailureCode(error:unknown):string {
+ if(denialReason(error)==='file_size_limit')return 'file_size_limit';
+ const code=errorCode(error);return code==='file_size_limit'?'internal':code;
+}
 const permanent=new Set(['missing_scope','invalid_auth','not_authed','token_revoked','token_expired','account_inactive','file_deleted']);
 /** Only diagnostics attached by our Slack client may shorten event retries. */
 export function isPermanentEventFailure(spec:{kind:string},error:unknown):boolean {
