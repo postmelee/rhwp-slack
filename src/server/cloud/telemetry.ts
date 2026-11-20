@@ -154,10 +154,10 @@ export function unshareVisibilityUnavailable():void {
 }
 
 /** Called after durable failure is confirmed, outside the callback's trace scope. */
-export function terminalTaskFailure(id:string,spec:TaskSpec,attempt:number,error:unknown,sink?:Sink):void {
+export function terminalTaskFailure(id:string,spec:TaskSpec,attempt:number,error:unknown,sink?:Sink,firstFailure?:unknown):void {
   try{
     if(!/^[a-f0-9]{64}$/.test(id)||!['prepare','preview','images','event'].includes(spec.kind)||typeof spec.cardId!=='string'||!Number.isSafeInteger(attempt)||attempt<0)return;
-    independent({event:'task_terminal_failed',taskId:id,cardKey:createHash('sha256').update(spec.cardId).digest('hex'),kind:spec.kind,attempt,errorCode:errorCode(error),...slackDiagnostics(error),...errorDiagnostics(error,'terminal_failure')},sink);
+    independent({event:'task_terminal_failed',taskId:id,cardKey:createHash('sha256').update(spec.cardId).digest('hex'),kind:spec.kind,attempt,errorCode:errorCode(error),...slackDiagnostics(error),...errorDiagnostics(error,'terminal_failure'),...(firstFailure===undefined?{}:{firstFailure:{errorCode:errorCode(firstFailure),...slackDiagnostics(firstFailure),...errorDiagnostics(firstFailure,'terminal_failure')}})},sink);
   }catch{/* Diagnostics cannot change task delivery or durable state. */}
 }
 
