@@ -6,6 +6,8 @@ import {join,resolve} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 const exporter=resolve('scripts/export-pages.mjs');
+const standaloneExporter=resolve('scripts/export-public-site.mjs');
+const publicOrigin='https://rhwp-bot.pages.dev';
 test('Pages public site is opt-in, links only the deployment API and publishes no document or secret files',async()=>{
  const cwd=await mkdtemp(join(tmpdir(),'rhwp-public-site-'));
  try{
@@ -40,6 +42,29 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   const root=join(cwd,'dist/pages'),files=await readdir(root,{recursive:true});
   assert.ok(files.includes('privacy/index.html'));assert.ok(files.includes('guide/index.html'));assert.ok(files.includes('support/index.html'));
   assert.ok(files.includes('licenses/index.html'));
+  assert.equal(await readFile(join(root,'googlea2d4f48bbe57cea0.html'),'utf8'),'google-site-verification: googlea2d4f48bbe57cea0.html');
+  for(const [path,lang,title] of [['privacy/index.html','ko','개인정보 처리 안내'],['privacy/en/index.html','en','Privacy Policy'],['terms/index.html','ko','이용약관'],['terms/en/index.html','en','Terms of Service'],['policy-review/index.html','ko','정책 안내']]){
+   const html=await readFile(join(root,path),'utf8');
+   assert.match(html,new RegExp('<html lang="'+lang+'">'));
+   assert.ok(html.includes('<h1>'+title+'</h1>'));
+   assert.match(html,/<meta name="robots" content="noindex, nofollow">/);
+   assert.doesNotMatch(html,/검토|초안|Draft|draft|>REVIEW</);
+   assert.match(html,/mailto:meleeisdeveloping@gmail.com/);
+   assert.doesNotMatch(html,/human-translated|Human translation/);
+  }
+  const policy=await readFile(join(root,'privacy/index.html'),'utf8');
+  assert.match(policy,/별도 자동 만료 없이/);
+  assert.match(policy,/Web Analytics/);
+  assert.match(policy,/TTL 정책이 활성화/);
+  assert.match(policy,/30일/);assert.match(policy,/400일/);assert.match(policy,/6개월/);
+  assert.doesNotMatch(policy,/방문자 분석 스크립트를 넣지 않습니다/);
+  assert.match(policy,/접근·이전·삭제/);
+  assert.match(policy,/설치 메타데이터/);
+  const terms=await readFile(join(root,'terms/en/index.html'),'utf8');
+  assert.match(terms,/Prohibited use/);
+  assert.match(terms,/Stopping use and removing the app/);
+  assert.ok(!terms.includes('rhwp-api-origin'));
+  assert.match(await readFile(join(root,'index.html'),'utf8'),/href="\/terms\/"/);
   assert.equal(await readFile(join(root,'licenses/MIT.txt'),'utf8'),await readFile(new URL('../../LICENSE',import.meta.url),'utf8'));
   assert.equal(await readFile(join(root,'licenses/THIRD_PARTY_NOTICES.md'),'utf8'),await readFile(new URL('../../THIRD_PARTY_NOTICES.md',import.meta.url),'utf8'));
   const banner=await readFile(join(root,'assets/banner.png'));
@@ -50,13 +75,14 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   assert.ok(!files.includes('.env'));assert.ok(!files.includes('source.hwp'));
   for(const path of files.filter(f=>f.endsWith('.html'))){
    const html=await readFile(join(root,path),'utf8');assert.ok(!html.includes('{{INSTALL_URL}}'));
-   if(!path.startsWith('static/')&&!path.startsWith('editor/')&&path!=='404.html'){
+   if(!path.startsWith('google')&&!path.startsWith('static/')&&!path.startsWith('editor/')&&path!=='404.html'){
     assert.match(html,/https:\/\/api.example.test\/install/);assert.ok(!/<script\b/i.test(html));
     const meta=Object.fromEntries([...html.matchAll(/<meta (?:property|name)="([^"]+)" content="([^"]*)">/g)].map(m=>[m[1],m[2]]));
     assert.equal(meta['og:title'],html.match(/<title>(.*?)<\/title>/)[1]);
     assert.equal(meta['og:description'],meta.description);
-    assert.equal(meta['og:url'],'https://rhwp-slack.pages.dev/'+path.replace(/index\.html$/,''));
-    assert.equal(meta['og:image'],'https://rhwp-slack.pages.dev/assets/banner.png');
+    assert.equal(meta['og:url'],publicOrigin+'/'+path.replace(/index\.html$/,''));
+    assert.ok(html.includes('<link rel="canonical" href="'+meta['og:url']+'">'));
+    assert.equal(meta['og:image'],publicOrigin+'/assets/banner.png');
     assert.equal(meta['og:image:width'],String(banner.readUInt32BE(16)));
     assert.equal(meta['og:image:height'],String(banner.readUInt32BE(20)));
     assert.equal(meta['og:image:type'],'image/png');assert.ok(meta['og:image:alt']);
@@ -67,11 +93,20 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
     }
    }
   }
+  await assert.rejects(readFile(join(root,'_redirects')),{code:'ENOENT'});
+  run('https://api.example.test','--public-site','--legacy-redirects');
+  const redirectedRoutes=['/','/guide/','/support/','/privacy/','/privacy/en/','/terms/','/terms/en/','/licenses/'];
+  const pairs=redirectedRoutes.flatMap(route=>[
+   ...(route==='/'?[]:[route.slice(0,-1)]),route,route+'index.html',
+  ].map(path=>path+' '+publicOrigin+route+' 301'));
+  assert.deepEqual((await readFile(join(root,'_redirects'),'utf8')).trimEnd().split('\n'),pairs);
+  assert.equal(await readFile(join(root,'googlea2d4f48bbe57cea0.html'),'utf8'),'google-site-verification: googlea2d4f48bbe57cea0.html');
+  assert.throws(()=>run('https://api.example.test','--legacy-redirects'));
   const headers=await readFile(join(root,'_headers'),'utf8');
   assert.match(headers,/connect-src 'self' https:\/\/api.example.test/);
   assert.match(headers,/media-src 'self'(?:;|\n)/);
   assert.match(headers,/default-src 'none'/);
-  assert.equal(headers.trimEnd().split('\n\n').length,18);
+  assert.equal(headers.trimEnd().split('\n\n').length,23);
   assert.ok(!headers.includes('/static/'+version));
   assert.ok(files.includes(`static/${version}/studio/assets/chunk-119.js`));
   assert.equal(await readFile(join(root,'locale-init.js'),'utf8'),await readFile(join(root,`static/${version}/studio/locale-init.js`),'utf8'));
@@ -90,5 +125,30 @@ test('Pages public site is opt-in, links only the deployment API and publishes n
   await writeFile(join(cwd,'dist/studio/locale-init.js'),'tampered');
   assert.throws(()=>run('https://api.example.test','--public-site'));
   assert.equal(await readFile(join(root,'output-marker'),'utf8'),'preserve on invalid input');
+ }finally{await rm(cwd,{recursive:true,force:true});}
+});
+
+test('the standalone site needs no Studio build and serves only public site files',async()=>{
+ const cwd=await mkdtemp(join(tmpdir(),'rhwp-standalone-site-'));
+ try{
+  const root=join(cwd,'dist/public-site');
+  const run=(origin)=>execFileSync(process.execPath,[standaloneExporter,origin],{cwd,encoding:'utf8',stdio:'pipe'});
+  run('https://api.example.test');
+  const files=await readdir(root,{recursive:true});
+  for(const path of ['index.html','privacy/en/index.html','terms/en/index.html','404.html','robots.txt','sitemap.xml','_headers']){
+   assert.ok(files.includes(path));
+  }
+  for(const path of ['editor','static','api','locale-init.js','googlea2d4f48bbe57cea0.html','_redirects']){
+   assert.ok(!files.includes(path),path);
+  }
+  assert.match(await readFile(join(root,'index.html'),'utf8'),/https:\/\/api.example.test\/install/);
+  const sitemap=await readFile(join(root,'sitemap.xml'),'utf8');
+  assert.deepEqual([...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(m=>m[1]),['/','/guide/','/support/','/licenses/'].map(route=>publicOrigin+route));
+  assert.match(await readFile(join(root,'robots.txt'),'utf8'),/Sitemap: https:\/\/rhwp-bot\.pages\.dev\/sitemap.xml/);
+  const headers=await readFile(join(root,'_headers'),'utf8');
+  assert.match(headers,/frame-ancestors 'none'/);
+  assert.match(headers,/\/privacy\/en\/\n  Cache-Control: no-cache\n  X-Robots-Tag: noindex, nofollow/);
+  assert.throws(()=>run('https://api.example.test/unsafe'));
+  assert.ok(await readFile(join(root,'index.html'),'utf8'));
  }finally{await rm(cwd,{recursive:true,force:true});}
 });

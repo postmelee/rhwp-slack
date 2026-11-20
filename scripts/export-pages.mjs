@@ -1,11 +1,13 @@
 // Export already-built program assets only. No environment files, credentials or document data.
 import {readFile,writeFile,mkdir,copyFile,rm} from 'node:fs/promises';
+import {pathToFileURL} from 'node:url';
 import {resolve,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
 import {validateExportBootstrap} from './studio-bootstrap.mjs';
 import {exportPublicSite} from './public-site.mjs';
 import {exactApiOrigin,pagesHeaders} from './pages-headers.mjs';
-export async function exportPages(apiOrigin,output=resolve('dist/pages'),{publicSite=false}={}){
+export async function exportPages(apiOrigin,output=resolve('dist/pages'),{publicSite=false,legacyRedirects=false}={}){
+ if(legacyRedirects&&!publicSite)throw Error('Legacy redirects require the public site');
  const api=new URL(exactApiOrigin(apiOrigin));
  const headers=pagesHeaders(api.origin,{publicSite});
  const headerRules=headers.trimEnd().split('\n\n').length;
@@ -30,10 +32,20 @@ export async function exportPages(apiOrigin,output=resolve('dist/pages'),{public
  if(!shell.includes('<meta name="rhwp-api-origin" content="">'))throw Error('Editor config anchor changed');
  await mkdir(output+'/editor');await writeFile(output+'/editor/index.html',shell.replace('<meta name="rhwp-api-origin" content="">',`<meta name="rhwp-api-origin" content="${api.origin}">`));
  await writeFile(output+'/404.html','<!doctype html><meta charset="utf-8"><title>rhwp</title><p>Slack에서 편집 카드를 다시 열어 주세요.</p>');
- const site=publicSite?await exportPublicSite(output,api.origin):{files:0,bytes:0};
+ const site=publicSite?await exportPublicSite(output,api.origin,{withEditor:true}):{files:0,bytes:0};
  await writeFile(output+'/robots.txt',publicSite?'User-agent: *\nAllow: /\nDisallow: /editor/\nDisallow: /static/\nDisallow: /api/\nDisallow: /review/\nDisallow: /assets/review/\n':'User-agent: *\nDisallow: /\n');
  await writeFile(output+'/_headers',headers);
- // Explicit 404 disables Pages SPA fallback; no redirects forward fragments to the API.
- return {version:manifest.version,apiOrigin:api.origin,files:count+5+site.files,programBytes:total,siteBytes:site.bytes,headers:headerRules};
+ if(legacyRedirects)await copyFile(new URL('../site/pages/legacy-redirects',import.meta.url),output+'/_redirects');
+ // Explicit 404 disables Pages SPA fallback.
+ return {version:manifest.version,apiOrigin:api.origin,files:count+5+site.files+Number(legacyRedirects),programBytes:total,siteBytes:site.bytes,headers:headerRules};
 }
-if(process.argv[1]?.endsWith('export-pages.mjs'))console.log(JSON.stringify(await exportPages(process.argv[2],undefined,{publicSite:process.argv.includes('--public-site')})));
+if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url){
+ const [apiOrigin,...flags]=process.argv.slice(2);
+ if(new Set(flags).size!==flags.length||flags.some(flag=>!['--public-site','--legacy-redirects'].includes(flag))){
+   throw Error('Usage: export-pages.mjs HTTPS_API_ORIGIN [--public-site [--legacy-redirects]]');
+ }
+ console.log(JSON.stringify(await exportPages(apiOrigin,undefined,{
+  publicSite:flags.includes('--public-site'),
+  legacyRedirects:flags.includes('--legacy-redirects'),
+ })));
+}

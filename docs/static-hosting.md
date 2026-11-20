@@ -56,12 +56,30 @@ Exporter는 [Pages 파일 한도](https://developers.cloudflare.com/pages/platfo
 
 프로그램 캐시가 줄이는 것은 주로 전송량·일부 요청 작업이다. ingress의 기존 상시 대기 비용, 인증/다운로드/저장 API와 worker 변환 비용이 없어지지는 않는다. 비용 추정과 실제 청구 집계는 별도로 기록한다.
 
-## 공개 홈페이지를 포함하는 배포
+## 공개 안내 사이트 배포
 
-외부 앱은 별도 Pages 프로젝트 `rhwp-slack`를 사용한다. `/`는 홈페이지, `/guide/`·`/privacy/`·`/support/`는 안내, `/editor/`는 기존 편집기다. 기존 내부 프로젝트 `rhwp-slack-editor`와 API를 공유하거나 덮어쓰지 않는다.
+공개 안내는 [rhwp-bot.pages.dev](https://rhwp-bot.pages.dev/)에 제공한다. 설치 버튼은 운영 API의 HTTPS `/install`로 연결한다. 기존 편집기 주소는 `https://rhwp-slack.pages.dev/editor/`이며 API의 `APP_ORIGIN`, `EDITOR_ORIGIN`, OAuth 콜백과 CORS는 그대로 사용한다.
+
+공개 안내 배포에는 Studio 빌드가 필요 없다. 다음 명령은 `dist/public-site`를 새로 만들고, `site/`의 허용된 페이지·자산과 검색 설정만 복사한다. 편집기와 Google 확인 파일은 기존 프로젝트에서 제공한다.
 
 ```sh
-node scripts/export-pages.mjs https://YOUR-INGRESS.a.run.app --public-site
+node scripts/export-public-site.mjs "$RHWP_PAGES_API_ORIGIN"
+npx wrangler pages deploy dist/public-site --project-name rhwp-bot --branch main --commit-hash "$(git rev-parse HEAD)"
 ```
 
-이 옵션이 없으면 기존 내부 배포 구성이 유지된다. 설치 링크는 지정한 API origin의 `/install`로 생성한다. `site/`의 명시적 파일만 배포하며, repository 전체를 Pages에 올리지 않는다. API CORS와 EDITOR_ORIGIN은 새 Pages 배포 검증 후 전환하고 이전 프로젝트는 복구용으로 보존한다.
+`RHWP_PAGES_API_ORIGIN`에는 기존 운영 객체의 정확한 HTTPS API origin을 설정한다. 먼저 별도 preview 브랜치에서 본문, 약관, 개인정보, 설치 링크와 명시적인 404를 확인한다. 운영 `rhwp-bot`이 정상 응답한 뒤 기존 프로젝트를 적용한다.
+
+## 기존 주소와 편집 프로그램 유지
+
+편집기를 다시 빌드하는 경우 `node scripts/export-pages.mjs "$RHWP_PAGES_API_ORIGIN" --public-site --legacy-redirects`로 `dist/pages`를 생성한다. 신규 namespace와 별도로 보존해야 할 과거 `/static/<namespace>/` 자산은 검증된 운영 아카이브에서 병합한다. 자체 호스팅 환경은 이관 대상과 무관하므로 `--legacy-redirects`를 생략한다.
+
+안내 변경만 배포하는 경우에는 배포 직전의 기존 프로젝트 운영 산출물 전체를 새 디렉터리에 복사한다. 배포 기록의 파일 목록과 해시로 검증한 후 아래와 같이 저장소의 경로 규칙만 적용한다.
+
+```sh
+cp site/pages/legacy-redirects dist/legacy-pages/_redirects
+npx wrangler pages deploy dist/legacy-pages --project-name rhwp-slack --branch devel --commit-hash "$(git rev-parse HEAD)"
+```
+
+301은 홈·가이드·지원·한영 개인정보와 이용약관·라이선스의 명시된 URL에만 적용한다. 기존 리뷰 URL, 편집기, 정적 자산, Google Search Console 확인 파일은 그대로 유지한다. 운영 링크의 상태와 redirect Location을 확인하고, 편집기 HTML·버전 자산·초기화 스크립트·확인 파일의 해시를 이전 배포와 대조한다. 복구 시에는 Cloudflare Pages의 각 프로젝트에서 기록한 직전 production deployment로 되돌린다. 먼저 기존 주소의 상태를 복구하고 새 사이트의 링크가 필요한 동안 유지한다.
+
+Studio 초기화 스크립트는 고정 소스 목록에 포함하며 빌드 시 내용과 동기 실행 순서를 검사한다. Pages export는 버전 경로의 `studio/locale-init.js`와 같은 내용을 `/locale-init.js`에도 출력해 이전 HTML 참조를 유지한다. 루트 호환 파일은 `no-cache`, 버전 파일은 immutable 정책을 사용한다.

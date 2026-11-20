@@ -2,7 +2,7 @@
 
 ## 서버 운영 없이 사용하기
 
-[공개 베타 홈페이지](https://rhwp-slack.pages.dev/)에서 **Slack에 추가**를 선택하세요. 구성원마다 앱을 만들거나 토큰을 운영자에게 보낼 필요가 없습니다.
+[공개 베타 홈페이지](https://rhwp-bot.pages.dev/)에서 **Slack에 추가**를 선택하세요. 구성원마다 앱을 만들거나 토큰을 운영자에게 보낼 필요가 없습니다.
 
 1. 설치할 워크스페이스를 선택하고 요청 권한을 확인합니다. 조직 정책에 따라 관리자 승인이 필요할 수 있습니다.
 2. 사용할 채널에 rhwp를 초대합니다. 처음 초대한 채널에서 자동 감지가 켜지며 기존 설정은 유지합니다.
@@ -13,7 +13,7 @@
 
 편집은 외부 브라우저에서 제공하며 Slack 내부 편집기는 공개 베타의 지원 범위에 포함하지 않습니다. 현재 무료 베타이며 Marketplace 등재는 아직 완료되지 않았습니다.
 
-[사용 안내](https://rhwp-slack.pages.dev/guide/) · [개인정보 처리 안내](https://rhwp-slack.pages.dev/privacy/) · [지원](https://rhwp-slack.pages.dev/support/)
+[사용 안내](https://rhwp-bot.pages.dev/guide/) · [개인정보 처리 안내](https://rhwp-bot.pages.dev/privacy/) · [지원](https://rhwp-bot.pages.dev/support/)
 
 ## 조직에서 직접 운영하기
 

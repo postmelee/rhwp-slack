@@ -26,7 +26,7 @@ export function pagesHeaders(apiOrigin,{publicSite=false}={}){
  ];
  if(publicSite){
   blocks.push('/review/*\n  X-Robots-Tag: noindex, nofollow','/assets/review/*\n  X-Robots-Tag: noindex, nofollow');
-  for(const path of ['/','/guide/','/privacy/','/support/','/licenses/','/licenses/MIT.txt','/licenses/THIRD_PARTY_NOTICES.md','/review/','/site.css','/rhwp-logo.png'])blocks.push(path+'\n  Cache-Control: no-cache');
+  for(const path of ['/','/guide/','/privacy/','/privacy/en/','/terms/','/terms/en/','/policy-review/','/googlea2d4f48bbe57cea0.html','/support/','/licenses/','/licenses/MIT.txt','/licenses/THIRD_PARTY_NOTICES.md','/review/','/site.css','/rhwp-logo.png'])blocks.push(path+'\n  Cache-Control: no-cache');
  }
  if(blocks.length>100||blocks.some(b=>b.split('\n').some(line=>line.length>2000)))throw Error('Pages header limit exceeded');
  return blocks.join('\n\n')+'\n';
