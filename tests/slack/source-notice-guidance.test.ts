@@ -1,3 +1,4 @@
+import {FILE_SIZE_LIMIT_NOTICE} from '../../src/server/errors';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
@@ -93,7 +94,7 @@ test('source notice rejects a foreign tenant card without sending or mutating it
 
 for(const entry of [
  {reason:'unsupported_extension',metadata:{name:'private-file-name.txt'},message:/HWP 또는 HWPX 확장자/},
- {reason:'file_size_limit',metadata:{size:20*1024*1024+1},message:/파일 크기 한도\(20 MiB\)/},
+ {reason:'file_size_limit',metadata:{size:20*1024*1024+1},message:/파일 크기 제한 초과[\s\S]*20 MiB/},
  {reason:'missing_download_url',metadata:{url_private_download:null,url_private:null},message:/다운로드 주소를 제공하지/},
 ])test(`metadata notice explains ${entry.reason} without sharing artifacts`,async()=>{
  const f=fixture(entry.reason,entry.metadata);try{
@@ -102,7 +103,8 @@ for(const entry of [
   const args=updates[0].args;assert.match(args.text,entry.message);
   assert.equal(args.file_ids,undefined);assert.equal(args.metadata,undefined);
   assert.equal(args.parse,'none');assert.equal(args.unfurl_links,'false');assert.equal(args.unfurl_media,'false');
-  assert.deepEqual(JSON.parse(args.blocks),[{type:'section',text:{type:'plain_text',text:args.text}}]);
+  const text=entry.reason==='file_size_limit'?{type:'mrkdwn',text:FILE_SIZE_LIMIT_NOTICE}:{type:'plain_text',text:args.text};
+  assert.deepEqual(JSON.parse(args.blocks),[{type:'section',text}]);
   assert.doesNotMatch(JSON.stringify(args),/FTEST|FOUTPUT|FIMAGE|private-file-name|https:\/\//);
   assert.equal(f.calls.some(c=>c.method==='files.getUploadURLExternal'||c.method==='files.completeUploadExternal'||c.method==='chat.postMessage'),false);
   assert.equal((await f.store.get<TerminalNotice>('terminal_notices',id))?.state,'sent');
@@ -115,5 +117,21 @@ test('metadata-specific notice still requires a current bot-owned receipt',async
   const id=await f.seed();await f.patch(card=>({...card,noticeTarget:{...card.noticeTarget!,generation:'old-generation'}}));
   await f.run(id);assert.equal(f.calls.some(c=>c.method.startsWith('chat.')),false);
   assert.equal((await f.store.get<TerminalNotice>('terminal_notices',id))?.state,'skipped');
+ }finally{f.close();}
+});
+
+test('oversized source finalizes an existing card at attempt one without re-sharing or retry actions',async()=>{
+ const f=fixture('file_size_limit',{size:20*1024*1024+1});try{
+  const id=await f.seed();
+  await f.store.atomic<Work,void>('tasks',id,current=>({value:{...current!,state:'queued',generation:0,terminalAt:undefined,failureCode:undefined},result:undefined}));
+  await f.run(id);
+  const task=await f.store.get<Work>('tasks',id),card=await f.store.get<StoredCard>('cards',f.cardId);
+  assert.equal(task?.state,'failed');assert.equal(task?.generation,1);
+  assert.equal(task?.failureDetails?.denialReason,'file_size_limit');
+  assert.equal(card?.recovery?.errorCode,'file_size_limit');
+  const update=f.calls.find(c=>c.method==='chat.update')?.args;
+  assert.match(update?.blocks??'',/파일 크기 제한 초과/);
+  assert.doesNotMatch(update?.blocks??'',/rhwp_retry_preview|rhwp_more_pages/);
+  assert.equal(update?.file_ids,undefined);assert.equal(update?.metadata,undefined);
  }finally{f.close();}
 });

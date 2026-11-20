@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import type {Actor} from '../access';
 import {authorizeFile,authorizeChannel} from '../access';
 import {ID} from '../config';
-import {object,UserError,userMessage} from '../errors';
+import {object,UserError,userMessage,denialReason,FILE_SIZE_LIMIT_NOTICE} from '../errors';
 import type {CloudApplication} from './application';
 import type {TaskContext,TaskSpec,TerminalContext} from './tasks';
 import {notificationFailure,eventNoticeResult,errorCode,eventInputObserved,eventInputNoticeFinished} from './telemetry';
@@ -22,11 +22,14 @@ export class CloudEvents {
   await app.tasks.enqueue('event:'+id,{teamId:app.config.teamId,cardId:id,kind:'event',...(saved.terminalNoticeRequested?{terminalNoticeRequested:true as const}:{})});
  }
  async terminal(spec:TaskSpec,context:TerminalContext):Promise<void>{
-  const app=this.application,report=(status:'sent'|'failed'|'skipped'|'duplicate',error?:unknown)=>eventNoticeResult(context.id,status,error,this.noticeSink);
-  if(spec.kind!=='event'||spec.teamId!==app.config.teamId||!/^[a-f0-9]{64}$/.test(context.id))return;
+  await this.mentionNotice(spec,context.id);
+ }
+ private async mentionNotice(spec:TaskSpec,id:string,oversized=false):Promise<void>{
+  const app=this.application,report=(status:'sent'|'failed'|'skipped'|'duplicate',error?:unknown)=>eventNoticeResult(id,status,error,this.noticeSink);
+  if(spec.kind!=='event'||spec.teamId!==app.config.teamId||!/^[a-f0-9]{64}$/.test(id))return;
   const input=await app.store.get<Input>('inputs',spec.cardId),actor=input?.actor;
   if(input?.kind!=='app_mention'||!actor||actor.teamId!==spec.teamId||actor.userId===this.botUserId||!ID.user.test(actor.userId)||!ID.channel.test(actor.channelId)){report('skipped');return;}
-  const key=createHash('sha256').update('event-notice:'+context.id).digest('hex');
+  const key=createHash('sha256').update((oversized?'event-oversize:':'event-notice:')+id).digest('hex');
   if(await app.store.get('event_notices',key)){report('duplicate');return;}
   if(await app.mode(actor.channelId)==='off'){report('skipped');return;}
   const signal=AbortSignal.timeout(10_000);
@@ -37,7 +40,7 @@ export class CloudEvents {
   const claimed=await app.store.atomic<Notice,boolean>('event_notices',key,current=>({value:current??{state:'attempted',attemptedAt},expiresAt:current?current.attemptedAt+7*86400_000:expiresAt,result:!current}));
   if(!claimed){report('duplicate');return;}
   let state:'sent'|'failed'='sent',failure:unknown;
-  try{await app.api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text:'한글 문서 요청을 완료하지 못했습니다. 앱의 채널 참여와 파일 공유 상태를 확인한 뒤 다시 요청해 주세요. 문제가 계속되면 관리자에게 앱 연결과 권한 확인을 요청해 주세요.'},signal);}
+  try{await app.api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text:oversized?FILE_SIZE_LIMIT_NOTICE:'한글 문서 요청을 완료하지 못했습니다. 앱의 채널 참여와 파일 공유 상태를 확인한 뒤 다시 요청해 주세요. 문제가 계속되면 관리자에게 앱 연결과 권한 확인을 요청해 주세요.'},signal);}
   catch(error){state='failed';failure=error;}
   report(state,failure);
   // Recording a send attempt first avoids duplicate posts after ambiguous responses or crashes.
@@ -74,10 +77,10 @@ export class CloudEvents {
    const f=object((await app.api.call('files.info',{file:input.fileId},context.signal)).file);
    if(f.user===this.botUserId||f.id!==input.fileId||typeof f.name!=='string'||!/\.(hwp|hwpx)$/i.test(f.name))return;
    const shares=object(f.shares),valid=[object(shares.public??{})[actor.channelId],object(shares.private??{})[actor.channelId]].filter(Array.isArray).flat().map(object).filter(s=>s.share_user_id!==this.botUserId&&s.team_id===actor.teamId&&typeof s.ts==='string'&&/^\d+\.\d+$/.test(s.ts));
-   if(valid.length!==1){if(await app.mode(actor.channelId)==='auto')await app.api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text:'미리보기를 달 메시지를 특정하지 못했습니다. 해당 메시지 메뉴에서 한글 문서 열기를 선택해 주세요.'},context.signal);return;}
+   if(valid.length!==1){if(f.user===actor.userId&&await app.mode(actor.channelId)==='auto')await app.api.call('chat.postEphemeral',{channel:actor.channelId,user:actor.userId,text:'미리보기를 달 메시지를 특정하지 못했습니다. 해당 메시지 메뉴에서 한글 문서 열기를 선택해 주세요.'},context.signal);return;}
    const share=valid[0],parent=share.thread_ts??share.ts;if(typeof parent!=='string'||!/^\d+\.\d+$/.test(parent))return;
    actor.threadTs=parent;actor.reactionTs=String(share.ts);await this.remember(actor,input.fileId!);
-   if(await app.mode(actor.channelId)==='auto'){await context.checkpoint();await app.submit(actor,input.fileId!,'thread:'+this.threadKey(actor,input.fileId!));}return;
+   if(await app.mode(actor.channelId)==='auto'){await context.checkpoint();await app.submit(actor,input.fileId!,'thread:'+this.threadKey(actor,input.fileId!),f.user===actor.userId?'uploader':undefined);}return;
   }
   let files=input.files??[];
   if(!files.length){
@@ -94,8 +97,15 @@ export class CloudEvents {
   eventInputObserved('files_available');
   if(files.length>10)throw new UserError('too_many_files','한 번에 문서 10개까지 요청할 수 있습니다.');
   for(const id of new Set(files))if(ID.file.test(id)){
-   await context.checkpoint();await authorizeFile(app.api,await app.accessConfig(actor),actor,id,context.signal);
-   await app.submit(actor,id,'thread:'+this.threadKey(actor,id));
+   await context.checkpoint();
+   try{
+    await authorizeFile(app.api,await app.accessConfig(actor),actor,id,context.signal);
+    await app.submit(actor,id,'thread:'+this.threadKey(actor,id),'requester');
+   }catch(error){
+    if(denialReason(error)!=='file_size_limit')throw error;
+    // Keep processing the other attachments. The event receipt covers all oversized ones.
+    await this.mentionNotice(spec,spec.cardId,true);
+   }
   }
  }
 }
