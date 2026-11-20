@@ -10,9 +10,9 @@ import type {MetadataStore,Change} from '../../src/server/cloud/metadata';
 import {DurableTasks,type Work,type TaskSpec} from '../../src/server/cloud/tasks';
 import {CloudApplication} from '../../src/server/cloud/application';
 import {CloudEvents,type Input} from '../../src/server/cloud/events';
-import {UserError} from '../../src/server/errors';
+import {FILE_SIZE_LIMIT_NOTICE,UserError} from '../../src/server/errors';
 import {attachSlackDiagnostics} from '../../src/server/slack-diagnostics';
-import {isPermanentEventFailure} from '../../src/server/cloud/task-failures';
+import {isPermanentEventFailure,taskFailureCode} from '../../src/server/cloud/task-failures';
 import {HttpSlackApi,readBounded} from '../../src/server/slack-api';
 import {actor,config,FakeApi} from './support';
 function fixture(){
@@ -207,4 +207,73 @@ test('authenticated worker acknowledges permanent event failure with 204 after d
   assert.equal(f.terminal[0]?.slackError,'missing_scope');assert.equal(f.terminal[0]?.httpStatus,200);
   assert.equal((await send()).status,204);assert.equal(posts(f).length,1);assert.equal(f.api.calls.filter(c=>c.method==='files.info').length,1);
  }finally{await new Promise<void>(r=>server.close(()=>r()));f.close();}
+});
+
+test('one oversized mention notice for mixed attachments leaves the valid request queued',async()=>{
+ const f=fixture();try{
+  await f.events.enqueue('oversized-mention',{kind:'app_mention',actor,files:['FLARGE','FOTHERLARGE','FTEST']});
+  const event=f.published.find(p=>p.at===undefined)!.id;
+  f.api.handler=async(method,args)=>{
+   const response=f.api.response(method,args);
+   if(method==='files.info'&&args.file!=='FTEST')return {...response,file:{...(response.file as object),size:20*1024*1024+1}};
+   return response;
+  };
+  await f.run(event);await f.run(event);
+  assert.deepEqual(posts(f).map(c=>c.args),[{channel:actor.channelId,user:actor.userId,text:FILE_SIZE_LIMIT_NOTICE}]);
+  assert.equal((await f.store.get<Work>('tasks',event))?.state,'done');
+  assert.equal((await f.store.list<{fileId:string}>('preparations')).map(([,r])=>r.fileId).join(),'FTEST');
+ }finally{f.close();}
+});
+
+for(const uploader of [true,false])test('oversized automatic upload ends once, identified uploader='+uploader,async()=>{
+ const f=fixture();try{
+  const event=await f.enqueue('file_shared');
+  f.api.handler=async(method,args)=>{
+   const response=f.api.response(method,args);
+   if(method==='files.info')return {...response,file:{...(response.file as object),user:uploader?'UTEST':'UOTHER',size:20*1024*1024+1}};
+   return response;
+  };
+  await f.run(event);
+  const id=f.published.filter(p=>p.at===undefined).at(-1)!.id;
+  assert.notEqual(id,event);
+  const run=()=>f.tasks.execute(id,(spec,context)=>f.app.execute(spec,context));
+  await run();await run();
+  const work=await f.store.get<Work>('tasks',id);
+  assert.equal(work?.generation,1);assert.equal(work?.state,'failed');assert.equal(work?.failureCode,'file_size_limit');
+  assert.equal(posts(f).length,uploader?1:0);
+  if(uploader)assert.deepEqual(posts(f)[0].args,{channel:actor.channelId,user:actor.userId,text:FILE_SIZE_LIMIT_NOTICE});
+  assert.equal(f.api.calls.some(c=>['chat.postMessage','files.getUploadURLExternal'].includes(c.method)),false);
+ }finally{f.close();}
+});
+
+for(const outcome of ['sent','uncertain','access-revoked'] as const)test('direct oversize notice is gated and reserved before sending: '+outcome,async()=>{
+ const f=fixture();try{
+  const card=await f.app.submit(actor,'FTEST','command:synthetic','requester');
+  const id=f.published.filter(p=>p.at===undefined).at(-1)!.id;
+  let fileReads=0;
+  f.api.handler=async(method,args)=>{
+   const response=f.api.response(method,args);
+   if(method==='conversations.members'&&outcome==='access-revoked'&&fileReads)return {...response,members:[]};
+   if(method==='files.info'){fileReads++;return {...response,file:{...(response.file as object),size:20*1024*1024+1}};}
+   if(method==='chat.postEphemeral'){
+    const receipt=await f.store.get<{attempts:number}>('terminal_notices',id);
+    assert.equal(receipt?.attempts,1);
+    assert.equal((await f.store.get<Work>('tasks',id))?.state,'failed');
+    if(outcome==='uncertain')throw rejected('internal_error');
+   }
+   return response;
+  };
+  const run=()=>f.tasks.execute(id,(spec,context)=>f.app.execute(spec,context));
+  if(outcome==='uncertain')await assert.rejects(run());else await run();
+  await run();
+  assert.equal(posts(f).length,outcome==='access-revoked'?0:1);
+  assert.equal((await f.store.get<Work>('tasks',id))?.generation,1);
+  assert.equal(await f.store.get('cards',card),undefined);
+ }finally{f.close();}
+});
+
+test('task classification rejects forged source-size metadata',()=>{
+ assert.equal(taskFailureCode(new UserError('file_size_limit','synthetic')),'internal');
+ assert.equal(taskFailureCode(Object.assign(new UserError('access_denied','synthetic'),{denialReason:'file_size_limit'})),'access_denied');
+ assert.equal(taskFailureCode(new UserError('size_limit','synthetic')),'size_limit');
 });

@@ -31,7 +31,7 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
    if(!command.text.trim()||command.text.trim()==='settings'){await settings.open(command.team_id,command.user_id,trigger(command.trigger_id),command.channel_id);await ack();return;}
    const actor=await who(command.team_id,command.user_id,command.channel_id),parsed=parseCommand(command.text,config.workspaceHost);
    if(parsed.kind==='help'){await ack({response_type:'ephemeral',text:HELP});return;}
-   await documents.submit(actor,parsed.fileId,'command:'+trigger(command.trigger_id));await ack({response_type:'ephemeral',text:'문서 접근 권한을 확인하고 있습니다.'});
+   await documents.submit(actor,parsed.fileId,'command:'+trigger(command.trigger_id),'requester');await ack({response_type:'ephemeral',text:'문서 접근 권한을 확인하고 있습니다.'});
   }catch(error){await ack({response_type:'ephemeral',text:userMessage(error)});}
  });
  app.shortcut('rhwp_open_document',async({shortcut,ack})=>{
@@ -39,7 +39,7 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
    if(shortcut.type!=='message_action'){await ack();return;}
    actor=await who(shortcut.team?.id,shortcut.user.id,shortcut.channel.id);actor.threadTs=ts(shortcut.message.thread_ts??shortcut.message_ts);actor.reactionTs=ts(shortcut.message_ts);
    const files=candidatesFrom(shortcut.message.files),request=trigger(shortcut.trigger_id);
-   if(files.length===1)await documents.submit(actor,files[0].id,'shortcut:'+request);
+   if(files.length===1)await documents.submit(actor,files[0].id,'shortcut:'+request,'requester');
    else {const id=randomUUID();await store.atomic('selections',id,()=>({value:{actor,candidates:files},expiresAt:Date.now()+300_000,result:undefined}));await api.call('views.open',{trigger_id:request,view:selectionView(id,files)});}
   }catch(error){if(actor)await notice(actor,error);}await ack();
  });
@@ -47,7 +47,7 @@ export function createCloudReceiver(config:Config,documents:CloudApplication,ide
   try{const id=view.private_metadata,selected=view.state.values.document?.file?.selected_option?.value;
    const item=await store.get<{actor:Actor;candidates:Candidate[]}>('selections',id);
    if(!item||item.actor.teamId!==body.team?.id||item.actor.userId!==body.user.id||!item.candidates.some(c=>c.id===selected))denied();
-   await documents.submit(item.actor,selected!,'selection:'+id);await ack();
+   await documents.submit(item.actor,selected!,'selection:'+id,'requester');await ack();
   }catch(error){await ack({response_action:'errors',errors:{document:userMessage(error)}});}
  });
  app.event('member_joined_channel',async({body,event})=>{
