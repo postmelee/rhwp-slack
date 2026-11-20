@@ -265,3 +265,22 @@ Slack 클라이언트는 이미지·PDF·편집 카드를 같은 댓글 안의 �
 ### Cloud Run 검증·시험 운영 환경
 
 로컬 운영을 유지한 채 별도 Cloud Run 환경에서 검증할 수 있다. Firestore 메타데이터, Cloud Tasks, Secret Manager 설정과 이전 조건은 [Cloud Run 운영](cloud-run.md)을 따른다. 현재 워크스페이스는 2026-09-17 고정 Cloud Run 주소로 전환했다. 검증 namespace와 운영 namespace/큐를 구분하고, 상세 수용 결과·잔여 항목은 [Stage 12](../mydocs/working/task_m010_1_stage12.md)를 따른다.
+
+## 소스 빌드 입력
+
+
+현재 제품 소스는 core/editor/Studio **0.8.7**을 사용합니다. Node **24.21.0**, npm **11.19.0**, Python 3과 `package-lock.json`의 고정 의존성으로 빌드합니다.
+
+Studio 입력은 [고정 upstream commit](https://github.com/edwardkim/rhwp/tree/1a76570e833917d15817415a53c09ad61ab3203f)의 허용된 소스·폰트·라이선스로 만든 `.cache/studio.tar`입니다. `studio/upstream.json`의 SHA-256 `75e7c505045b171f4e90bb28959dd1c5be35baa17deac0a9133fd395e32ee055`와 일치해야 합니다. 일반 GitHub 전체 다운로드 tarball이나 `git archive` 출력과는 다른, 경로 정렬·uid/gid/mtime 0·원본 mode의 GNU tar 입력입니다. 원본 문서·샘플 문서·변환 결과는 입력에서 제외합니다.
+
+```sh
+# 고정 source manifest의 허용 입력만 받아 검증합니다.
+python3 scripts/prepare-studio-archive.py
+npm ci --ignore-scripts --no-audit --no-fund
+npm run typecheck
+npm run test:slack
+npm run test:security
+npm run build
+```
+
+`prepare:studio`는 archive가 없으면 Python 도구로 고정 source만 내려받고 각 파일과 최종 archive hash를 검사합니다. 기존 입력의 hash가 다르면 실패하며 원본 엔진 저장소를 clone/fetch하지 않습니다. 이 준비 단계에는 upstream HTTPS 접근이 필요합니다. Studio 내부 의존성은 archive의 lockfile로 설치하며 라이선스는 [제3자 고지](THIRD_PARTY_NOTICES.md)를 따릅니다. 기존 개발 문서의 0.8.6·자동 source fetch 설명보다 이 버전의 `package-lock.json`과 `studio/upstream.json`을 우선합니다.
