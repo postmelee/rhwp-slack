@@ -4,21 +4,38 @@ import { resolve } from 'node:path';
 import {staticVersion} from '../scripts/static-version.mjs';
 // Vite resolves symlinks before transform; compare against the same canonical path.
 const root = realpathSync('.cache/studio-source/rhwp-studio');
-const requiredOverlays = new Set(['src/main.ts','src/ui/chrome-mode.ts','src/ui/options-dialog.ts'].map(p => resolve(root,p)));
+const requiredOverlays = new Set(['src/main.ts','src/ui/chrome-mode.ts','src/ui/options-dialog.ts','src/core/wasm-bridge.ts','src/engine/input-handler.ts'].map(p => resolve(root,p)));
 const appliedOverlays = new Set<string>();
 const replaceOnce = (code: string, from: string, to: string): string => {
   if (code.split(from).length !== 2) throw new Error(`Studio overlay anchor changed: ${from}`);
   return code.replace(from, to);
 };
+// Both the editor and upstream worker use the same verified core. Replace its
+// default module URL before Vite emits an oversized standalone Pages asset.
+function chunkedCore() {
+  const glue = realpathSync('node_modules/@rhwp/core/rhwp.js');
+  return {
+    name: 'slack-chunked-core', enforce: 'pre' as const,
+    transform(code: string, id: string) {
+      if (id.split('?')[0] !== glue) return;
+      const patched = replaceOnce(code, "new URL('rhwp_bg.wasm', import.meta.url)", 'await loadStudioWasm()');
+      return "import { loadStudioWasm } from '@slack-wasm-loader';\n" + patched;
+    },
+  };
+}
 export default defineConfig({
   root, base: '/static/'+staticVersion()+'/studio/', publicDir: resolve('.cache/studio-public'),
-  define: { __APP_VERSION__: JSON.stringify('0.8.7'), __RHWP_DISABLE_EXTERNAL_WEBFONTS__: true, __RHWP_HWPCTRL__: true },
+  define: { __SLACK_WASM_PARTS__: readFileSync('.cache/studio-wasm-parts.json','utf8'), __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync('studio/upstream.json', 'utf8')).version), __RHWP_DISABLE_EXTERNAL_WEBFONTS__: true, __RHWP_HWPCTRL__: true, __RHWP_AI__: false },
   resolve: { alias: {
     '@': resolve(root,'src'),
+    '@slack-wasm-loader': resolve('studio/adapters/wasm-loader.ts'),
     '@wasm': resolve('node_modules/@rhwp/core'),
+    // The upstream worker's source checkout path shares the pinned npm WASM in this build.
+    '../../pkg/rhwp.js': resolve('node_modules/@rhwp/core/rhwp.js'),
     '@rhwp/hwpctrl/studio-plugin': resolve('.cache/studio-source/npm/hwpctrl-ocx/src/studio-plugin.mjs'),
   } },
-  plugins: [{
+  worker: { plugins: () => [chunkedCore()] },
+  plugins: [chunkedCore(), {
     name: 'slack-studio-policy', enforce: 'pre',
     buildStart() { appliedOverlays.clear(); },
     buildEnd(error) {
@@ -29,9 +46,15 @@ export default defineConfig({
       if (['/recovery/autosave-store.ts','/recent/recent-store.ts','/history/idb-store.ts'].some(s => path.endsWith(s))) {
         return readFileSync(resolve('studio/adapters/persistence.ts'),'utf8');
       }
+      if (path === resolve(root,'src/engine/input-handler.ts')) {
+        code = replaceOnce(code, 'performSelectAll(): void { this.handleSelectAll(); }',
+          "performSelectAll(): void { this.flushDeferredPaginationIfNeeded('before-select-all'); this.handleSelectAll(); }");
+      }
       if (path === resolve(root,'src/main.ts')) {
+        code = replaceOnce(code, 'async getPageSvg(page, profile) {\n      await initPromise;',
+          "async getPageSvg(page, profile) {\n      await initPromise;\n      inputHandler?.flushDeferredPaginationIfNeeded('host-svg');");
         code = replaceOnce(code, 'resolveChromeModeRequest(window.location.search)', "resolveChromeModeRequest('?chrome=embed')");
-        code = replaceOnce(code, 'isRecoveryBlocked: () => wasm.requiresPasswordForSave', 'isRecoveryBlocked: () => true');
+        code = replaceOnce(code, 'isRecoveryBlocked: () => wasm.requiresPasswordForSave && !wasm.recoveryCipher', 'isRecoveryBlocked: () => true');
         code = replaceOnce(code, 'recoveryEnabled: settings.recoveryEnabled', 'recoveryEnabled: false');
         code = replaceOnce(code, 'idleEnabled: settings.idleSaveEnabled', 'idleEnabled: false');
         code = replaceOnce(code, 'autosaveManager.connect(eventBus);', `autosaveManager.connect(eventBus);
@@ -40,6 +63,7 @@ export default defineConfig({
           });`);
         code = replaceOnce(code, 'notifySaved: (fileName?: string) => completeHostSave(fileName),', `notifySaved: (fileName?: string) => completeHostSave(fileName),
           captureSlackSave: () => {
+            inputHandler?.flushDeferredPaginationIfNeeded('host-save');
             if (!documentAgent) throw new Error('문서가 준비되지 않았습니다.');
             const before = documentAgent.getDocumentState();
             if (before.pageCount > 200) throw new Error('200페이지 이하 문서만 저장할 수 있습니다.');
@@ -60,6 +84,10 @@ export default defineConfig({
             return true;
           },`);
         code = replaceOnce(code, 'await loadFromUrlParam();', '// Slack host owns document loading; ignore URL document sources.');
+      }
+      if (path === resolve(root,'src/core/wasm-bridge.ts')) {
+        // Slack still accepts source documents from the HWP/HWPX host flow only.
+        code = replaceOnce(code, 'return hasPdfImportCapability(HwpDocument);', 'return false;');
       }
       if (path === resolve(root,'src/ui/chrome-mode.ts')) {
         code = replaceOnce(code, "'edit:compare-documents',", "'edit:compare-documents', 'edit:document-history',");

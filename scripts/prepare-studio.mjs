@@ -13,7 +13,32 @@ const source = resolve(cache, 'studio-source');
 mkdirSync(source, {recursive:true});
 execFileSync('tar', ['-xf', archive, '-C', source]);
 const studio = resolve(source, 'rhwp-studio');
-const lockHash = hash(readFileSync(resolve(studio, 'package-lock.json')));
+const packagePath = resolve(studio, 'package.json');
+const lockPath = resolve(studio, 'package-lock.json');
+// The v0.9.1 commit references an AJV vendor directory absent from the
+// public source tree. Use the verified npm release and preserve the locked
+// fast-uri override. The upstream source archive itself stays byte-for-byte pinned.
+if (spec.version === '0.9.1') {
+  const pkg = JSON.parse(readFileSync(packagePath));
+  const lock = JSON.parse(readFileSync(lockPath));
+  const node = lock.packages['node_modules/ajv'];
+  const vendor = 'file:../vendor/npm/ajv';
+  if (pkg.devDependencies.ajv !== vendor || lock.packages[''].devDependencies.ajv !== vendor ||
+      pkg.overrides['ajv@^8.0.0'] !== '$ajv' || node.resolved !== vendor ||
+      node.version !== '8.20.0' || node.dependencies['fast-uri'] !== '4.2.2' ||
+      lock.packages['node_modules/fast-uri'].version !== '4.2.2') {
+    throw new Error('Unrecognized Studio 0.9.1 AJV dependency lock');
+  }
+  pkg.devDependencies.ajv = node.version;
+  pkg.overrides['ajv@^8.0.0'] = {'.':'$ajv','fast-uri':'4.2.2'};
+  lock.packages[''].devDependencies.ajv = node.version;
+  node.resolved = 'https://registry.npmjs.org/ajv/-/ajv-8.20.0.tgz';
+  node.integrity = 'sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==';
+  node.dependencies['fast-uri'] = '^3.0.1';
+  writeFileSync(packagePath, JSON.stringify(pkg, null, 2)+'\n');
+  writeFileSync(lockPath, JSON.stringify(lock, null, 2)+'\n');
+}
+const lockHash = hash(readFileSync(lockPath));
 const stamp = resolve(studio, 'node_modules/.rhwp-slack-lock');
 if (!existsSync(stamp) || readFileSync(stamp,'utf8') !== lockHash) {
   execFileSync('npm', ['ci', '--prefix', studio, '--ignore-scripts', '--no-audit', '--no-fund'], {stdio:'inherit'});
@@ -23,6 +48,18 @@ if (!existsSync(stamp) || readFileSync(stamp,'utf8') !== lockHash) {
 const publicDir = resolve(cache, 'studio-public');
 rmSync(publicDir, {recursive:true,force:true});
 mkdirSync(publicDir, {recursive:true});
+// Bound individual immutable HTTP-cache entries for private browser contexts.
+const engine = readFileSync(resolve('node_modules/@rhwp/core/rhwp_bg.wasm'));
+const engineDir = resolve(publicDir, 'engine');
+mkdirSync(engineDir);
+const chunkBytes = 4 * 1024 * 1024;
+const parts = [];
+for (let offset = 0; offset < engine.length; offset += chunkBytes) {
+  const name = 'part-' + parts.length + '.wasm';
+  writeFileSync(resolve(engineDir, name), engine.subarray(offset, offset + chunkBytes));
+  parts.push(name);
+}
+writeFileSync(resolve(cache, 'studio-wasm-parts.json'), JSON.stringify(parts));
 for (const name of ['fonts','icons','images','favicon.ico','theme-init.js','locale-init.js']) {
   cpSync(resolve(studio, 'public', name), resolve(publicDir, name), {recursive:true, dereference:true});
 }
