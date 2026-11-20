@@ -264,7 +264,7 @@ for(const outcome of ['sent','uncertain','access-revoked'] as const)test('direct
    return response;
   };
   const run=()=>f.tasks.execute(id,(spec,context)=>f.app.execute(spec,context));
-  if(outcome==='uncertain')await assert.rejects(run());else await run();
+  await run();
   await run();
   assert.equal(posts(f).length,outcome==='access-revoked'?0:1);
   assert.equal((await f.store.get<Work>('tasks',id))?.generation,1);

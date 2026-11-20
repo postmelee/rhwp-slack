@@ -2,7 +2,7 @@ import type {NoticeReason} from './tasks';
 import {isSourceUnavailable,sourceFailureMessage} from '../source-failure';
 import {isPermanentConversionFailure} from '../../conversion/failures.mjs';
 import {createHash,randomUUID} from 'node:crypto';
-import {measured,conversionMetric,milestone,errorCode,notificationFailure,unshareVisibilityUnavailable,shareCheckFinished,artifactFinished} from './telemetry';
+import {measured,conversionMetric,milestone,notificationFailure,unshareVisibilityUnavailable,shareCheckFinished,artifactFinished} from './telemetry';
 import {setTimeout as delay} from 'node:timers/promises';
 import type {MetadataStore} from './metadata';
 import {BoundedWork,serialWrites} from '../concurrency';

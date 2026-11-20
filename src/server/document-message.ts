@@ -1,5 +1,5 @@
 import {isPermanentConversionFailure} from '../conversion/failures.mjs';
-import {FILE_SIZE_LIMIT_GUIDANCE,FILE_SIZE_LIMIT_TITLE} from './errors';
+import {FILE_SIZE_LIMIT_NOTICE} from './errors';
 import type {Card} from './documents';
 export function documentMetadata(card:Card,origin:string,previewUrl?:string):Record<string,unknown> {
     return {url:`${origin}/documents/${card.id}`,external_ref:{id:card.id,type:'document'},entity_type:'slack#/entities/file',entity_payload:{
