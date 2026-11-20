@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import {staticVersion} from '../scripts/static-version.mjs';
 // Vite resolves symlinks before transform; compare against the same canonical path.
 const root = realpathSync('.cache/studio-source/rhwp-studio');
-const requiredOverlays = new Set(['src/main.ts','src/ui/chrome-mode.ts','src/ui/options-dialog.ts'].map(p => resolve(root,p)));
+const requiredOverlays = new Set(['src/main.ts','src/ui/chrome-mode.ts','src/ui/options-dialog.ts','src/core/wasm-bridge.ts'].map(p => resolve(root,p)));
 const appliedOverlays = new Set<string>();
 const replaceOnce = (code: string, from: string, to: string): string => {
   if (code.split(from).length !== 2) throw new Error(`Studio overlay anchor changed: ${from}`);
@@ -12,10 +12,12 @@ const replaceOnce = (code: string, from: string, to: string): string => {
 };
 export default defineConfig({
   root, base: '/static/'+staticVersion()+'/studio/', publicDir: resolve('.cache/studio-public'),
-  define: { __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync('studio/upstream.json', 'utf8')).version), __RHWP_DISABLE_EXTERNAL_WEBFONTS__: true, __RHWP_HWPCTRL__: true },
+  define: { __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync('studio/upstream.json', 'utf8')).version), __RHWP_DISABLE_EXTERNAL_WEBFONTS__: true, __RHWP_HWPCTRL__: true, __RHWP_AI__: false },
   resolve: { alias: {
     '@': resolve(root,'src'),
     '@wasm': resolve('node_modules/@rhwp/core'),
+    // The upstream worker's source checkout path shares the pinned npm WASM in this build.
+    '../../pkg/rhwp.js': resolve('node_modules/@rhwp/core/rhwp.js'),
     '@rhwp/hwpctrl/studio-plugin': resolve('.cache/studio-source/npm/hwpctrl-ocx/src/studio-plugin.mjs'),
   } },
   plugins: [{
@@ -60,6 +62,10 @@ export default defineConfig({
             return true;
           },`);
         code = replaceOnce(code, 'await loadFromUrlParam();', '// Slack host owns document loading; ignore URL document sources.');
+      }
+      if (path === resolve(root,'src/core/wasm-bridge.ts')) {
+        // Slack still accepts source documents from the HWP/HWPX host flow only.
+        code = replaceOnce(code, 'return hasPdfImportCapability(HwpDocument);', 'return false;');
       }
       if (path === resolve(root,'src/ui/chrome-mode.ts')) {
         code = replaceOnce(code, "'edit:compare-documents',", "'edit:compare-documents', 'edit:document-history',");

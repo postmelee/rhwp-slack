@@ -3210,6 +3210,12 @@
       "blobId": "58c83bddd6dabf315bd787e26b44125107b657de",
       "size": 8280,
       "sha256": "22cf601711ea98fec4acd75805bcc959cf522d7e9ddd095c15d09a0dbc32dfe4"
+    },
+    "src/renderer/square_gradient.sksl": {
+      "mode": "100644",
+      "blobId": "6f88a7b15747cabc36004b0f0974d0b7aa65cdfe",
+      "size": 259,
+      "sha256": "4f69a4172fa43c98d83ded6da71c712ddecf44cd0580f36f5d948e7356f0ffb3"
     }
   }
 }

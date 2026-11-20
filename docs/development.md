@@ -271,7 +271,7 @@ Slack 클라이언트는 이미지·PDF·편집 카드를 같은 댓글 안의 �
 
 현재 제품 소스는 core/editor/Studio **0.9.1**을 사용합니다. Node **24.21.0**, npm **11.19.0**, Python 3과 `package-lock.json`의 고정 의존성으로 빌드합니다.
 
-Studio 입력은 [고정 upstream commit](https://github.com/edwardkim/rhwp/tree/981ce66b4183b13c1a3b5907e04a8969c8c42034)의 허용된 소스·폰트·라이선스로 만든 `.cache/studio.tar`입니다. `studio/upstream.json`의 SHA-256 `6b09360d3a1eb94d1762f46f72631bcc9c0921d005e198c9c1a54c5b1088c55c`와 일치해야 합니다. 일반 GitHub 전체 다운로드 tarball이나 `git archive` 출력과는 다른, 경로 정렬·uid/gid/mtime 0·원본 mode의 GNU tar 입력입니다. 원본 문서·샘플 문서·변환 결과는 입력에서 제외합니다.
+Studio 입력은 [고정 upstream commit](https://github.com/edwardkim/rhwp/tree/981ce66b4183b13c1a3b5907e04a8969c8c42034)의 허용된 소스·폰트·라이선스로 만든 `.cache/studio.tar`입니다. `studio/upstream.json`의 SHA-256 `5c3039fa8268676d48e09eec6bde79b2062b6a25264aecb1add5ff3fc4e117ee`와 일치해야 합니다. 일반 GitHub 전체 다운로드 tarball이나 `git archive` 출력과는 다른, 경로 정렬·uid/gid/mtime 0·원본 mode의 GNU tar 입력입니다. 원본 문서·샘플 문서·변환 결과는 입력에서 제외합니다.
 
 ```sh
 # 고정 source manifest의 허용 입력만 받아 검증합니다.
@@ -286,3 +286,5 @@ npm run build
 `prepare:studio`는 archive가 없으면 Python 도구로 고정 source만 내려받고 각 파일과 최종 archive hash를 검사합니다. 기존 입력의 hash가 다르면 실패하며 원본 엔진 저장소를 clone/fetch하지 않습니다. 이 준비 단계에는 upstream HTTPS 접근이 필요합니다. Studio 내부 의존성은 archive의 lockfile로 설치하며 라이선스는 [제3자 고지](THIRD_PARTY_NOTICES.md)를 따릅니다. 기존 개발 문서의 0.8.6·자동 source fetch 설명보다 이 버전의 `package-lock.json`과 `studio/upstream.json`을 우선합니다.
 
 Studio 0.9.1의 소스는 공개 태그의 원본 아카이브로 검증한다. 이 태그에 포함되지 않은 AJV vendored 경로는 빌드용 추출본에서만 AJV 8.20.0의 npm 무결성 고정으로 바꾸며, 업스트림 잠금 파일의 fast-uri 4.2.2 고정값을 유지한다.
+
+Slack용 Studio는 업스트림 AI 플러그인과 PDF 가져오기를 비활성화합니다. 기존 HWP/HWPX 열기·편집·저장과 PDF 변환 결과 게시를 지원합니다.

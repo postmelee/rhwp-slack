@@ -2,7 +2,7 @@
   "version": "0.9.1",
   "repository": "https://github.com/edwardkim/rhwp.git",
   "commit": "981ce66b4183b13c1a3b5907e04a8969c8c42034",
-  "archiveSha256": "6b09360d3a1eb94d1762f46f72631bcc9c0921d005e198c9c1a54c5b1088c55c",
+  "archiveSha256": "5c3039fa8268676d48e09eec6bde79b2062b6a25264aecb1add5ff3fc4e117ee",
   "paths": [
     "rhwp-studio",
     "rhwp-shared",
@@ -10,6 +10,7 @@
     "npm/hwpctrl-ocx",
     "npm/editor",
     "LICENSE",
-    "THIRD_PARTY_LICENSES.md"
+    "THIRD_PARTY_LICENSES.md",
+    "src/renderer/square_gradient.sksl"
   ]
 }
