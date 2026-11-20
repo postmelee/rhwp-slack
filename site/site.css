@@ -12,3 +12,5 @@
 @media(max-width:900px){.video-layout{grid-template-columns:1fr;gap:28px}}
 
 @media(max-width:640px){.features{grid-template-columns:1fr;gap:28px}}
+
+.prose a{overflow-wrap:anywhere}

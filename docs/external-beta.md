@@ -2,7 +2,7 @@
 
 별도 앱(생성 시 `rhwp beta`, 공개 표시 이름 `rhwp`)과 서버를 배포하고 외부 설치를 활성화했다. 현재 `alhanguel.slack.com`의 `test` 채널에서 합성 HWP 자동 감지·PDF/PNG 게시·Slack 내부 PDF 보기·브라우저 편집·같은 스레드 저장·편집본 재열기를 실제 확인했다. 같은 앱을 rhwphq의 비공개 rhwp-slack-test에도 설치해 합성 HWPX의 변환·편집·동일 스레드 저장·재열기를 확인했다. 두 workspace는 같은 운영자 계정으로 검증했으며 공개 베타·Marketplace 전체 준비 완료를 뜻하지 않는다. 기존 내부 앱은 계속 유지한다.
 
-공개 안내: https://rhwp-slack.pages.dev/ · 편집기 프로그램: https://rhwp-slack.pages.dev/editor/ (문서는 Slack의 편집 버튼에서 연다). 기존 내부 rhwp-slack-editor.pages.dev는 유지한다.
+공개 안내: https://rhwp-bot.pages.dev/ · 편집기 프로그램: https://rhwp-slack.pages.dev/editor/ (문서는 Slack의 편집 버튼에서 연다). 기존 내부 rhwp-slack-editor.pages.dev는 유지한다.
 
 설치 시작: [Add to Slack](https://rhwp-beta-ingress-aaj47f2u5q-uc.a.run.app/install). Slack 설정 화면이 자동 생성한 직접 OAuth 링크 대신 이 시작 주소를 사용한다. 이 경로가 일회용 state와 브라우저 쿠키를 설정하고, bot 설치와 OpenID 로그인의 권한 요청을 분리한다.
 
