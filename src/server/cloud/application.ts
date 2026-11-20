@@ -1,5 +1,5 @@
 import type {NoticeReason} from './tasks';
-import {isSourceUnavailable} from '../source-failure';
+import {isSourceUnavailable,sourceFailureMessage} from '../source-failure';
 import {isPermanentConversionFailure} from '../../conversion/failures.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {measured,conversionMetric,milestone,errorCode,notificationFailure,unshareVisibilityUnavailable,shareCheckFinished,artifactFinished} from './telemetry';
@@ -20,13 +20,15 @@ import type {Receipt} from '../saves';
 import {downloadFile} from '../download';
 import {Uploads,savedAttempt,type UploadAttempt} from '../uploads';
 import {documentMetadata,documentMessage,browserEditorUrl} from '../document-message';
-import {UserError,denied} from '../errors';
+import {UserError,denied,denialMessage} from '../errors';
 import {slackDiagnostics,isSlackFailure} from '../slack-diagnostics';
 import {validateDocument} from '../validate-document';
 import {validateInput} from '../../shared/errors';
 import {convertPreview,convertPageImages,type PageImage} from '../../conversion/convert.mjs';
 interface CloudCard extends Omit<Card,'imageAttempts'|'imageWork'|'updates'> {attempts?:Record<string,UploadAttempt>;fence?:string;removed?:boolean;previewRequestId?:string;pdfPreparedAt?:number;slackPublishedAt?:number;}
 interface Request {actor:Actor;fileId:string;}
+/** Internal race signal, never inferred from an external error string. */
+class RemovedCardWrite extends Error {constructor(){super('Card ownership changed');}}
 interface SaveOperation {hash:string;cardId:string;attempt:UploadAttempt;receipt:Receipt;}
 const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 const stableId=(value:string)=>{const h=hash(value);return `${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`;};
@@ -56,7 +58,7 @@ export class CloudApplication {
     const api=context?this.guarded(context):this.api;
     const source=await authorizeFile(api,config,actor,card.fileId,context?.signal);
     if(card.rootFileId!==card.fileId)await authorizeFile(api,config,actor,card.rootFileId,context?.signal);
-    if(source.name!==card.name||source.size!==card.size)denied('invalid_source_metadata');return {card,source};
+    if(source.name!==card.name||source.size!==card.size)denied('source_metadata_changed');return {card,source};
   }
   async ensureSource(id:string,actor:Actor,outer?:AbortSignal):Promise<Buffer>{
     // Reuse only the file info validated in this call; never cache permissions between requests.
@@ -137,7 +139,8 @@ export class CloudApplication {
   private async write(card:CloudCard,context:LeaseContext):Promise<void>{
     await context.checkpoint();
     await this.store.atomic<CloudCard,void>('cards',card.id,current=>{
-      if(!current||current.removed||current.fence!==context.owner)throw new Error('Card ownership changed');
+      if(current?.removed)throw new RemovedCardWrite();
+      if(!current||current.fence!==context.owner)throw new Error('Card ownership changed');
       const persisted={...card,pdfAttempt:card.pdfAttempt?savedAttempt(card.pdfAttempt):undefined,attempts:card.attempts?Object.fromEntries(Object.entries(card.attempts).map(([key,value])=>[key,savedAttempt(value)])):undefined};
       return {value:{...persisted,sequence:Math.max(card.sequence??0,current.sequence??0),fence:context.owner},result:undefined};
     });
@@ -191,10 +194,23 @@ export class CloudApplication {
     }
     throw new UserError('share_pending','파일 공유 결과를 확인 중입니다.');
   }
+  /** Missing/visibility errors are not cancellation evidence. Only our durable tombstone is. */
+  private async cancelled(spec:TaskSpec,task:TaskContext):Promise<boolean>{
+    await task.checkpoint();
+    if(spec.teamId!==this.config.teamId)denied();
+    const card=await this.store.get<CloudCard>('cards',spec.cardId);
+    if(card&&(card.actor.teamId!==spec.teamId||(spec.actor&&(spec.actor.teamId!==spec.teamId||spec.actor.channelId!==card.actor.channelId))))denied();
+    await task.checkpoint();
+    return card?.removed===true;
+  }
   async execute(spec:TaskSpec,task:TaskContext):Promise<void>{
     if(task.terminalFailure){await this.failed(spec,task,task.terminalFailure,true);return;}
+    if(await this.cancelled(spec,task))return;
     try{await this.executeWork(spec,task);}
     catch(error){
+      // Only known application denial/write races may become a confirmed cancellation.
+      // Lease loss, transient storage/Slack/conversion failures must retain normal retry behavior.
+      if((error instanceof RemovedCardWrite||(error instanceof UserError&&error.code==='access_denied'))&&await this.cancelled(spec,task))return;
       const final=!!task.finalAttempt||isPermanentConversionFailure(errorCode(error));
       // DurableTasks commits the business failure before starting any terminal Slack notice.
       await this.failed(spec,final?{...task,terminalNotice:{phase:'bookkeeping'}}:task,errorCode(error),final).catch(()=>{});
@@ -271,7 +287,7 @@ export class CloudApplication {
             throw denial;
           }
           // Never reuse documentMessage here: its file_ids/metadata can share new files.
-          const text=missing?(current.pdfPreparedAt?'PDF는 생성됐지만 원본 파일에 접근할 수 없어 Slack 게시를 완료하지 못했습니다. 원본의 존재와 앱에 공유된 상태를 확인해 주세요.':'원본 파일에 접근할 수 없어 PDF·이미지 준비를 완료하지 못했습니다. 원본의 존재와 앱에 공유된 상태를 확인해 주세요.'):'문서 접근을 확인할 수 없어 PDF·이미지 준비가 중단되었습니다. 채널 참여와 문서 접근 권한을 확인해 주세요.';
+          const text=missing?(current.pdfPreparedAt?'PDF는 생성됐지만 Slack 게시를 완료하지 못했습니다. ':'PDF·이미지 준비를 완료하지 못했습니다. ')+(sourceFailureMessage(error)??'원본 파일의 존재와 앱 공유 상태를 확인해 주세요.'):(denialMessage(error)??'문서 접근을 확인할 수 없어 PDF·이미지 준비가 중단되었습니다. 채널 참여와 문서 접근 권한을 확인해 주세요.');
           if(task.terminalNotice)task.terminalNotice.reason=missing?'source_unavailable':'access_unavailable';
           const changed=await this.statusTarget(current,spec,context);
           if(changed){if(task.terminalNotice){task.terminalNotice.result='skipped';task.terminalNotice.reason=changed;}return;}

@@ -38,7 +38,7 @@ export async function authorizeBotChannel(api:SlackApi,config:Config,actor:Actor
   return c;
 }
 export async function authorizeFile(api: SlackApi, config: Config, actor: Actor, fileId: string, signal?: AbortSignal): Promise<SourceFile> {
-  assertActor(config,actor);if(!ID.file.test(fileId))denied('invalid_source_metadata');
+  assertActor(config,actor);if(!ID.file.test(fileId))denied('file_id_invalid');
   const c=await authorizeChannel(api,config,actor,signal);
   let response:Record<string,unknown>;
   try{response=await api.call('files.info',{file:fileId},signal);}catch(error){markSourceUnavailable(error);throw error;}
@@ -64,9 +64,13 @@ export async function authorizeFile(api: SlackApi, config: Config, actor: Actor,
     const share=object(value,'share_shape');
     return share.team_id===actor.teamId && typeof share.ts==='string' && /^\d+\.\d+$/.test(share.ts);
   })) denied('share_shape');
-  if (typeof f.name!=='string' || !/\.(hwp|hwpx)$/i.test(f.name) || f.name.length>255 || /[\u0000-\u001f\u007f]/.test(f.name) ||
-      typeof f.size!=='number' || !Number.isSafeInteger(f.size) || f.size<=0 || f.size>MAX_FILE_BYTES) denied('invalid_source_metadata');
+  // Preserve predicate order and authorization gates; only the safe diagnostic reason changes.
+  if (typeof f.name!=='string') denied('file_name_invalid');
+  if (!/\.(hwp|hwpx)$/i.test(f.name)) denied('unsupported_extension');
+  if (f.name.length>255 || /[\u0000-\u001f\u007f]/.test(f.name)) denied('file_name_invalid');
+  if (typeof f.size!=='number' || !Number.isSafeInteger(f.size) || f.size<=0) denied('file_size_invalid');
+  if (f.size>MAX_FILE_BYTES) denied('file_size_limit');
   const downloadUrl=f.url_private_download ?? f.url_private;
-  if (typeof downloadUrl!=='string') denied('invalid_source_metadata');
+  if (typeof downloadUrl!=='string') denied('missing_download_url');
   return {id:fileId,name:f.name.normalize('NFC'),size:f.size,downloadUrl};
 }
