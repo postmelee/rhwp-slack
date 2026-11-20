@@ -1,10 +1,11 @@
 {
-  "version": "0.8.7",
+  "version": "0.9.1",
   "repository": "https://github.com/edwardkim/rhwp.git",
-  "commit": "1a76570e833917d15817415a53c09ad61ab3203f",
-  "archiveSha256": "75e7c505045b171f4e90bb28959dd1c5be35baa17deac0a9133fd395e32ee055",
+  "commit": "981ce66b4183b13c1a3b5907e04a8969c8c42034",
+  "archiveSha256": "6b09360d3a1eb94d1762f46f72631bcc9c0921d005e198c9c1a54c5b1088c55c",
   "paths": [
     "rhwp-studio",
+    "rhwp-shared",
     "assets/fonts",
     "npm/hwpctrl-ocx",
     "npm/editor",

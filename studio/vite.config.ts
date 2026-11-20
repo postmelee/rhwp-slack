@@ -12,7 +12,7 @@ const replaceOnce = (code: string, from: string, to: string): string => {
 };
 export default defineConfig({
   root, base: '/static/'+staticVersion()+'/studio/', publicDir: resolve('.cache/studio-public'),
-  define: { __APP_VERSION__: JSON.stringify('0.8.7'), __RHWP_DISABLE_EXTERNAL_WEBFONTS__: true, __RHWP_HWPCTRL__: true },
+  define: { __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync('studio/upstream.json', 'utf8')).version), __RHWP_DISABLE_EXTERNAL_WEBFONTS__: true, __RHWP_HWPCTRL__: true },
   resolve: { alias: {
     '@': resolve(root,'src'),
     '@wasm': resolve('node_modules/@rhwp/core'),
@@ -31,7 +31,7 @@ export default defineConfig({
       }
       if (path === resolve(root,'src/main.ts')) {
         code = replaceOnce(code, 'resolveChromeModeRequest(window.location.search)', "resolveChromeModeRequest('?chrome=embed')");
-        code = replaceOnce(code, 'isRecoveryBlocked: () => wasm.requiresPasswordForSave', 'isRecoveryBlocked: () => true');
+        code = replaceOnce(code, 'isRecoveryBlocked: () => wasm.requiresPasswordForSave && !wasm.recoveryCipher', 'isRecoveryBlocked: () => true');
         code = replaceOnce(code, 'recoveryEnabled: settings.recoveryEnabled', 'recoveryEnabled: false');
         code = replaceOnce(code, 'idleEnabled: settings.idleSaveEnabled', 'idleEnabled: false');
         code = replaceOnce(code, 'autosaveManager.connect(eventBus);', `autosaveManager.connect(eventBus);

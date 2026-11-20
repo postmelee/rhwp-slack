@@ -6,8 +6,8 @@
 | --- | --- | --- |
 | Node.js / npm | 24.21.0 / 11.19.0 | 개발·검증 runtime |
 | @slack/bolt | 5.1.0 | MIT / Slack HTTP 서명 검증·명령·메뉴 수신 |
-| @rhwp/core | 0.8.6 | MIT / HWP·HWPX 파싱, SVG |
-| @rhwp/editor / rhwp-studio | 0.8.6 | MIT / 공식 iframe SDK와 전체 편집 UI |
+| @rhwp/core | 0.9.1 | MIT / HWP·HWPX 파싱, SVG |
+| @rhwp/editor / rhwp-studio | 0.9.1 | MIT / 공식 iframe SDK와 전체 편집 UI |
 | Vite | 8.3.0 | MIT / 호스트·Studio 빌드 |
 | TypeScript / @types/node | 5.9.3 / 24.13.4 | Apache-2.0 / MIT, 타입 검사 |
 | tsx | 4.23.13 | MIT / Node 테스트 실행 |

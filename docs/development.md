@@ -269,9 +269,9 @@ Slack 클라이언트는 이미지·PDF·편집 카드를 같은 댓글 안의 �
 ## 소스 빌드 입력
 
 
-현재 제품 소스는 core/editor/Studio **0.8.7**을 사용합니다. Node **24.21.0**, npm **11.19.0**, Python 3과 `package-lock.json`의 고정 의존성으로 빌드합니다.
+현재 제품 소스는 core/editor/Studio **0.9.1**을 사용합니다. Node **24.21.0**, npm **11.19.0**, Python 3과 `package-lock.json`의 고정 의존성으로 빌드합니다.
 
-Studio 입력은 [고정 upstream commit](https://github.com/edwardkim/rhwp/tree/1a76570e833917d15817415a53c09ad61ab3203f)의 허용된 소스·폰트·라이선스로 만든 `.cache/studio.tar`입니다. `studio/upstream.json`의 SHA-256 `75e7c505045b171f4e90bb28959dd1c5be35baa17deac0a9133fd395e32ee055`와 일치해야 합니다. 일반 GitHub 전체 다운로드 tarball이나 `git archive` 출력과는 다른, 경로 정렬·uid/gid/mtime 0·원본 mode의 GNU tar 입력입니다. 원본 문서·샘플 문서·변환 결과는 입력에서 제외합니다.
+Studio 입력은 [고정 upstream commit](https://github.com/edwardkim/rhwp/tree/981ce66b4183b13c1a3b5907e04a8969c8c42034)의 허용된 소스·폰트·라이선스로 만든 `.cache/studio.tar`입니다. `studio/upstream.json`의 SHA-256 `6b09360d3a1eb94d1762f46f72631bcc9c0921d005e198c9c1a54c5b1088c55c`와 일치해야 합니다. 일반 GitHub 전체 다운로드 tarball이나 `git archive` 출력과는 다른, 경로 정렬·uid/gid/mtime 0·원본 mode의 GNU tar 입력입니다. 원본 문서·샘플 문서·변환 결과는 입력에서 제외합니다.
 
 ```sh
 # 고정 source manifest의 허용 입력만 받아 검증합니다.
