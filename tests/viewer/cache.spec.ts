@@ -9,6 +9,10 @@ test('a fresh editor reuses versioned program assets but starts with no document
     expect(assets.some(a=>a.path.endsWith('.wasm'))).toBeTruthy();visits.push(assets);
     await page.close();
   }
+  const parts = visits.map(assets => assets.filter(a => a.path.includes('/studio/engine/')).sort((a,b)=>a.path.localeCompare(b.path)));
+  expect(parts[0].length).toBeGreaterThan(1);
+  expect(parts[1].map(a=>a.path)).toEqual(parts[0].map(a=>a.path));
+  expect(parts[0].every(a=>a.transfer>0)).toBeTruthy();
   expect(visits[0].some(a=>a.transfer>0)).toBeTruthy();
   expect(visits[1].filter(a=>/\.(wasm|js|woff2)$/.test(a.path)).every(a=>a.transfer===0)).toBeTruthy();
 });

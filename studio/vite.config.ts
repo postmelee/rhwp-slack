@@ -10,6 +10,19 @@ const replaceOnce = (code: string, from: string, to: string): string => {
   if (code.split(from).length !== 2) throw new Error(`Studio overlay anchor changed: ${from}`);
   return code.replace(from, to);
 };
+// Both the editor and upstream worker use the same verified core. Replace its
+// default module URL before Vite emits an oversized standalone Pages asset.
+function chunkedCore() {
+  const glue = realpathSync('node_modules/@rhwp/core/rhwp.js');
+  return {
+    name: 'slack-chunked-core', enforce: 'pre' as const,
+    transform(code: string, id: string) {
+      if (id.split('?')[0] !== glue) return;
+      const patched = replaceOnce(code, "new URL('rhwp_bg.wasm', import.meta.url)", 'await loadStudioWasm()');
+      return "import { loadStudioWasm } from '@slack-wasm-loader';\n" + patched;
+    },
+  };
+}
 export default defineConfig({
   root, base: '/static/'+staticVersion()+'/studio/', publicDir: resolve('.cache/studio-public'),
   define: { __SLACK_WASM_PARTS__: readFileSync('.cache/studio-wasm-parts.json','utf8'), __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync('studio/upstream.json', 'utf8')).version), __RHWP_DISABLE_EXTERNAL_WEBFONTS__: true, __RHWP_HWPCTRL__: true, __RHWP_AI__: false },
@@ -21,7 +34,8 @@ export default defineConfig({
     '../../pkg/rhwp.js': resolve('node_modules/@rhwp/core/rhwp.js'),
     '@rhwp/hwpctrl/studio-plugin': resolve('.cache/studio-source/npm/hwpctrl-ocx/src/studio-plugin.mjs'),
   } },
-  plugins: [{
+  worker: { plugins: () => [chunkedCore()] },
+  plugins: [chunkedCore(), {
     name: 'slack-studio-policy', enforce: 'pre',
     buildStart() { appliedOverlays.clear(); },
     buildEnd(error) {
@@ -72,9 +86,6 @@ export default defineConfig({
         code = replaceOnce(code, 'await loadFromUrlParam();', '// Slack host owns document loading; ignore URL document sources.');
       }
       if (path === resolve(root,'src/core/wasm-bridge.ts')) {
-        code = "import { loadStudioWasm } from '@slack-wasm-loader';\n" + code;
-        code = replaceOnce(code, 'const wasmModule = await init()',
-          'const wasmModule = await init({module_or_path: await loadStudioWasm()})');
         // Slack still accepts source documents from the HWP/HWPX host flow only.
         code = replaceOnce(code, 'return hasPdfImportCapability(HwpDocument);', 'return false;');
       }
