@@ -25,12 +25,15 @@ export function objectWithReason(value: unknown, reason?:DenialReason): Record<s
 export function object(value: unknown): Record<string, unknown> {
   return objectWithReason(value);
 }
+export const FILE_SIZE_LIMIT_TITLE='파일 크기 제한 초과';
+export const FILE_SIZE_LIMIT_GUIDANCE=`Slack에서 처리할 수 있는 한글 문서는 파일당 ${MAX_FILE_BYTES/(1024*1024)} MiB 이하입니다. 파일 용량을 줄이거나 문서를 나누어 다시 올려 주세요.`;
+export const FILE_SIZE_LIMIT_NOTICE=`*${FILE_SIZE_LIMIT_TITLE}*\n${FILE_SIZE_LIMIT_GUIDANCE}`;
 const metadataMessages:Partial<Record<DenialReason,string>>={
   file_id_invalid:'파일 식별 정보를 확인할 수 없습니다. Slack의 원본 파일에서 다시 요청해 주세요.',
   file_name_invalid:'파일 이름 정보가 올바르지 않습니다. 파일 이름을 확인하고 다시 올려 주세요.',
   unsupported_extension:'HWP 또는 HWPX 확장자의 문서만 지원합니다. 지원하는 형식의 원본 파일을 올려 주세요.',
   file_size_invalid:'파일 크기 정보가 올바르지 않거나 파일이 비어 있습니다. 원본 파일을 확인하고 다시 올려 주세요.',
-  file_size_limit:`지원하는 파일 크기 한도(${MAX_FILE_BYTES/(1024*1024)} MiB)를 넘었습니다. 용량을 줄이거나 문서를 나누어 다시 올려 주세요.`,
+  file_size_limit:FILE_SIZE_LIMIT_TITLE+'\n'+FILE_SIZE_LIMIT_GUIDANCE,
   missing_download_url:'Slack이 원본 파일의 다운로드 주소를 제공하지 않았습니다. 업로드 완료 여부와 파일 공유 상태를 확인하고 다시 요청해 주세요.',
   source_metadata_changed:'요청 후 원본 파일의 이름이나 크기 정보가 변경되었습니다. 현재 원본 파일에서 다시 요청해 주세요.',
 };
