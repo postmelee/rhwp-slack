@@ -284,3 +284,5 @@ npm run build
 ```
 
 `prepare:studio`는 archive가 없으면 Python 도구로 고정 source만 내려받고 각 파일과 최종 archive hash를 검사합니다. 기존 입력의 hash가 다르면 실패하며 원본 엔진 저장소를 clone/fetch하지 않습니다. 이 준비 단계에는 upstream HTTPS 접근이 필요합니다. Studio 내부 의존성은 archive의 lockfile로 설치하며 라이선스는 [제3자 고지](THIRD_PARTY_NOTICES.md)를 따릅니다. 기존 개발 문서의 0.8.6·자동 source fetch 설명보다 이 버전의 `package-lock.json`과 `studio/upstream.json`을 우선합니다.
+
+Studio 0.9.1의 소스는 공개 태그의 원본 아카이브로 검증한다. 이 태그에 포함되지 않은 AJV vendored 경로는 빌드용 추출본에서만 AJV 8.20.0의 npm 무결성 고정으로 바꾸며, 업스트림 잠금 파일의 fast-uri 4.2.2 고정값을 유지한다.
