@@ -48,6 +48,18 @@ if (!existsSync(stamp) || readFileSync(stamp,'utf8') !== lockHash) {
 const publicDir = resolve(cache, 'studio-public');
 rmSync(publicDir, {recursive:true,force:true});
 mkdirSync(publicDir, {recursive:true});
+// Bound individual immutable HTTP-cache entries for private browser contexts.
+const engine = readFileSync(resolve('node_modules/@rhwp/core/rhwp_bg.wasm'));
+const engineDir = resolve(publicDir, 'engine');
+mkdirSync(engineDir);
+const chunkBytes = 4 * 1024 * 1024;
+const parts = [];
+for (let offset = 0; offset < engine.length; offset += chunkBytes) {
+  const name = 'part-' + parts.length + '.wasm';
+  writeFileSync(resolve(engineDir, name), engine.subarray(offset, offset + chunkBytes));
+  parts.push(name);
+}
+writeFileSync(resolve(cache, 'studio-wasm-parts.json'), JSON.stringify(parts));
 for (const name of ['fonts','icons','images','favicon.ico','theme-init.js','locale-init.js']) {
   cpSync(resolve(studio, 'public', name), resolve(publicDir, name), {recursive:true, dereference:true});
 }
