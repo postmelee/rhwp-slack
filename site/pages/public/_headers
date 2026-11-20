@@ -1,0 +1,35 @@
+/*
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; media-src 'self'
+/404.html
+  Cache-Control: no-store
+  X-Robots-Tag: noindex
+/assets/review/*
+  X-Robots-Tag: noindex, nofollow
+/
+  Cache-Control: no-cache
+/guide/
+  Cache-Control: no-cache
+/support/
+  Cache-Control: no-cache
+/privacy/
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex, nofollow
+/privacy/en/
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex, nofollow
+/terms/
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex, nofollow
+/terms/en/
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex, nofollow
+/licenses/
+  Cache-Control: no-cache
+/review/
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex, nofollow
+/policy-review/
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex, nofollow

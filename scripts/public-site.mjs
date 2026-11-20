@@ -1,14 +1,16 @@
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
-const pages=['index.html','guide/index.html','privacy/index.html','privacy/en/index.html','terms/index.html','terms/en/index.html','policy-review/index.html','googlea2d4f48bbe57cea0.html','support/index.html','licenses/index.html','site.css','rhwp-logo.png','assets/banner.png','assets/slack-thread-20260922.png','assets/demo/rhwp-slack-20260926.mp4','assets/demo/rhwp-slack-20260926.jpg','review/index.html','assets/review/01-install.png','assets/review/02-installed.png','assets/review/03-channel-settings.png','assets/review/04-editor-signin.png','assets/review/05-editor-save.png','assets/review/06-slack-result.png'];
+const pages=['index.html','guide/index.html','privacy/index.html','privacy/en/index.html','terms/index.html','terms/en/index.html','policy-review/index.html','support/index.html','licenses/index.html','site.css','rhwp-logo.png','assets/banner.png','assets/slack-thread-20260922.png','assets/demo/rhwp-slack-20260926.mp4','assets/demo/rhwp-slack-20260926.jpg','review/index.html','assets/review/01-install.png','assets/review/02-installed.png','assets/review/03-channel-settings.png','assets/review/04-editor-signin.png','assets/review/05-editor-save.png','assets/review/06-slack-result.png'];
 const notices=[['LICENSE','licenses/MIT.txt'],['THIRD_PARTY_NOTICES.md','licenses/THIRD_PARTY_NOTICES.md']];
 /** Publish only listed site assets and license notices; exclude environment data and test documents. */
-export async function exportPublicSite(output,apiOrigin){
+export async function exportPublicSite(output,apiOrigin,{withEditor=false}={}){
   const api=new URL(apiOrigin);
   if(api.protocol!=='https:'||api.origin!==apiOrigin||api.username||api.password)throw Error('Expected exact HTTPS API origin');
-  if(output!==resolve('dist/pages'))throw Error('Output must be dist/pages');
+  const expectedOutput=withEditor?'dist/pages':'dist/public-site';
+  if(output!==resolve(expectedOutput))throw Error('Output must be '+expectedOutput);
+  const files=withEditor?[...pages,'googlea2d4f48bbe57cea0.html']:pages;
   let bytes=0;
-  for(const path of pages){
+  for(const path of files){
     let data=await readFile(new URL('../site/'+path,import.meta.url));
     if(path.endsWith('.html')){
       const html=data.toString().replaceAll('{{INSTALL_URL}}',api.origin+'/install');
@@ -23,5 +25,5 @@ export async function exportPublicSite(output,apiOrigin){
     if(data.length>25*1024*1024)throw Error('Pages file limit exceeded');
     await mkdir(dirname(output+'/'+path),{recursive:true});await writeFile(output+'/'+path,data);bytes+=data.length;
   }
-  return {files:pages.length+notices.length,bytes};
+  return {files:files.length+notices.length,bytes};
 }

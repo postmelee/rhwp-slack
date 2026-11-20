@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /editor/
+Disallow: /static/
+Disallow: /api/
+Disallow: /review/
+Disallow: /assets/review/
+Disallow: /policy-review/
+Sitemap: https://rhwp-bot.pages.dev/sitemap.xml
